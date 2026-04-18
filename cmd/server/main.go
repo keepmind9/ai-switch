@@ -126,8 +126,8 @@ func main() {
 }
 
 func extractProviderName(cfg *config.Config) string {
-	if cfg.Upstream.BaseURL != "" {
-		return extractHost(cfg.Upstream.BaseURL)
+	if dp := cfg.DefaultProviderConfig(); dp != nil && dp.BaseURL != "" {
+		return extractHost(dp.BaseURL)
 	}
 	return "unknown"
 }

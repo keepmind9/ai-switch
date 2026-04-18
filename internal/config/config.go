@@ -10,10 +10,10 @@ import (
 )
 
 type Config struct {
-	Server    ServerConfig              `mapstructure:"server"`
-	Upstream  UpstreamConfig            `mapstructure:"upstream"`
-	Providers map[string]ProviderConfig `mapstructure:"providers"`
-	Routes    map[string]RouteRule      `mapstructure:"routes"`
+	Server          ServerConfig              `mapstructure:"server"`
+	DefaultProvider string                    `mapstructure:"default_provider"`
+	Providers       map[string]ProviderConfig `mapstructure:"providers"`
+	Routes          map[string]RouteRule      `mapstructure:"routes"`
 }
 
 type RouteRule struct {
@@ -26,15 +26,6 @@ type RouteRule struct {
 type ServerConfig struct {
 	Host string `mapstructure:"host"`
 	Port int    `mapstructure:"port"`
-}
-
-type UpstreamConfig struct {
-	BaseURL  string            `mapstructure:"base_url"`
-	Path     string            `mapstructure:"path"`
-	APIKey   string            `mapstructure:"api_key"`
-	Model    string            `mapstructure:"model"`
-	Format   string            `mapstructure:"format"`
-	ModelMap map[string]string `mapstructure:"model_map"`
 }
 
 type ProviderConfig struct {
@@ -68,22 +59,21 @@ func Load(path string) (*Config, error) {
 		return nil, err
 	}
 
-	// Set default format
-	if cfg.Upstream.Format == "" {
-		cfg.Upstream.Format = "chat"
+	// Validate default_provider references an existing provider
+	if cfg.DefaultProvider != "" {
+		if _, ok := cfg.Providers[cfg.DefaultProvider]; !ok {
+			return nil, fmt.Errorf("default_provider %q not found in providers", cfg.DefaultProvider)
+		}
 	}
 
-	// Validate format
-	if !validFormats[cfg.Upstream.Format] {
-		return nil, fmt.Errorf("invalid upstream format %q: must be one of chat, responses, anthropic", cfg.Upstream.Format)
-	}
-
-	// Expand environment variables
-	cfg.Upstream.APIKey = expandEnv(cfg.Upstream.APIKey)
+	// Set defaults and expand env vars for all providers
 	for k, p := range cfg.Providers {
 		p.APIKey = expandEnv(p.APIKey)
 		if p.Format == "" {
 			p.Format = "chat"
+		}
+		if !validFormats[p.Format] {
+			return nil, fmt.Errorf("invalid format %q for provider %q: must be one of chat, responses, anthropic", p.Format, k)
 		}
 		cfg.Providers[k] = p
 	}
@@ -91,15 +81,16 @@ func Load(path string) (*Config, error) {
 	return &cfg, nil
 }
 
-// ResolveModel maps a client model name to the upstream model name via model_map.
-// If no mapping exists, returns the original model name.
-func (u *UpstreamConfig) ResolveModel(model string) string {
-	if u.ModelMap != nil {
-		if mapped, ok := u.ModelMap[model]; ok {
-			return mapped
-		}
+// DefaultProviderConfig returns the default provider config, or nil if not set.
+func (c *Config) DefaultProviderConfig() *ProviderConfig {
+	if c.DefaultProvider == "" {
+		return nil
 	}
-	return model
+	p, ok := c.Providers[c.DefaultProvider]
+	if !ok {
+		return nil
+	}
+	return &p
 }
 
 // DataDir returns the path to the data directory (~/.llm-gateway/).

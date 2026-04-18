@@ -19,10 +19,13 @@ func newTestProvider(t *testing.T) (*Provider, string) {
 server:
   host: "0.0.0.0"
   port: 12345
-upstream:
-  base_url: "https://api.example.com/v1"
-  api_key: "initial-key"
-  model: "initial-model"
+default_provider: "default"
+providers:
+  default:
+    name: "Default"
+    base_url: "https://api.example.com/v1"
+    api_key: "initial-key"
+    model: "initial-model"
 `
 	err := os.WriteFile(cfgPath, []byte(content), 0644)
 	require.NoError(t, err)
@@ -38,8 +41,12 @@ func TestProvider_Get(t *testing.T) {
 
 	cfg := p.Get()
 	require.NotNil(t, cfg)
-	assert.Equal(t, "initial-key", cfg.Upstream.APIKey)
-	assert.Equal(t, "initial-model", cfg.Upstream.Model)
+	assert.Equal(t, "default", cfg.DefaultProvider)
+
+	dp := cfg.DefaultProviderConfig()
+	require.NotNil(t, dp)
+	assert.Equal(t, "initial-key", dp.APIKey)
+	assert.Equal(t, "initial-model", dp.Model)
 }
 
 func TestProvider_Reload(t *testing.T) {
@@ -50,10 +57,13 @@ func TestProvider_Reload(t *testing.T) {
 server:
   host: "0.0.0.0"
   port: 9999
-upstream:
-  base_url: "https://api.new.com/v1"
-  api_key: "new-key"
-  model: "new-model"
+default_provider: "default"
+providers:
+  default:
+    name: "Default"
+    base_url: "https://api.new.com/v1"
+    api_key: "new-key"
+    model: "new-model"
 `
 	err := os.WriteFile(cfgPath, []byte(newContent), 0644)
 	require.NoError(t, err)
@@ -63,8 +73,11 @@ upstream:
 
 	cfg := p.Get()
 	assert.Equal(t, 9999, cfg.Server.Port)
-	assert.Equal(t, "new-key", cfg.Upstream.APIKey)
-	assert.Equal(t, "new-model", cfg.Upstream.Model)
+
+	dp := cfg.DefaultProviderConfig()
+	require.NotNil(t, dp)
+	assert.Equal(t, "new-key", dp.APIKey)
+	assert.Equal(t, "new-model", dp.Model)
 }
 
 func TestProvider_Reload_InvalidFile(t *testing.T) {
@@ -79,7 +92,9 @@ func TestProvider_Reload_InvalidFile(t *testing.T) {
 
 	// Old config should still be accessible
 	cfg := p.Get()
-	assert.Equal(t, "initial-key", cfg.Upstream.APIKey)
+	dp := cfg.DefaultProviderConfig()
+	require.NotNil(t, dp)
+	assert.Equal(t, "initial-key", dp.APIKey)
 }
 
 func TestProvider_Reload_MissingFile(t *testing.T) {
@@ -91,7 +106,9 @@ func TestProvider_Reload_MissingFile(t *testing.T) {
 	assert.Error(t, err)
 
 	cfg := p.Get()
-	assert.Equal(t, "initial-key", cfg.Upstream.APIKey)
+	dp := cfg.DefaultProviderConfig()
+	require.NotNil(t, dp)
+	assert.Equal(t, "initial-key", dp.APIKey)
 }
 
 func TestProvider_ConcurrentAccess(t *testing.T) {
@@ -134,11 +151,13 @@ func TestProvider_Reload_UpdatesProviders(t *testing.T) {
 server:
   host: "0.0.0.0"
   port: 12345
-upstream:
-  base_url: "https://api.example.com/v1"
-  api_key: "key"
-  model: "model"
+default_provider: "default"
 providers:
+  default:
+    name: "Default"
+    base_url: "https://api.example.com/v1"
+    api_key: "key"
+    model: "model"
   test:
     name: "Test"
     base_url: "https://test.com/v1"
@@ -160,11 +179,13 @@ providers:
 server:
   host: "0.0.0.0"
   port: 12345
-upstream:
-  base_url: "https://api.example.com/v1"
-  api_key: "key"
-  model: "model"
+default_provider: "default"
 providers:
+  default:
+    name: "Default"
+    base_url: "https://api.example.com/v1"
+    api_key: "key"
+    model: "model"
   test:
     name: "Test"
     base_url: "https://test.com/v1"

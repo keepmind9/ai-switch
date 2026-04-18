@@ -620,27 +620,23 @@ func (h *Handler) handleAPIStatus(c *gin.Context) {
 	cfg := h.provider.Get()
 
 	status := gin.H{
-		"upstream": gin.H{
-			"base_url": cfg.Upstream.BaseURL,
-			"format":   cfg.Upstream.Format,
-			"model":    cfg.Upstream.Model,
-		},
 		"server": gin.H{
 			"host": cfg.Server.Host,
 			"port": cfg.Server.Port,
 		},
+		"default_provider": cfg.DefaultProvider,
 	}
 
 	providers := make([]gin.H, 0)
 	for key, p := range cfg.Providers {
 		providers = append(providers, gin.H{
-			"key":      key,
-			"name":     p.Name,
-			"base_url": p.BaseURL,
-			"model":    p.Model,
-			"format":   p.Format,
-			"sponsor":  p.Sponsor,
-			"logo_url": p.LogoURL,
+			"key":       key,
+			"name":      p.Name,
+			"base_url":  p.BaseURL,
+			"model":     p.Model,
+			"format":    p.Format,
+			"sponsor":   p.Sponsor,
+			"logo_url":  p.LogoURL,
 		})
 	}
 	status["providers"] = providers

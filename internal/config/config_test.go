@@ -18,14 +18,18 @@ server:
   host: "127.0.0.1"
   port: 8080
 
-upstream:
-  base_url: "https://api.example.com/v1"
-  api_key: "sk-test-key"
-  model: "test-model"
-  format: "chat"
-  model_map:
-    "gpt-4o": "test-model"
-    "claude-3": "test-model-v2"
+default_provider: "openai"
+
+providers:
+  openai:
+    name: "OpenAI"
+    base_url: "https://api.example.com/v1"
+    api_key: "sk-test-key"
+    model: "test-model"
+    format: "chat"
+    model_map:
+      "gpt-4o": "test-model"
+      "claude-3": "test-model-v2"
 `
 	err := os.WriteFile(cfgPath, []byte(content), 0644)
 	require.NoError(t, err)
@@ -35,12 +39,17 @@ upstream:
 
 	assert.Equal(t, "127.0.0.1", cfg.Server.Host)
 	assert.Equal(t, 8080, cfg.Server.Port)
-	assert.Equal(t, "https://api.example.com/v1", cfg.Upstream.BaseURL)
-	assert.Equal(t, "sk-test-key", cfg.Upstream.APIKey)
-	assert.Equal(t, "test-model", cfg.Upstream.Model)
-	assert.Equal(t, "chat", cfg.Upstream.Format)
-	assert.Equal(t, "test-model", cfg.Upstream.ModelMap["gpt-4o"])
-	assert.Equal(t, "test-model-v2", cfg.Upstream.ModelMap["claude-3"])
+	assert.Equal(t, "openai", cfg.DefaultProvider)
+
+	p, ok := cfg.Providers["openai"]
+	require.True(t, ok)
+	assert.Equal(t, "OpenAI", p.Name)
+	assert.Equal(t, "https://api.example.com/v1", p.BaseURL)
+	assert.Equal(t, "sk-test-key", p.APIKey)
+	assert.Equal(t, "test-model", p.Model)
+	assert.Equal(t, "chat", p.Format)
+	assert.Equal(t, "test-model", p.ModelMap["gpt-4o"])
+	assert.Equal(t, "test-model-v2", p.ModelMap["claude-3"])
 }
 
 func TestLoad_DefaultFormat(t *testing.T) {
@@ -51,17 +60,20 @@ func TestLoad_DefaultFormat(t *testing.T) {
 server:
   host: "0.0.0.0"
   port: 12345
-upstream:
-  base_url: "https://api.example.com/v1"
-  api_key: "key"
-  model: "model"
+default_provider: "test"
+providers:
+  test:
+    name: "Test"
+    base_url: "https://api.example.com/v1"
+    api_key: "key"
+    model: "model"
 `
 	err := os.WriteFile(cfgPath, []byte(content), 0644)
 	require.NoError(t, err)
 
 	cfg, err := Load(cfgPath)
 	require.NoError(t, err)
-	assert.Equal(t, "chat", cfg.Upstream.Format)
+	assert.Equal(t, "chat", cfg.Providers["test"].Format)
 }
 
 func TestLoad_InvalidFormat(t *testing.T) {
@@ -72,18 +84,20 @@ func TestLoad_InvalidFormat(t *testing.T) {
 server:
   host: "0.0.0.0"
   port: 12345
-upstream:
-  base_url: "https://api.example.com/v1"
-  api_key: "key"
-  model: "model"
-  format: "invalid"
+providers:
+  test:
+    name: "Test"
+    base_url: "https://api.example.com/v1"
+    api_key: "key"
+    model: "model"
+    format: "invalid"
 `
 	err := os.WriteFile(cfgPath, []byte(content), 0644)
 	require.NoError(t, err)
 
 	_, err = Load(cfgPath)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "invalid upstream format")
+	assert.Contains(t, err.Error(), "invalid format")
 }
 
 func TestLoad_AllFormats(t *testing.T) {
@@ -106,10 +120,10 @@ func TestLoad_AllFormats(t *testing.T) {
 
 			formatLine := ""
 			if tt.format != "" {
-				formatLine = "  format: \"" + tt.format + "\"\n"
+				formatLine = "    format: \"" + tt.format + "\"\n"
 			}
 
-			content := "server:\n  host: \"0.0.0.0\"\n  port: 12345\nupstream:\n  base_url: \"https://api.example.com/v1\"\n  api_key: \"key\"\n  model: \"model\"\n" + formatLine
+			content := "server:\n  host: \"0.0.0.0\"\n  port: 12345\nproviders:\n  test:\n    name: \"Test\"\n    base_url: \"https://api.example.com/v1\"\n    api_key: \"key\"\n    model: \"model\"\n" + formatLine
 			err := os.WriteFile(cfgPath, []byte(content), 0644)
 			require.NoError(t, err)
 
@@ -120,7 +134,7 @@ func TestLoad_AllFormats(t *testing.T) {
 				if expected == "" {
 					expected = "chat"
 				}
-				assert.Equal(t, expected, cfg.Upstream.Format)
+				assert.Equal(t, expected, cfg.Providers["test"].Format)
 			} else {
 				assert.Error(t, err)
 			}
@@ -136,10 +150,7 @@ func TestLoad_Providers(t *testing.T) {
 server:
   host: "0.0.0.0"
   port: 12345
-upstream:
-  base_url: "https://api.example.com/v1"
-  api_key: "key"
-  model: "model"
+default_provider: "deepseek"
 providers:
   deepseek:
     name: "DeepSeek"
@@ -160,6 +171,7 @@ providers:
 	cfg, err := Load(cfgPath)
 	require.NoError(t, err)
 
+	assert.Equal(t, "deepseek", cfg.DefaultProvider)
 	require.Len(t, cfg.Providers, 2)
 
 	ds, ok := cfg.Providers["deepseek"]
@@ -174,6 +186,75 @@ providers:
 	assert.Equal(t, "chat", mm.Format) // default
 }
 
+func TestLoad_DefaultProviderValidation(t *testing.T) {
+	tests := []struct {
+		name            string
+		defaultProvider string
+		providers       string
+		expectError     bool
+		errorContains   string
+	}{
+		{
+			name:            "valid default_provider",
+			defaultProvider: "test",
+			providers: `  test:
+    name: "Test"
+    base_url: "https://test.com/v1"
+    api_key: "key"
+    model: "model"`,
+			expectError: false,
+		},
+		{
+			name:            "default_provider not in providers",
+			defaultProvider: "missing",
+			providers: `  test:
+    name: "Test"
+    base_url: "https://test.com/v1"
+    api_key: "key"
+    model: "model"`,
+			expectError:   true,
+			errorContains: "default_provider",
+		},
+		{
+			name:            "empty default_provider is valid",
+			defaultProvider: "",
+			providers: `  test:
+    name: "Test"
+    base_url: "https://test.com/v1"
+    api_key: "key"
+    model: "model"`,
+			expectError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			cfgPath := filepath.Join(dir, "config.yaml")
+
+			dpLine := ""
+			if tt.defaultProvider != "" {
+				dpLine = "default_provider: \"" + tt.defaultProvider + "\"\n"
+			}
+
+			content := "server:\n  host: \"0.0.0.0\"\n  port: 12345\n" + dpLine + "providers:\n" + tt.providers + "\n"
+			err := os.WriteFile(cfgPath, []byte(content), 0644)
+			require.NoError(t, err)
+
+			cfg, err := Load(cfgPath)
+			if tt.expectError {
+				assert.Error(t, err)
+				if tt.errorContains != "" {
+					assert.Contains(t, err.Error(), tt.errorContains)
+				}
+			} else {
+				require.NoError(t, err)
+				assert.NotNil(t, cfg)
+			}
+		})
+	}
+}
+
 func TestLoad_ExpandEnv(t *testing.T) {
 	os.Setenv("TEST_API_KEY_123", "expanded-key-value")
 	defer os.Unsetenv("TEST_API_KEY_123")
@@ -185,11 +266,13 @@ func TestLoad_ExpandEnv(t *testing.T) {
 server:
   host: "0.0.0.0"
   port: 12345
-upstream:
-  base_url: "https://api.example.com/v1"
-  api_key: "${TEST_API_KEY_123}"
-  model: "model"
+default_provider: "default"
 providers:
+  default:
+    name: "Default"
+    base_url: "https://api.example.com/v1"
+    api_key: "${TEST_API_KEY_123}"
+    model: "model"
   test:
     name: "Test"
     base_url: "https://test.com/v1"
@@ -201,78 +284,13 @@ providers:
 
 	cfg, err := Load(cfgPath)
 	require.NoError(t, err)
-	assert.Equal(t, "expanded-key-value", cfg.Upstream.APIKey)
+	assert.Equal(t, "expanded-key-value", cfg.Providers["default"].APIKey)
 	assert.Equal(t, "expanded-key-value", cfg.Providers["test"].APIKey)
 }
 
 func TestLoad_FileNotFound(t *testing.T) {
 	_, err := Load("/nonexistent/config.yaml")
 	assert.Error(t, err)
-}
-
-func TestLoad_UpstreamPath(t *testing.T) {
-	dir := t.TempDir()
-	cfgPath := filepath.Join(dir, "config.yaml")
-
-	content := `
-server:
-  host: "0.0.0.0"
-  port: 12345
-upstream:
-  base_url: "https://vendor.example.com"
-  path: "/proxy/v1/chat/completions"
-  api_key: "key"
-  model: "model"
-`
-	err := os.WriteFile(cfgPath, []byte(content), 0644)
-	require.NoError(t, err)
-
-	cfg, err := Load(cfgPath)
-	require.NoError(t, err)
-	assert.Equal(t, "/proxy/v1/chat/completions", cfg.Upstream.Path)
-}
-
-func TestLoad_UpstreamPathEmpty(t *testing.T) {
-	dir := t.TempDir()
-	cfgPath := filepath.Join(dir, "config.yaml")
-
-	content := `
-server:
-  host: "0.0.0.0"
-  port: 12345
-upstream:
-  base_url: "https://api.example.com/v1"
-  api_key: "key"
-  model: "model"
-`
-	err := os.WriteFile(cfgPath, []byte(content), 0644)
-	require.NoError(t, err)
-
-	cfg, err := Load(cfgPath)
-	require.NoError(t, err)
-	assert.Equal(t, "", cfg.Upstream.Path)
-}
-
-func TestResolveModel(t *testing.T) {
-	tests := []struct {
-		name     string
-		modelMap map[string]string
-		input    string
-		expected string
-	}{
-		{"mapped model", map[string]string{"gpt-4o": "upstream-model"}, "gpt-4o", "upstream-model"},
-		{"unmapped model passthrough", map[string]string{"gpt-4o": "upstream-model"}, "claude-3", "claude-3"},
-		{"nil model map", nil, "gpt-4o", "gpt-4o"},
-		{"empty model map", map[string]string{}, "gpt-4o", "gpt-4o"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			u := &UpstreamConfig{ModelMap: tt.modelMap}
-			result := u.ResolveModel(tt.input)
-			assert.Equal(t, tt.expected, result)
-		})
-	}
 }
 
 func TestDataDir(t *testing.T) {
@@ -327,11 +345,13 @@ func TestLoad_Routes(t *testing.T) {
 server:
   host: "0.0.0.0"
   port: 12345
-upstream:
-  base_url: "https://api.example.com/v1"
-  api_key: "key"
-  model: "model"
+default_provider: "default"
 providers:
+  default:
+    name: "Default"
+    base_url: "https://api.example.com/v1"
+    api_key: "key"
+    model: "model"
   zhipu:
     name: "Zhipu"
     base_url: "https://open.bigmodel.cn/api/anthropic"
@@ -380,10 +400,12 @@ func TestLoad_RoutesEmpty(t *testing.T) {
 server:
   host: "0.0.0.0"
   port: 12345
-upstream:
-  base_url: "https://api.example.com/v1"
-  api_key: "key"
-  model: "model"
+providers:
+  default:
+    name: "Default"
+    base_url: "https://api.example.com/v1"
+    api_key: "key"
+    model: "model"
 `
 	err := os.WriteFile(cfgPath, []byte(content), 0644)
 	require.NoError(t, err)
@@ -391,6 +413,58 @@ upstream:
 	cfg, err := Load(cfgPath)
 	require.NoError(t, err)
 	assert.Nil(t, cfg.Routes)
+}
+
+func TestDefaultProviderConfig(t *testing.T) {
+	tests := []struct {
+		name            string
+		defaultProvider string
+		providers       map[string]ProviderConfig
+		expectNil       bool
+		expectedName    string
+	}{
+		{
+			name:            "returns matching provider",
+			defaultProvider: "test",
+			providers: map[string]ProviderConfig{
+				"test": {Name: "Test", BaseURL: "https://test.com/v1", APIKey: "key"},
+			},
+			expectNil:    false,
+			expectedName: "Test",
+		},
+		{
+			name:            "empty default_provider returns nil",
+			defaultProvider: "",
+			providers: map[string]ProviderConfig{
+				"test": {Name: "Test"},
+			},
+			expectNil: true,
+		},
+		{
+			name:            "missing provider returns nil",
+			defaultProvider: "missing",
+			providers: map[string]ProviderConfig{
+				"test": {Name: "Test"},
+			},
+			expectNil: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &Config{
+				DefaultProvider: tt.defaultProvider,
+				Providers:       tt.providers,
+			}
+			result := cfg.DefaultProviderConfig()
+			if tt.expectNil {
+				assert.Nil(t, result)
+			} else {
+				require.NotNil(t, result)
+				assert.Equal(t, tt.expectedName, result.Name)
+			}
+		})
+	}
 }
 
 func TestExpandEnv(t *testing.T) {

@@ -10,13 +10,15 @@ import (
 
 func newTestProvider() *config.Provider {
 	cfg := &config.Config{
-		Upstream: config.UpstreamConfig{
-			BaseURL: "https://api.default.com/v1",
-			APIKey:  "default-key",
-			Format:  "chat",
-			Model:   "default-model",
-		},
+		DefaultProvider: "minimax",
 		Providers: map[string]config.ProviderConfig{
+			"minimax": {
+				Name:    "MiniMax",
+				BaseURL: "https://api.default.com",
+				APIKey:  "default-key",
+				Format:  "chat",
+				Model:   "default-model",
+			},
 			"zhipu": {
 				Name:    "Zhipu",
 				BaseURL: "https://open.bigmodel.cn/api/anthropic",
@@ -25,7 +27,7 @@ func newTestProvider() *config.Provider {
 			},
 			"deepseek": {
 				Name:    "DeepSeek",
-				BaseURL: "https://api.deepseek.com/v1",
+				BaseURL: "https://api.deepseek.com",
 				APIKey:  "ds-key",
 				Format:  "chat",
 			},
@@ -58,7 +60,7 @@ func TestConfigRouter_RouteByAPIKey(t *testing.T) {
 
 	result, err := r.Route("chat", "gw-deepseek", []byte(`{"model":"gpt-4o"}`))
 	require.NoError(t, err)
-	assert.Equal(t, "https://api.deepseek.com/v1", result.BaseURL)
+	assert.Equal(t, "https://api.deepseek.com", result.BaseURL)
 	assert.Equal(t, "ds-key", result.APIKey)
 	assert.Equal(t, "chat", result.Format)
 	assert.Equal(t, "deepseek-chat", result.Model)
@@ -126,35 +128,46 @@ func TestConfigRouter_RouteUnknownAPIKey(t *testing.T) {
 
 	result, err := r.Route("chat", "unknown-key", []byte(`{}`))
 	require.NoError(t, err)
-	assert.Equal(t, "https://api.default.com/v1", result.BaseURL)
+	assert.Equal(t, "https://api.default.com", result.BaseURL)
 	assert.Equal(t, "default-key", result.APIKey)
 	assert.Equal(t, "default-model", result.Model)
 }
 
 func TestConfigRouter_RouteNoRoutes(t *testing.T) {
 	cfg := &config.Config{
-		Upstream: config.UpstreamConfig{
-			BaseURL: "https://api.default.com/v1",
-			APIKey:  "default-key",
-			Format:  "chat",
-			Model:   "default-model",
+		DefaultProvider: "minimax",
+		Providers: map[string]config.ProviderConfig{
+			"minimax": {
+				BaseURL: "https://api.default.com",
+				APIKey:  "default-key",
+				Format:  "chat",
+				Model:   "default-model",
+			},
 		},
 	}
 	r := NewConfigRouter(config.NewProvider(cfg, ""))
 
 	result, err := r.Route("chat", "any-key", []byte(`{}`))
 	require.NoError(t, err)
-	assert.Equal(t, "https://api.default.com/v1", result.BaseURL)
+	assert.Equal(t, "https://api.default.com", result.BaseURL)
 	assert.Equal(t, "default-model", result.Model)
+}
+
+func TestConfigRouter_RouteNoDefault(t *testing.T) {
+	cfg := &config.Config{
+		Providers: map[string]config.ProviderConfig{},
+	}
+	r := NewConfigRouter(config.NewProvider(cfg, ""))
+
+	_, err := r.Route("chat", "unknown-key", []byte(`{}`))
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "default_provider not configured")
 }
 
 func TestConfigRouter_RouteUnknownProvider(t *testing.T) {
 	cfg := &config.Config{
-		Upstream: config.UpstreamConfig{
-			BaseURL: "https://api.default.com/v1",
-			APIKey:  "default-key",
-			Format:  "chat",
-			Model:   "default-model",
+		Providers: map[string]config.ProviderConfig{
+			"minimax": {BaseURL: "https://api.minimax.com", APIKey: "key", Format: "chat"},
 		},
 		Routes: map[string]config.RouteRule{
 			"gw-test": {

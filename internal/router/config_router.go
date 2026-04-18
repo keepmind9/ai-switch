@@ -21,41 +21,33 @@ func NewConfigRouter(provider *config.Provider) *ConfigRouter {
 func (r *ConfigRouter) Route(clientProtocol, apiKey string, body []byte) (*RouteResult, error) {
 	cfg := r.provider.Get()
 
-	// No routes configured → fallback to default upstream
-	if len(cfg.Routes) == 0 {
-		return defaultRoute(cfg), nil
-	}
-
 	// Lookup API key in routes
-	rule, ok := cfg.Routes[apiKey]
-	if !ok {
-		return defaultRoute(cfg), nil
+	if len(cfg.Routes) > 0 {
+		if rule, ok := cfg.Routes[apiKey]; ok {
+			prov, ok := cfg.Providers[rule.Provider]
+			if !ok {
+				return nil, fmt.Errorf("route references unknown provider %q", rule.Provider)
+			}
+			model := resolveModel(rule, clientProtocol, body)
+			return providerToResult(prov, model), nil
+		}
 	}
 
-	// Lookup provider
-	prov, ok := cfg.Providers[rule.Provider]
-	if !ok {
-		return nil, fmt.Errorf("route references unknown provider %q", rule.Provider)
+	// Fallback to default_provider
+	dp := cfg.DefaultProviderConfig()
+	if dp == nil {
+		return nil, fmt.Errorf("no matching route and default_provider not configured")
 	}
+	return providerToResult(*dp, dp.Model), nil
+}
 
-	model := resolveModel(rule, clientProtocol, body)
-
+func providerToResult(prov config.ProviderConfig, model string) *RouteResult {
 	return &RouteResult{
 		BaseURL: prov.BaseURL,
 		APIKey:  prov.APIKey,
 		Format:  prov.Format,
 		Model:   model,
 		Path:    prov.Path,
-	}, nil
-}
-
-func defaultRoute(cfg *config.Config) *RouteResult {
-	return &RouteResult{
-		BaseURL: cfg.Upstream.BaseURL,
-		APIKey:  cfg.Upstream.APIKey,
-		Format:  cfg.Upstream.Format,
-		Model:   cfg.Upstream.Model,
-		Path:    cfg.Upstream.Path,
 	}
 }
 

@@ -24,6 +24,20 @@ func (r *staticRouter) Route(_, _ string, _ []byte) (*router.RouteResult, error)
 	return r.result, nil
 }
 
+func newTestConfig(tsURL, format, model string) *config.Config {
+	return &config.Config{
+		DefaultProvider: "default",
+		Providers: map[string]config.ProviderConfig{
+			"default": {
+				BaseURL: tsURL,
+				APIKey:  "test-key",
+				Format:  format,
+				Model:   model,
+			},
+		},
+	}
+}
+
 // --- Unit tests for forwardRequest and formatToPath ---
 
 func TestForwardRequest_DefaultPath(t *testing.T) {
@@ -42,7 +56,7 @@ func TestForwardRequest_DefaultPath(t *testing.T) {
 		Format:  "chat",
 	}
 
-	resp, err := h.forwardRequest(result, "/v1/chat/completions", []byte(`{}`))
+	resp, err := h.forwardRequest(result, PathChat, []byte(`{}`))
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
@@ -67,7 +81,7 @@ func TestForwardRequest_PathOverride(t *testing.T) {
 		Format:  "chat",
 	}
 
-	resp, err := h.forwardRequest(result, "/v1/chat/completions", []byte(`{}`))
+	resp, err := h.forwardRequest(result, PathChat, []byte(`{}`))
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
@@ -90,7 +104,7 @@ func TestForwardRequest_TrailingSlash(t *testing.T) {
 		Format:  "chat",
 	}
 
-	resp, err := h.forwardRequest(result, "/v1/chat/completions", []byte(`{}`))
+	resp, err := h.forwardRequest(result, PathChat, []byte(`{}`))
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
@@ -114,7 +128,7 @@ func TestForwardRequest_AnthropicHeaders(t *testing.T) {
 		Format:  "anthropic",
 	}
 
-	resp, err := h.forwardRequest(result, "/v1/messages", []byte(`{}`))
+	resp, err := h.forwardRequest(result, PathMessages, []byte(`{}`))
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
@@ -138,7 +152,7 @@ func TestForwardRequest_ChatBearerHeader(t *testing.T) {
 		Format:  "chat",
 	}
 
-	resp, err := h.forwardRequest(result, "/v1/chat/completions", []byte(`{}`))
+	resp, err := h.forwardRequest(result, PathChat, []byte(`{}`))
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
@@ -159,7 +173,7 @@ func TestForwardRequest_UpstreamError(t *testing.T) {
 		Format:  "chat",
 	}
 
-	resp, err := h.forwardRequest(result, "/v1/chat/completions", []byte(`{}`))
+	resp, err := h.forwardRequest(result, PathChat, []byte(`{}`))
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
@@ -186,7 +200,6 @@ func TestFormatToPath(t *testing.T) {
 
 // --- Integration tests for endpoint handlers ---
 
-// setupRouter creates a test Gin engine with the handler wired to a mock upstream.
 func setupRouter(t *testing.T, upstreamFormat string, upstreamHandler http.HandlerFunc) (*gin.Engine, *httptest.Server) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
@@ -194,15 +207,7 @@ func setupRouter(t *testing.T, upstreamFormat string, upstreamHandler http.Handl
 	ts := httptest.NewServer(upstreamHandler)
 	t.Cleanup(ts.Close)
 
-	provider := config.NewProvider(&config.Config{
-		Upstream: config.UpstreamConfig{
-			BaseURL: ts.URL,
-			APIKey:  "test-key",
-			Format:  upstreamFormat,
-			Model:   "test-model",
-		},
-	}, "")
-
+	provider := config.NewProvider(newTestConfig(ts.URL, upstreamFormat, "test-model"), "")
 	r := router.NewConfigRouter(provider)
 	h := NewHandler(provider, nil, r)
 	engine := gin.New()
@@ -219,7 +224,6 @@ func doRequest(r *gin.Engine, method, path, body string) *httptest.ResponseRecor
 	return w
 }
 
-// chatUpstreamHandler returns a mock upstream that responds to Chat Completions.
 func chatUpstreamHandler(t *testing.T) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
@@ -275,7 +279,6 @@ func TestHandleChat_InvalidBody(t *testing.T) {
 	r, _ := setupRouter(t, "chat", func(w http.ResponseWriter, r *http.Request) {})
 
 	w := doRequest(r, "POST", "/v1/chat/completions", `not json`)
-
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
@@ -311,15 +314,7 @@ func TestHandleChat_DefaultModel(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	provider := config.NewProvider(&config.Config{
-		Upstream: config.UpstreamConfig{
-			BaseURL: ts.URL,
-			APIKey:  "key",
-			Format:  "chat",
-			Model:   "default-model",
-		},
-	}, "")
-
+	provider := config.NewProvider(newTestConfig(ts.URL, "chat", "default-model"), "")
 	rt := router.NewConfigRouter(provider)
 	h := NewHandler(provider, nil, rt)
 	engine := gin.New()
@@ -500,7 +495,6 @@ func TestHandleHealth(t *testing.T) {
 	r, _ := setupRouter(t, "chat", func(w http.ResponseWriter, r *http.Request) {})
 
 	w := doRequest(r, "GET", "/health", "")
-
 	assert.Equal(t, http.StatusOK, w.Code)
 	var resp map[string]any
 	json.Unmarshal(w.Body.Bytes(), &resp)
@@ -511,7 +505,6 @@ func TestHandleReload(t *testing.T) {
 	r, _ := setupRouter(t, "chat", func(w http.ResponseWriter, r *http.Request) {})
 
 	w := doRequest(r, "POST", "/api/reload", "")
-
 	assert.True(t, w.Code == http.StatusOK || w.Code == http.StatusInternalServerError)
 }
 
@@ -523,10 +516,7 @@ func TestHandleAPIStatus(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 	var resp map[string]any
 	json.Unmarshal(w.Body.Bytes(), &resp)
-
-	upstream := resp["upstream"].(map[string]any)
-	assert.Equal(t, "chat", upstream["format"])
-	assert.Equal(t, "test-model", upstream["model"])
+	assert.Equal(t, "default", resp["default_provider"])
 }
 
 func TestExtractClientAPIKey(t *testing.T) {

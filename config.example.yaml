@@ -2,24 +2,19 @@ server:
   host: "0.0.0.0"
   port: 12345
 
-upstream:
-  # base_url should NOT include /v1 — the gateway adds it automatically
-  base_url: "https://api.minimaxi.com"
-  # path: "/v1/chat/completions"  # Optional: override the auto-detected path
-  api_key: "${API_KEY}"
-  model: "MiniMax-M2.5"
-  format: "chat"
-  model_map:
-    "claude-sonnet-4-5": "MiniMax-M2.5"
-    "gpt-4o": "MiniMax-M2.5"
+default_provider: "minimax"
 
 providers:
   minimax:
     name: "MiniMax"
+    # base_url should NOT include /v1 — the gateway adds it automatically
     base_url: "https://api.minimaxi.com"
     api_key: "${MINIMAX_API_KEY}"
     model: "MiniMax-M2.5"
     format: "chat"
+    model_map:
+      "claude-sonnet-4-5": "MiniMax-M2.5"
+      "gpt-4o": "MiniMax-M2.5"
     logo_url: ""
     sponsor: true
   deepseek:
