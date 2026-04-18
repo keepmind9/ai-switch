@@ -171,8 +171,8 @@ func TestFormatToPath(t *testing.T) {
 		format   string
 		expected string
 	}{
-		{"chat", "/v1/chat/completions"},
-		{"", "/v1/chat/completions"},
+		{"chat", "/chat/completions"},
+		{"", "/chat/completions"},
 		{"anthropic", "/v1/messages"},
 		{"responses", "/v1/responses"},
 	}

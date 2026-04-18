@@ -576,7 +576,7 @@ func formatToPath(format string) string {
 	case "responses":
 		return "/v1/responses"
 	default:
-		return "/v1/chat/completions"
+		return "/chat/completions"
 	}
 }
 
