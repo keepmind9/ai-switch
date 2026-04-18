@@ -3,8 +3,9 @@ server:
   port: 12345
 
 upstream:
-  base_url: "https://api.minimaxi.com/v1"
-  # path: "/chat/completions"  # Optional: override the auto-detected path
+  # base_url should NOT include /v1 — the gateway adds it automatically
+  base_url: "https://api.minimaxi.com"
+  # path: "/v1/chat/completions"  # Optional: override the auto-detected path
   api_key: "${API_KEY}"
   model: "MiniMax-M2.5"
   format: "chat"
@@ -15,7 +16,7 @@ upstream:
 providers:
   minimax:
     name: "MiniMax"
-    base_url: "https://api.minimaxi.com/v1"
+    base_url: "https://api.minimaxi.com"
     api_key: "${MINIMAX_API_KEY}"
     model: "MiniMax-M2.5"
     format: "chat"
@@ -23,7 +24,7 @@ providers:
     sponsor: true
   deepseek:
     name: "DeepSeek"
-    base_url: "https://api.deepseek.com/v1"
+    base_url: "https://api.deepseek.com"
     api_key: "${DEEPSEEK_API_KEY}"
     model: "deepseek-chat"
     format: "chat"

@@ -360,7 +360,7 @@ func (h *Handler) responsesViaChat(c *gin.Context, result *router.RouteResult, r
 	chatReq.Stream = isStreaming
 
 	chatBody, _ := json.Marshal(chatReq)
-	resp, err := h.forwardRequest(result, "/chat/completions", chatBody)
+	resp, err := h.forwardRequest(result, PathChat, chatBody)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": gin.H{"code": "upstream_error", "message": err.Error()}})
 		return
@@ -408,7 +408,7 @@ func (h *Handler) anthropicViaChat(c *gin.Context, result *router.RouteResult, r
 	chatReq.Stream = isStreaming
 
 	chatBody, _ := json.Marshal(chatReq)
-	resp, err := h.forwardRequest(result, "/chat/completions", chatBody)
+	resp, err := h.forwardRequest(result, PathChat, chatBody)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": gin.H{"code": "upstream_error", "message": err.Error()}})
 		return
@@ -455,7 +455,7 @@ func (h *Handler) chatViaAnthropic(c *gin.Context, result *router.RouteResult, c
 	anthReq.Stream = isStreaming
 	anthBody, _ := json.Marshal(anthReq)
 
-	resp, err := h.forwardRequest(result, "/v1/messages", anthBody)
+	resp, err := h.forwardRequest(result, PathMessages, anthBody)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": gin.H{"code": "upstream_error", "message": err.Error()}})
 		return
@@ -497,7 +497,7 @@ func (h *Handler) chatViaResponses(c *gin.Context, result *router.RouteResult, c
 	respReq.Model = result.Model
 
 	respBody, _ := json.Marshal(respReq)
-	resp, err := h.forwardRequest(result, "/v1/responses", respBody)
+	resp, err := h.forwardRequest(result, PathResponses, respBody)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": gin.H{"code": "upstream_error", "message": err.Error()}})
 		return
@@ -544,7 +544,7 @@ func (h *Handler) anthropicViaChatToResponses(c *gin.Context, result *router.Rou
 	chatReq.Stream = isStreaming
 
 	chatBody, _ := json.Marshal(chatReq)
-	resp, err := h.forwardRequest(result, "/v1/responses", chatBody)
+	resp, err := h.forwardRequest(result, PathResponses, chatBody)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": gin.H{"code": "upstream_error", "message": err.Error()}})
 		return
@@ -568,15 +568,23 @@ func (h *Handler) anthropicViaChatToResponses(c *gin.Context, result *router.Rou
 	c.Data(http.StatusOK, "application/json", respBody)
 }
 
-// formatToPath returns the API path based on upstream format.
+// Upstream API paths. Convention: all paths include /v1 prefix.
+// base_url should NOT include /v1 — the gateway appends these paths.
+const (
+	PathChat       = "/v1/chat/completions"
+	PathMessages   = "/v1/messages"
+	PathResponses  = "/v1/responses"
+)
+
+// formatToPath returns the upstream API path based on format.
 func formatToPath(format string) string {
 	switch format {
 	case "anthropic":
-		return "/v1/messages"
+		return PathMessages
 	case "responses":
-		return "/v1/responses"
+		return PathResponses
 	default:
-		return "/chat/completions"
+		return PathChat
 	}
 }
 
