@@ -1,0 +1,30 @@
+server:
+  host: "0.0.0.0"
+  port: 12345
+
+upstream:
+  base_url: "https://api.minimaxi.com/v1"
+  api_key: "${API_KEY}"
+  model: "MiniMax-M2.5"
+  format: "chat"
+  model_map:
+    "claude-sonnet-4-5": "MiniMax-M2.5"
+    "gpt-4o": "MiniMax-M2.5"
+
+providers:
+  minimax:
+    name: "MiniMax"
+    base_url: "https://api.minimaxi.com/v1"
+    api_key: "${MINIMAX_API_KEY}"
+    model: "MiniMax-M2.5"
+    format: "chat"
+    logo_url: ""
+    sponsor: true
+  deepseek:
+    name: "DeepSeek"
+    base_url: "https://api.deepseek.com/v1"
+    api_key: "${DEEPSEEK_API_KEY}"
+    model: "deepseek-chat"
+    format: "chat"
+    logo_url: ""
+    sponsor: true
