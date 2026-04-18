@@ -4,7 +4,7 @@ bin/
 
 # Runtime
 *.log
-server
+/server
 
 # IDE
 .idea/
