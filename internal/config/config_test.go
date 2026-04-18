@@ -210,6 +210,49 @@ func TestLoad_FileNotFound(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func TestLoad_UpstreamPath(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+
+	content := `
+server:
+  host: "0.0.0.0"
+  port: 12345
+upstream:
+  base_url: "https://vendor.example.com"
+  path: "/proxy/v1/chat/completions"
+  api_key: "key"
+  model: "model"
+`
+	err := os.WriteFile(cfgPath, []byte(content), 0644)
+	require.NoError(t, err)
+
+	cfg, err := Load(cfgPath)
+	require.NoError(t, err)
+	assert.Equal(t, "/proxy/v1/chat/completions", cfg.Upstream.Path)
+}
+
+func TestLoad_UpstreamPathEmpty(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+
+	content := `
+server:
+  host: "0.0.0.0"
+  port: 12345
+upstream:
+  base_url: "https://api.example.com/v1"
+  api_key: "key"
+  model: "model"
+`
+	err := os.WriteFile(cfgPath, []byte(content), 0644)
+	require.NoError(t, err)
+
+	cfg, err := Load(cfgPath)
+	require.NoError(t, err)
+	assert.Equal(t, "", cfg.Upstream.Path)
+}
+
 func TestResolveModel(t *testing.T) {
 	tests := []struct {
 		name     string

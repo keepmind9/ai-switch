@@ -76,6 +76,9 @@ func (h *Handler) handleReload(c *gin.Context) {
 
 // forwardRequest sends a request to the upstream API and returns the response.
 func (h *Handler) forwardRequest(cfg *config.Config, path string, body []byte) (*http.Response, error) {
+	if cfg.Upstream.Path != "" {
+		path = cfg.Upstream.Path
+	}
 	upstreamURL := strings.TrimSuffix(cfg.Upstream.BaseURL, "/") + path
 	req, err := http.NewRequest("POST", upstreamURL, bytes.NewReader(body))
 	if err != nil {

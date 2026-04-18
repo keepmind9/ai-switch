@@ -4,6 +4,7 @@ server:
 
 upstream:
   base_url: "https://api.minimaxi.com/v1"
+  # path: "/chat/completions"  # Optional: override the auto-detected path
   api_key: "${API_KEY}"
   model: "MiniMax-M2.5"
   format: "chat"

@@ -22,6 +22,7 @@ type ServerConfig struct {
 
 type UpstreamConfig struct {
 	BaseURL  string            `mapstructure:"base_url"`
+	Path     string            `mapstructure:"path"`
 	APIKey   string            `mapstructure:"api_key"`
 	Model    string            `mapstructure:"model"`
 	Format   string            `mapstructure:"format"`
