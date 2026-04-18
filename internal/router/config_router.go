@@ -45,6 +45,7 @@ func (r *ConfigRouter) Route(clientProtocol, apiKey string, body []byte) (*Route
 		APIKey:  prov.APIKey,
 		Format:  prov.Format,
 		Model:   model,
+		Path:    prov.Path,
 	}, nil
 }
 

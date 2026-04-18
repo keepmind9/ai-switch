@@ -40,6 +40,7 @@ type UpstreamConfig struct {
 type ProviderConfig struct {
 	Name     string            `mapstructure:"name"`
 	BaseURL  string            `mapstructure:"base_url"`
+	Path     string            `mapstructure:"path"`
 	APIKey   string            `mapstructure:"api_key"`
 	Model    string            `mapstructure:"model"`
 	Format   string            `mapstructure:"format"`
