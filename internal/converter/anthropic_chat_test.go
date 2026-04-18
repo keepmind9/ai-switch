@@ -148,8 +148,8 @@ func TestChatToAnthropic_Basic(t *testing.T) {
 	c := NewConverter()
 
 	chatResp := &types.ChatResponse{
-		ID:     "chatcmpl-abc",
-		Model:  "upstream-model",
+		ID:    "chatcmpl-abc",
+		Model: "upstream-model",
 		Choices: []types.ChatChoice{
 			{
 				Index:        0,
@@ -183,9 +183,9 @@ func TestChatToAnthropic_Basic(t *testing.T) {
 
 func TestChatToAnthropic_StopReasonMapping(t *testing.T) {
 	tests := []struct {
-		name           string
-		finishReason   string
-		expectedStop   string
+		name         string
+		finishReason string
+		expectedStop string
 	}{
 		{"stop to end_turn", "stop", "end_turn"},
 		{"length to max_tokens", "length", "max_tokens"},
@@ -341,9 +341,9 @@ func TestAnthropicResponseToChat_Basic(t *testing.T) {
 
 func TestAnthropicResponseToChat_StopReasonMapping(t *testing.T) {
 	tests := []struct {
-		name         string
-		stopReason   string
-		expected     string
+		name       string
+		stopReason string
+		expected   string
 	}{
 		{"end_turn to stop", "end_turn", "stop"},
 		{"max_tokens to length", "max_tokens", "length"},

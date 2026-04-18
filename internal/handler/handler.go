@@ -148,6 +148,43 @@ func (h *Handler) streamPassthrough(c *gin.Context, resp *http.Response) {
 	}
 }
 
+// streamToChatSSE reads upstream SSE (any format) and converts to Chat SSE output.
+// convertFn returns a *types.ChatStreamResponse, "[DONE]" string, or nil.
+func (h *Handler) streamToChatSSE(c *gin.Context, resp *http.Response, convertFn func(state any, line string) any, initialState any) {
+	c.Header("Content-Type", "text/event-stream")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Connection", "keep-alive")
+	c.Header("X-Accel-Buffering", "no")
+	c.Writer.WriteHeader(http.StatusOK)
+
+	flusher, canFlush := c.Writer.(http.Flusher)
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		result := convertFn(initialState, line)
+
+		switch v := result.(type) {
+		case *types.ChatStreamResponse:
+			data, _ := json.Marshal(v)
+			c.Writer.WriteString("data: " + string(data) + "\n\n")
+		case string:
+			if v == "[DONE]" {
+				c.Writer.WriteString("data: [DONE]\n\n")
+				if canFlush {
+					flusher.Flush()
+				}
+				return
+			}
+		}
+
+		if canFlush {
+			flusher.Flush()
+		}
+	}
+}
+
 // handleResponses handles /v1/responses endpoint (Codex CLI, OpenAI Responses API).
 func (h *Handler) handleResponses(c *gin.Context) {
 	cfg := h.provider.Get()
@@ -249,7 +286,7 @@ func (h *Handler) handleChat(c *gin.Context) {
 	case "anthropic":
 		h.chatViaAnthropic(c, cfg, &chatReq, isStreaming)
 	case "responses":
-		h.passthroughRequest(c, cfg, body, isStreaming)
+		h.chatViaResponses(c, cfg, &chatReq, isStreaming)
 	}
 }
 
@@ -412,8 +449,10 @@ func (h *Handler) chatViaAnthropic(c *gin.Context, cfg *config.Config, chatReq *
 	}
 
 	if isStreaming {
-		// TODO: implement Anthropic SSE → Chat SSE conversion (Phase 3.3)
-		h.streamPassthrough(c, resp)
+		state := &converter.AnthropicToChatState{}
+		h.streamToChatSSE(c, resp, func(s any, line string) any {
+			return converter.ConvertAnthropicLineToChat(s.(*converter.AnthropicToChatState), line)
+		}, state)
 		return
 	}
 
@@ -433,6 +472,36 @@ func (h *Handler) chatViaAnthropic(c *gin.Context, cfg *config.Config, chatReq *
 	c.JSON(http.StatusOK, chatResp)
 }
 
+// chatViaResponses converts Chat→Responses, forwards, converts back.
+func (h *Handler) chatViaResponses(c *gin.Context, cfg *config.Config, chatReq *types.ChatRequest, isStreaming bool) {
+	respReq := converter.BuildResponsesFromChat(chatReq, isStreaming)
+	respReq.Model = cfg.Upstream.ResolveModel(chatReq.Model)
+
+	respBody, _ := json.Marshal(respReq)
+	resp, err := h.forwardRequest(cfg, "/v1/responses", respBody)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": gin.H{"code": "upstream_error", "message": err.Error()}})
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		h.writeUpstreamError(c, resp)
+		return
+	}
+
+	if isStreaming {
+		state := &converter.ResponsesToChatState{}
+		h.streamToChatSSE(c, resp, func(s any, line string) any {
+			return converter.ConvertResponsesLineToChat(s.(*converter.ResponsesToChatState), line)
+		}, state)
+		return
+	}
+
+	respData, _ := io.ReadAll(resp.Body)
+	c.Data(http.StatusOK, "application/json", respData)
+}
+
 // responsesViaChatToAnthropic chains Responses→Chat→Anthropic.
 func (h *Handler) responsesViaChatToAnthropic(c *gin.Context, cfg *config.Config, req *types.ResponsesRequest, model string, isStreaming bool) {
 	chatReq, err := h.converter.ResponsesToChat(req)
@@ -441,7 +510,7 @@ func (h *Handler) responsesViaChatToAnthropic(c *gin.Context, cfg *config.Config
 		return
 	}
 	chatReq.Model = model
-	chatReq.Stream = false // Chain conversion doesn't support streaming yet
+	chatReq.Stream = isStreaming
 	h.chatViaAnthropic(c, cfg, chatReq, isStreaming)
 }
 
@@ -453,19 +522,29 @@ func (h *Handler) anthropicViaChatToResponses(c *gin.Context, cfg *config.Config
 		return
 	}
 	chatReq.Model = model
-	chatReq.Stream = false // Chain conversion doesn't support streaming yet
-	// Forward as Chat to upstream Responses format
+	chatReq.Stream = isStreaming
+
 	chatBody, _ := json.Marshal(chatReq)
-	resp, err := h.forwardRequest(cfg, "/responses", chatBody)
+	resp, err := h.forwardRequest(cfg, "/v1/responses", chatBody)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": gin.H{"code": "upstream_error", "message": err.Error()}})
 		return
 	}
 	defer resp.Body.Close()
+
 	if resp.StatusCode != http.StatusOK {
 		h.writeUpstreamError(c, resp)
 		return
 	}
+
+	if isStreaming {
+		state := &converter.ResponsesToChatState{}
+		h.streamToChatSSE(c, resp, func(s any, line string) any {
+			return converter.ConvertResponsesLineToChat(s.(*converter.ResponsesToChatState), line)
+		}, state)
+		return
+	}
+
 	respBody, _ := io.ReadAll(resp.Body)
 	c.Data(http.StatusOK, "application/json", respBody)
 }

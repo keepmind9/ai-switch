@@ -159,7 +159,7 @@ func (c *Converter) convertAnthropicRequest(upstreamFormat string, body []byte, 
 			return nil, err
 		}
 		chatReq.Model = resolveModel(model)
-		respReq := buildResponsesFromChat(chatReq, req.Stream)
+		respReq := BuildResponsesFromChat(chatReq, req.Stream)
 		respBody, err := json.Marshal(respReq)
 		if err != nil {
 			return nil, err
@@ -206,7 +206,7 @@ func (c *Converter) convertChatRequest(upstreamFormat string, body []byte, defau
 	return nil, fmt.Errorf("unsupported upstream format for chat client: %s", upstreamFormat)
 }
 
-func buildResponsesFromChat(chatReq *types.ChatRequest, stream bool) *types.ResponsesRequest {
+func BuildResponsesFromChat(chatReq *types.ChatRequest, stream bool) *types.ResponsesRequest {
 	var instructions string
 	var input any
 	for _, msg := range chatReq.Messages {
