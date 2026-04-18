@@ -8,12 +8,16 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/keepmind9/llm-gateway/internal/config"
 	"github.com/keepmind9/llm-gateway/internal/handler"
+	"github.com/keepmind9/llm-gateway/internal/middleware"
+	"github.com/keepmind9/llm-gateway/internal/store"
 )
 
 var (
@@ -52,12 +56,25 @@ func main() {
 
 	provider := config.NewProvider(cfg, resolvedPath)
 
+	// Initialize usage store
+	dbPath := filepath.Join(dataDir, "usage.db")
+	usageStore, err := store.NewUsageStore(dbPath)
+	if err != nil {
+		slog.Warn("failed to open usage database, stats disabled", "error", err)
+	}
+
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 	r.Use(gin.Logger())
 	r.Use(gin.Recovery())
 
-	h := handler.NewHandler(provider)
+	// Usage tracking middleware
+	if usageStore != nil {
+		upstreamName := extractProviderName(cfg)
+		r.Use(middleware.UsageMiddleware(usageStore, upstreamName))
+	}
+
+	h := handler.NewHandler(provider, usageStore)
 	h.RegisterRoutes(r)
 
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
@@ -84,6 +101,9 @@ func main() {
 		select {
 		case sig := <-quit:
 			slog.Info("shutting down gracefully", "signal", sig)
+			if usageStore != nil {
+				usageStore.Close()
+			}
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 			if err := srv.Shutdown(ctx); err != nil {
@@ -101,4 +121,21 @@ func main() {
 			}
 		}
 	}
+}
+
+func extractProviderName(cfg *config.Config) string {
+	if cfg.Upstream.BaseURL != "" {
+		return extractHost(cfg.Upstream.BaseURL)
+	}
+	return "unknown"
+}
+
+func extractHost(url string) string {
+	// Simple extraction: remove scheme and path
+	url = strings.TrimPrefix(url, "https://")
+	url = strings.TrimPrefix(url, "http://")
+	if idx := strings.Index(url, "/"); idx > 0 {
+		url = url[:idx]
+	}
+	return url
 }

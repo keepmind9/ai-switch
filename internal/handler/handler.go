@@ -13,20 +13,23 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/keepmind9/llm-gateway/internal/config"
 	"github.com/keepmind9/llm-gateway/internal/converter"
+	"github.com/keepmind9/llm-gateway/internal/store"
 	"github.com/keepmind9/llm-gateway/internal/types"
 )
 
 type Handler struct {
-	provider  *config.Provider
-	converter *converter.Converter
-	client    *http.Client
+	provider   *config.Provider
+	converter  *converter.Converter
+	client     *http.Client
+	usageStore *store.UsageStore
 }
 
-func NewHandler(provider *config.Provider) *Handler {
+func NewHandler(provider *config.Provider, usageStore *store.UsageStore) *Handler {
 	return &Handler{
-		provider:  provider,
-		converter: converter.NewConverter(),
-		client:    &http.Client{},
+		provider:   provider,
+		converter:  converter.NewConverter(),
+		client:     &http.Client{},
+		usageStore: usageStore,
 	}
 }
 
@@ -36,6 +39,11 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 	r.POST("/v1/messages", h.handleAnthropic)
 	r.POST("/v1/chat/completions", h.handleChat)
 	r.POST("/api/reload", h.handleReload)
+
+	if h.usageStore != nil {
+		r.GET("/api/stats", h.handleStats)
+	}
+
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
@@ -469,4 +477,20 @@ func (g *ginSSEWriter) WriteEvent(eventType string, data any) {
 	jsonData, _ := json.Marshal(data)
 	g.c.Writer.WriteString(converter.FormatSSEEvent(eventType, jsonData))
 	g.c.Writer.Flush()
+}
+
+// handleStats returns usage statistics.
+func (h *Handler) handleStats(c *gin.Context) {
+	provider := c.Query("provider")
+	model := c.Query("model")
+	startDate := c.Query("start_date")
+	endDate := c.Query("end_date")
+
+	records, err := h.usageStore.QueryUsage(provider, model, startDate, endDate)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": "query_error", "message": err.Error()}})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": records})
 }
