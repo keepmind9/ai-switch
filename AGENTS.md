@@ -9,6 +9,8 @@ This includes: variable/function names, error messages, comments, documentation,
 
 ## Testing
 
+- **MUST**: Every new feature module must include related unit tests before the task is considered complete
+- **MUST**: Build must pass (`go build ./...`) and all tests must pass (`go test ./...`) after completing a new feature
 - Use `github.com/stretchr/testify` for all tests
 - Maintain test coverage above 50%
 - Write table-driven tests for multiple scenarios
