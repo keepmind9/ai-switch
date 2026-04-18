@@ -1,63 +1,136 @@
-# responses-to-chat-proxy
+# llm-gateway
 
-将 OpenAI Responses API 请求转换为 Chat Completions API 格式的反向代理。
+A lightweight local LLM gateway proxy that lets any AI CLI tool use third-party LLM APIs through a unified local endpoint.
 
-解决 Codex CLI 等工具使用 Responses API，但上游模型服务仅支持 Chat Completions API 的兼容问题。支持任何兼容 OpenAI Chat Completions 格式的上游服务（MiniMax、GLM、DeepSeek 等）。
+**One binary, one config, any AI CLI → any LLM API.**
 
-## 快速开始
+## Features
+
+- **Multi-protocol**: Auto-detects client protocol (Responses API, Anthropic Messages, Chat Completions) and converts transparently
+- **Zero-intrusion**: No changes to your CLI config files, just point `base_url` to the local proxy
+- **Lightweight**: Pure Go, no external dependencies, single binary
+- **Hot reload**: Update config without restart (`POST /api/reload` or `kill -HUP`)
+- **Cross-platform**: macOS, Linux, Windows (pure Go SQLite, no CGO)
+- **Model mapping**: Map client model names to upstream model names
+- **Multiple providers**: Pre-configure providers for quick switching
+
+## Supported Protocols
+
+| Endpoint | Protocol | Client Example |
+|----------|----------|----------------|
+| `/v1/responses` | OpenAI Responses API | Codex CLI |
+| `/v1/messages` | Anthropic Messages | Claude Code |
+| `/v1/chat/completions` | Chat Completions | Generic |
+
+The gateway uses a hub-and-spoke architecture centered on Chat Completions. All protocol conversions route through the hub, supporting indirect paths like Responses → Anthropic or Anthropic → Responses.
+
+## Quick Start
 
 ```bash
-# 修改 config.yaml
-# 编辑 config.yaml 中的 upstream 配置为你使用的服务
+# Copy and edit config
+cp config.example.yaml config.yaml
 
-# 构建
+# Build and run
 make build
-
-# 运行
 ./bin/server -c config.yaml
+
+# Or run in dev mode
+make dev
 ```
 
-## 配置
+## Configuration
 
 ```yaml
 server:
   host: "0.0.0.0"
-  port: 8080
+  port: 12345
 
 upstream:
-  base_url: "https://api.minimaxi.com/v1"  # 上游服务地址
-  api_key: "${API_KEY}"                     # 支持环境变量
-  model: "MiniMax-M2.5"                     # 默认模型
+  base_url: "https://api.minimaxi.com/v1"
+  api_key: "${API_KEY}"
+  model: "MiniMax-M2.5"
+  format: "chat"        # chat | responses | anthropic
+  model_map:
+    "claude-sonnet-4-5": "MiniMax-M2.5"
+    "gpt-4o": "MiniMax-M2.5"
+
+providers:
+  deepseek:
+    name: "DeepSeek"
+    base_url: "https://api.deepseek.com/v1"
+    api_key: "${DEEPSEEK_API_KEY}"
+    model: "deepseek-chat"
+    format: "chat"
+    sponsor: true
 ```
 
-切换上游服务只需修改 `base_url`、`api_key` 和 `model`，无需改代码。
+Config loading priority: `-c` flag > `./config.yaml` > `~/.llm-gateway/config.yaml`
 
-## Codex 配置
+### Upstream Format
+
+The `format` field tells the gateway what protocol the upstream API speaks:
+
+- `chat` (default) — Standard OpenAI Chat Completions compatible
+- `responses` — OpenAI Responses API
+- `anthropic` — Anthropic Messages API
+
+## Client Setup
+
+### Claude Code
+
+```bash
+export ANTHROPIC_BASE_URL=http://localhost:12345
+export ANTHROPIC_API_KEY=any
+```
+
+### Codex CLI
 
 ```toml
-model_provider = "codex"
-model = "MiniMax-M2.5"
-model_reasoning_effort = "high"
-disable_response_storage = true
-preferred_auth_method = "apikey"
-
-[model_providers.codex]
-name = "responses-to-chat-proxy"
-base_url = "http://localhost:8080/v1"
-api_key = "dummy"  # 不验证
+[model_providers.proxy]
+name = "llm-gateway"
+base_url = "http://localhost:12345/v1"
+api_key = "any"
 wire_api = "responses"
 ```
 
-## API 端点
+### Generic Chat Completions
 
-- `POST /v1/responses` - Responses API 请求转换（支持流式和非流式）
-- `GET /health` - 健康检查
+Point any tool's `base_url` to `http://localhost:12345/v1`.
 
-## 构建
+## API Endpoints
+
+| Endpoint | Description |
+|----------|-------------|
+| `POST /v1/responses` | Responses API (Codex CLI) |
+| `POST /v1/messages` | Anthropic Messages (Claude Code) |
+| `POST /v1/chat/completions` | Chat Completions (generic) |
+| `POST /api/reload` | Hot-reload configuration |
+| `GET /health` | Health check |
+
+## Build
 
 ```bash
-make build   # fmt + vet + 编译
-make lint    # 仅 fmt + vet
-make dev     # go run 开发模式
-make clean   # 清理构建产物
+make build   # fmt + vet + compile
+make lint    # fmt + vet only
+make dev     # go run dev mode
+make test    # run tests
+make clean   # remove binary
 ```
+
+## Architecture
+
+```
+Client (Responses/Anthropic/Chat)
+    ↓
+llm-gateway (protocol detection + conversion)
+    ↓
+Upstream API (any format)
+```
+
+Hub-and-Spoke conversion:
+- Responses ↔ Chat Completions ↔ Anthropic Messages
+- Indirect paths chain through the Chat hub
+
+## License
+
+MIT
