@@ -3,8 +3,10 @@ package handler
 import (
 	"bufio"
 	"bytes"
+	"embed"
 	"encoding/json"
 	"io"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -16,6 +18,9 @@ import (
 	"github.com/keepmind9/llm-gateway/internal/store"
 	"github.com/keepmind9/llm-gateway/internal/types"
 )
+
+//go:embed all:static
+var staticFS embed.FS
 
 type Handler struct {
 	provider   *config.Provider
@@ -39,10 +44,19 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 	r.POST("/v1/messages", h.handleAnthropic)
 	r.POST("/v1/chat/completions", h.handleChat)
 	r.POST("/api/reload", h.handleReload)
+	r.GET("/api/status", h.handleAPIStatus)
 
 	if h.usageStore != nil {
 		r.GET("/api/stats", h.handleStats)
 	}
+
+	// Serve UI
+	staticSub, _ := fs.Sub(staticFS, "static")
+	r.GET("/ui", func(c *gin.Context) {
+		data, _ := fs.ReadFile(staticSub, "index.html")
+		c.Data(http.StatusOK, "text/html; charset=utf-8", data)
+	})
+	r.StaticFS("/ui/assets", http.FS(staticSub))
 
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
@@ -493,4 +507,37 @@ func (h *Handler) handleStats(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"data": records})
+}
+
+// handleAPIStatus returns current configuration status.
+func (h *Handler) handleAPIStatus(c *gin.Context) {
+	cfg := h.provider.Get()
+
+	status := gin.H{
+		"upstream": gin.H{
+			"base_url": cfg.Upstream.BaseURL,
+			"format":   cfg.Upstream.Format,
+			"model":    cfg.Upstream.Model,
+		},
+		"server": gin.H{
+			"host": cfg.Server.Host,
+			"port": cfg.Server.Port,
+		},
+	}
+
+	providers := make([]gin.H, 0)
+	for key, p := range cfg.Providers {
+		providers = append(providers, gin.H{
+			"key":      key,
+			"name":     p.Name,
+			"base_url": p.BaseURL,
+			"model":    p.Model,
+			"format":   p.Format,
+			"sponsor":  p.Sponsor,
+			"logo_url": p.LogoURL,
+		})
+	}
+	status["providers"] = providers
+
+	c.JSON(http.StatusOK, status)
 }

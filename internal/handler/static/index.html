@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LLM Gateway</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0a0a0a; color: #e0e0e0; min-height: 100vh; }
+        .container { max-width: 960px; margin: 0 auto; padding: 40px 20px; }
+        h1 { font-size: 2rem; font-weight: 700; margin-bottom: 4px; }
+        .slogan { color: #888; font-size: 1rem; margin-bottom: 32px; }
+        .status { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 8px; padding: 20px; margin-bottom: 24px; }
+        .status h2 { font-size: 1rem; color: #aaa; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
+        .status-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+        .status-item { background: #111; border-radius: 6px; padding: 12px; }
+        .status-item .label { font-size: 0.75rem; color: #666; }
+        .status-item .value { font-size: 0.95rem; color: #e0e0e0; font-family: 'SF Mono', Menlo, monospace; }
+        .section { margin-bottom: 24px; }
+        .section h2 { font-size: 1rem; color: #aaa; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
+        .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
+        .card { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 8px; padding: 20px; transition: border-color 0.2s; }
+        .card:hover { border-color: #444; }
+        .card-header { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+        .card-logo { width: 36px; height: 36px; border-radius: 6px; background: #222; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; }
+        .card-name { font-weight: 600; font-size: 1rem; }
+        .card-badge { background: #1a3a1a; color: #4caf50; font-size: 0.7rem; padding: 2px 8px; border-radius: 10px; margin-left: auto; }
+        .card-meta { font-size: 0.8rem; color: #888; }
+        .card-meta span { display: block; margin-bottom: 2px; }
+        .card-actions { margin-top: 12px; }
+        .btn { background: #222; color: #e0e0e0; border: 1px solid #333; padding: 6px 14px; border-radius: 4px; cursor: pointer; font-size: 0.8rem; transition: all 0.2s; }
+        .btn:hover { background: #2a2a2a; border-color: #444; }
+        .btn:active { transform: scale(0.98); }
+        .stats-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        .stats-table th { text-align: left; padding: 8px 12px; border-bottom: 1px solid #2a2a2a; color: #888; font-weight: 500; }
+        .stats-table td { padding: 8px 12px; border-bottom: 1px solid #1a1a1a; font-family: 'SF Mono', Menlo, monospace; font-size: 0.8rem; }
+        .stats-table tr:hover td { background: #111; }
+        .empty { color: #555; text-align: center; padding: 20px; font-size: 0.9rem; }
+        .toast { position: fixed; bottom: 20px; right: 20px; background: #1a3a1a; color: #4caf50; padding: 10px 20px; border-radius: 6px; font-size: 0.85rem; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
+        .toast.show { opacity: 1; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>LLM Gateway</h1>
+        <p class="slogan">One binary, one config, any AI CLI &rarr; any LLM API</p>
+
+        <div class="status" id="status-section">
+            <h2>Status</h2>
+            <div class="status-grid" id="status-grid">
+                <div class="status-item"><div class="label">Status</div><div class="value" id="health">checking...</div></div>
+                <div class="status-item"><div class="label">Upstream Format</div><div class="value" id="format">-</div></div>
+                <div class="status-item"><div class="label">Default Model</div><div class="value" id="model">-</div></div>
+                <div class="status-item"><div class="label">Base URL</div><div class="value" id="baseurl">-</div></div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Providers</h2>
+            <div class="cards" id="provider-cards"></div>
+        </div>
+
+        <div class="section">
+            <h2>Usage Statistics</h2>
+            <table class="stats-table">
+                <thead><tr><th>Provider</th><th>Model</th><th>Date</th><th>Requests</th><th>Input</th><th>Output</th><th>Cache Read</th><th>Total</th></tr></thead>
+                <tbody id="stats-body"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+        const API_BASE = window.location.origin;
+
+        async function fetchJSON(url) {
+            try {
+                const r = await fetch(url);
+                return await r.json();
+            } catch { return null; }
+        }
+
+        function showToast(msg) {
+            const t = document.getElementById('toast');
+            t.textContent = msg;
+            t.classList.add('show');
+            setTimeout(() => t.classList.remove('show'), 2000);
+        }
+
+        async function loadStatus() {
+            const health = await fetchJSON(API_BASE + '/health');
+            document.getElementById('health').textContent = health && health.status === 'ok' ? 'Running' : 'Error';
+            document.getElementById('health').style.color = health && health.status === 'ok' ? '#4caf50' : '#f44336';
+        }
+
+        async function loadStats() {
+            const data = await fetchJSON(API_BASE + '/api/stats');
+            const tbody = document.getElementById('stats-body');
+            if (!data || !data.data || data.data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" class="empty">No usage data yet. Start making API requests.</td></tr>';
+                return;
+            }
+            tbody.innerHTML = data.data.map(r => `<tr>
+                <td>${r.Provider}</td><td>${r.Model}</td><td>${r.Date}</td>
+                <td>${r.Requests}</td><td>${r.InputTokens}</td><td>${r.OutputTokens}</td>
+                <td>${r.CacheReadTokens || '-'}</td><td>${r.TotalTokens}</td>
+            </tr>`).join('');
+        }
+
+        async function loadConfig() {
+            const data = await fetchJSON(API_BASE + '/api/status');
+            if (!data) return;
+
+            document.getElementById('format').textContent = data.upstream?.format || '-';
+            document.getElementById('model').textContent = data.upstream?.model || '-';
+            document.getElementById('baseurl').textContent = data.upstream?.base_url || '-';
+
+            const cards = document.getElementById('provider-cards');
+            if (data.providers && data.providers.length > 0) {
+                cards.innerHTML = data.providers.map(p => `
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-logo">${p.name.charAt(0)}</div>
+                            <div class="card-name">${p.name}</div>
+                            ${p.sponsor ? '<div class="card-badge">Sponsor</div>' : ''}
+                        </div>
+                        <div class="card-meta">
+                            <span>Model: ${p.model}</span>
+                            <span>Format: ${p.format}</span>
+                            <span>URL: ${p.base_url}</span>
+                        </div>
+                        <div class="card-actions">
+                            <button class="btn" onclick="copyConfig('${p.key}')">Copy Config Key</button>
+                        </div>
+                    </div>
+                `).join('');
+            } else {
+                cards.innerHTML = '<div class="empty">No providers configured.</div>';
+            }
+        }
+
+        function copyConfig(key) {
+            navigator.clipboard.writeText(key).then(() => showToast('Copied: ' + key));
+        }
+
+        loadStatus();
+        loadStats();
+        loadConfig();
+
+        // Refresh stats every 30s
+        setInterval(loadStats, 30000);
+    </script>
+</body>
+</html>
