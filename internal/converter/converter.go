@@ -1,6 +1,7 @@
 package converter
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -9,6 +10,233 @@ import (
 )
 
 type Converter struct{}
+
+// Format constants for protocol identification.
+const (
+	FormatChat      = "chat"
+	FormatResponses = "responses"
+	FormatAnthropic = "anthropic"
+)
+
+// ConvertedRequest holds the result of request conversion.
+type ConvertedRequest struct {
+	UpstreamPath string
+	UpstreamBody []byte
+	Model        string
+	IsStreaming  bool
+}
+
+// ConvertRequest converts a client request to upstream format.
+// clientFormat is "responses", "anthropic", or "chat".
+// upstreamFormat is from config. body is raw JSON.
+func (c *Converter) ConvertRequest(clientFormat, upstreamFormat string, body []byte, defaultModel string, modelMap map[string]string) (*ConvertedRequest, error) {
+	resolveModel := func(m string) string {
+		if modelMap != nil {
+			if mapped, ok := modelMap[m]; ok {
+				return mapped
+			}
+		}
+		return m
+	}
+
+	// Same format: passthrough with model resolution
+	if clientFormat == upstreamFormat || (upstreamFormat == "" && clientFormat == FormatChat) {
+		var raw map[string]any
+		if err := json.Unmarshal(body, &raw); err != nil {
+			return nil, err
+		}
+
+		model := defaultModel
+		if m, ok := raw["model"].(string); ok && m != "" {
+			model = m
+		}
+		model = resolveModel(model)
+		raw["model"] = model
+
+		isStreaming := false
+		if s, ok := raw["stream"].(bool); ok {
+			isStreaming = s
+		}
+
+		newBody, err := json.Marshal(raw)
+		if err != nil {
+			return nil, err
+		}
+
+		return &ConvertedRequest{
+			UpstreamPath: upstreamPath(upstreamFormat),
+			UpstreamBody: newBody,
+			Model:        model,
+			IsStreaming:  isStreaming,
+		}, nil
+	}
+
+	// Cross-format conversion through Chat hub
+	switch clientFormat {
+	case FormatResponses:
+		return c.convertResponsesRequest(upstreamFormat, body, defaultModel, resolveModel)
+	case FormatAnthropic:
+		return c.convertAnthropicRequest(upstreamFormat, body, defaultModel, resolveModel)
+	case FormatChat:
+		return c.convertChatRequest(upstreamFormat, body, defaultModel, resolveModel)
+	}
+
+	return nil, fmt.Errorf("unsupported client format: %s", clientFormat)
+}
+
+func (c *Converter) convertResponsesRequest(upstreamFormat string, body []byte, defaultModel string, resolveModel func(string) string) (*ConvertedRequest, error) {
+	var req types.ResponsesRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		return nil, err
+	}
+
+	model := req.Model
+	if model == "" {
+		model = defaultModel
+	}
+
+	chatReq, err := c.ResponsesToChat(&req)
+	if err != nil {
+		return nil, err
+	}
+
+	switch upstreamFormat {
+	case FormatChat, "":
+		chatReq.Model = resolveModel(defaultModel)
+		chatBody, err := json.Marshal(chatReq)
+		if err != nil {
+			return nil, err
+		}
+		return &ConvertedRequest{UpstreamPath: "/chat/completions", UpstreamBody: chatBody, Model: model, IsStreaming: req.Stream}, nil
+
+	case FormatAnthropic:
+		anthReq, err := c.ChatRequestToAnthropic(chatReq)
+		if err != nil {
+			return nil, err
+		}
+		anthReq.Model = resolveModel(model)
+		anthReq.Stream = req.Stream
+		anthBody, err := json.Marshal(anthReq)
+		if err != nil {
+			return nil, err
+		}
+		return &ConvertedRequest{UpstreamPath: "/v1/messages", UpstreamBody: anthBody, Model: model, IsStreaming: req.Stream}, nil
+
+	case FormatResponses:
+		// Passthrough handled above, shouldn't reach here
+	}
+
+	return nil, fmt.Errorf("unsupported upstream format for responses client: %s", upstreamFormat)
+}
+
+func (c *Converter) convertAnthropicRequest(upstreamFormat string, body []byte, defaultModel string, resolveModel func(string) string) (*ConvertedRequest, error) {
+	var req AnthropicRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		return nil, err
+	}
+
+	model := req.Model
+	if model == "" {
+		model = defaultModel
+	}
+
+	switch upstreamFormat {
+	case FormatChat, "":
+		chatReq, err := c.AnthropicToChat(&req)
+		if err != nil {
+			return nil, err
+		}
+		chatReq.Model = resolveModel(defaultModel)
+		chatBody, err := json.Marshal(chatReq)
+		if err != nil {
+			return nil, err
+		}
+		return &ConvertedRequest{UpstreamPath: "/chat/completions", UpstreamBody: chatBody, Model: model, IsStreaming: req.Stream}, nil
+
+	case FormatResponses:
+		chatReq, err := c.AnthropicToChat(&req)
+		if err != nil {
+			return nil, err
+		}
+		chatReq.Model = resolveModel(model)
+		respReq := buildResponsesFromChat(chatReq, req.Stream)
+		respBody, err := json.Marshal(respReq)
+		if err != nil {
+			return nil, err
+		}
+		return &ConvertedRequest{UpstreamPath: "/v1/responses", UpstreamBody: respBody, Model: model, IsStreaming: req.Stream}, nil
+
+	case FormatAnthropic:
+		// Passthrough handled above
+	}
+
+	return nil, fmt.Errorf("unsupported upstream format for anthropic client: %s", upstreamFormat)
+}
+
+func (c *Converter) convertChatRequest(upstreamFormat string, body []byte, defaultModel string, resolveModel func(string) string) (*ConvertedRequest, error) {
+	var req types.ChatRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		return nil, err
+	}
+
+	model := req.Model
+	if model == "" {
+		model = defaultModel
+	}
+
+	switch upstreamFormat {
+	case FormatAnthropic:
+		anthReq, err := c.ChatRequestToAnthropic(&req)
+		if err != nil {
+			return nil, err
+		}
+		anthReq.Model = resolveModel(model)
+		anthReq.Stream = req.Stream
+		anthBody, err := json.Marshal(anthReq)
+		if err != nil {
+			return nil, err
+		}
+		return &ConvertedRequest{UpstreamPath: "/v1/messages", UpstreamBody: anthBody, Model: model, IsStreaming: req.Stream}, nil
+
+	case FormatChat, "":
+	case FormatResponses:
+		// Passthrough for both
+	}
+
+	return nil, fmt.Errorf("unsupported upstream format for chat client: %s", upstreamFormat)
+}
+
+func buildResponsesFromChat(chatReq *types.ChatRequest, stream bool) *types.ResponsesRequest {
+	var instructions string
+	var input any
+	for _, msg := range chatReq.Messages {
+		if msg.Role == "system" {
+			instructions += msg.Content + "\n"
+		} else {
+			input = msg.Content
+		}
+	}
+	return &types.ResponsesRequest{
+		Model:        chatReq.Model,
+		Input:        input,
+		Instructions: strings.TrimSpace(instructions),
+		Stream:       stream,
+		MaxTokens:    chatReq.MaxTokens,
+		Temperature:  chatReq.Temperature,
+		TopP:         chatReq.TopP,
+	}
+}
+
+func upstreamPath(format string) string {
+	switch format {
+	case FormatAnthropic:
+		return "/v1/messages"
+	case FormatResponses:
+		return "/v1/responses"
+	default:
+		return "/v1/chat/completions"
+	}
+}
 
 func NewConverter() *Converter {
 	return &Converter{}
