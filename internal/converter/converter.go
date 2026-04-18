@@ -87,26 +87,18 @@ func extractInputText(input any) string {
 
 // ChatToResponses converts Chat Completions API response back to OpenAI Responses API format
 func (c *Converter) ChatToResponses(chatResp *types.ChatResponse, model string) (*types.ResponsesResponse, error) {
-	// Build content blocks from chat response
-	var contentBlocks []types.ContentBlock
-	for _, choice := range chatResp.Choices {
-		contentBlocks = append(contentBlocks, types.ContentBlock{
-			Type: "output_text",
-			Text: choice.Message.Content,
-		})
-	}
-
-	// Build response items
 	now := time.Now().Unix()
 	var responseItems []types.ResponseItem
-	for range chatResp.Choices {
+	for _, choice := range chatResp.Choices {
 		responseItems = append(responseItems, types.ResponseItem{
 			ID:      fmt.Sprintf("resp_%d", now),
 			Object:  "response",
 			Created: now,
 			Role:    "assistant",
-			Content: contentBlocks,
-			Status:  "completed",
+			Content: []types.ContentBlock{
+				{Type: "output_text", Text: choice.Message.Content},
+			},
+			Status: "completed",
 		})
 	}
 
