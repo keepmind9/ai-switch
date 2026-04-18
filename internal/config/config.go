@@ -13,6 +13,14 @@ type Config struct {
 	Server    ServerConfig              `mapstructure:"server"`
 	Upstream  UpstreamConfig            `mapstructure:"upstream"`
 	Providers map[string]ProviderConfig `mapstructure:"providers"`
+	Routes    map[string]RouteRule      `mapstructure:"routes"`
+}
+
+type RouteRule struct {
+	Provider     string            `mapstructure:"provider"`
+	DefaultModel string            `mapstructure:"default_model"`
+	SceneMap     map[string]string `mapstructure:"scene_map"`
+	ModelMap     map[string]string `mapstructure:"model_map"`
 }
 
 type ServerConfig struct {

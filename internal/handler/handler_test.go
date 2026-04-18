@@ -10,11 +10,21 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/keepmind9/llm-gateway/internal/config"
+	"github.com/keepmind9/llm-gateway/internal/router"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// --- Unit tests for forwardRequest and upstreamPath ---
+// staticRouter is a test router that always returns a fixed result.
+type staticRouter struct {
+	result *router.RouteResult
+}
+
+func (r *staticRouter) Route(_, _ string, _ []byte) (*router.RouteResult, error) {
+	return r.result, nil
+}
+
+// --- Unit tests for forwardRequest and formatToPath ---
 
 func TestForwardRequest_DefaultPath(t *testing.T) {
 	var requestedPath string
@@ -25,16 +35,14 @@ func TestForwardRequest_DefaultPath(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	h := NewHandler(nil, nil)
-	cfg := &config.Config{
-		Upstream: config.UpstreamConfig{
-			BaseURL: ts.URL,
-			APIKey:  "test-key",
-			Format:  "chat",
-		},
+	h := NewHandler(nil, nil, nil)
+	result := &router.RouteResult{
+		BaseURL: ts.URL,
+		APIKey:  "test-key",
+		Format:  "chat",
 	}
 
-	resp, err := h.forwardRequest(cfg, "/v1/chat/completions", []byte(`{}`))
+	resp, err := h.forwardRequest(result, "/v1/chat/completions", []byte(`{}`))
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
@@ -51,17 +59,15 @@ func TestForwardRequest_PathOverride(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	h := NewHandler(nil, nil)
-	cfg := &config.Config{
-		Upstream: config.UpstreamConfig{
-			BaseURL: ts.URL,
-			Path:    "/proxy/v1/chat/completions",
-			APIKey:  "test-key",
-			Format:  "chat",
-		},
+	h := NewHandler(nil, nil, nil)
+	result := &router.RouteResult{
+		BaseURL: ts.URL,
+		Path:    "/proxy/v1/chat/completions",
+		APIKey:  "test-key",
+		Format:  "chat",
 	}
 
-	resp, err := h.forwardRequest(cfg, "/v1/chat/completions", []byte(`{}`))
+	resp, err := h.forwardRequest(result, "/v1/chat/completions", []byte(`{}`))
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
@@ -77,16 +83,14 @@ func TestForwardRequest_TrailingSlash(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	h := NewHandler(nil, nil)
-	cfg := &config.Config{
-		Upstream: config.UpstreamConfig{
-			BaseURL: ts.URL + "/",
-			APIKey:  "test-key",
-			Format:  "chat",
-		},
+	h := NewHandler(nil, nil, nil)
+	result := &router.RouteResult{
+		BaseURL: ts.URL + "/",
+		APIKey:  "test-key",
+		Format:  "chat",
 	}
 
-	resp, err := h.forwardRequest(cfg, "/v1/chat/completions", []byte(`{}`))
+	resp, err := h.forwardRequest(result, "/v1/chat/completions", []byte(`{}`))
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
@@ -103,16 +107,14 @@ func TestForwardRequest_AnthropicHeaders(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	h := NewHandler(nil, nil)
-	cfg := &config.Config{
-		Upstream: config.UpstreamConfig{
-			BaseURL: ts.URL,
-			APIKey:  "anth-key",
-			Format:  "anthropic",
-		},
+	h := NewHandler(nil, nil, nil)
+	result := &router.RouteResult{
+		BaseURL: ts.URL,
+		APIKey:  "anth-key",
+		Format:  "anthropic",
 	}
 
-	resp, err := h.forwardRequest(cfg, "/v1/messages", []byte(`{}`))
+	resp, err := h.forwardRequest(result, "/v1/messages", []byte(`{}`))
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
@@ -129,16 +131,14 @@ func TestForwardRequest_ChatBearerHeader(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	h := NewHandler(nil, nil)
-	cfg := &config.Config{
-		Upstream: config.UpstreamConfig{
-			BaseURL: ts.URL,
-			APIKey:  "bearer-key",
-			Format:  "chat",
-		},
+	h := NewHandler(nil, nil, nil)
+	result := &router.RouteResult{
+		BaseURL: ts.URL,
+		APIKey:  "bearer-key",
+		Format:  "chat",
 	}
 
-	resp, err := h.forwardRequest(cfg, "/v1/chat/completions", []byte(`{}`))
+	resp, err := h.forwardRequest(result, "/v1/chat/completions", []byte(`{}`))
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
@@ -152,25 +152,21 @@ func TestForwardRequest_UpstreamError(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	h := NewHandler(nil, nil)
-	cfg := &config.Config{
-		Upstream: config.UpstreamConfig{
-			BaseURL: ts.URL,
-			APIKey:  "key",
-			Format:  "chat",
-		},
+	h := NewHandler(nil, nil, nil)
+	result := &router.RouteResult{
+		BaseURL: ts.URL,
+		APIKey:  "key",
+		Format:  "chat",
 	}
 
-	resp, err := h.forwardRequest(cfg, "/v1/chat/completions", []byte(`{}`))
+	resp, err := h.forwardRequest(result, "/v1/chat/completions", []byte(`{}`))
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
 	assert.Equal(t, http.StatusTooManyRequests, resp.StatusCode)
 }
 
-func TestUpstreamPath(t *testing.T) {
-	h := NewHandler(nil, nil)
-
+func TestFormatToPath(t *testing.T) {
 	tests := []struct {
 		format   string
 		expected string
@@ -183,10 +179,7 @@ func TestUpstreamPath(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.format, func(t *testing.T) {
-			cfg := &config.Config{
-				Upstream: config.UpstreamConfig{Format: tt.format},
-			}
-			assert.Equal(t, tt.expected, h.upstreamPath(cfg))
+			assert.Equal(t, tt.expected, formatToPath(tt.format))
 		})
 	}
 }
@@ -210,11 +203,12 @@ func setupRouter(t *testing.T, upstreamFormat string, upstreamHandler http.Handl
 		},
 	}, "")
 
-	h := NewHandler(provider, nil)
-	r := gin.New()
-	h.RegisterRoutes(r)
+	r := router.NewConfigRouter(provider)
+	h := NewHandler(provider, nil, r)
+	engine := gin.New()
+	h.RegisterRoutes(engine)
 
-	return r, ts
+	return engine, ts
 }
 
 func doRequest(r *gin.Engine, method, path, body string) *httptest.ResponseRecorder {
@@ -269,7 +263,7 @@ func TestHandleChat_Passthrough(t *testing.T) {
 
 	var resp map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
-	assert.Equal(t, "gpt-4o", resp["model"])
+	assert.Equal(t, "test-model", resp["model"])
 
 	choices := resp["choices"].([]any)
 	require.Len(t, choices, 1)
@@ -299,47 +293,6 @@ func TestHandleChat_UpstreamError(t *testing.T) {
 	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
 }
 
-func TestHandleChat_ModelMapping(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var req map[string]any
-		json.NewDecoder(r.Body).Decode(&req)
-		resp := map[string]any{
-			"id":      "chatcmpl-test",
-			"object":  "chat.completion",
-			"model":   req["model"],
-			"choices": []map[string]any{{"index": 0, "message": map[string]any{"role": "assistant", "content": "ok"}, "finish_reason": "stop"}},
-			"usage":   map[string]any{"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
-		}
-		json.NewEncoder(w).Encode(resp)
-	}))
-	defer ts.Close()
-
-	provider := config.NewProvider(&config.Config{
-		Upstream: config.UpstreamConfig{
-			BaseURL:  ts.URL,
-			APIKey:   "key",
-			Format:   "chat",
-			Model:    "fallback-model",
-			ModelMap: map[string]string{"claude-sonnet-4-5": "MiniMax-M2.5"},
-		},
-	}, "")
-
-	h := NewHandler(provider, nil)
-	r := gin.New()
-	h.RegisterRoutes(r)
-
-	w := doRequest(r, "POST", "/v1/chat/completions", `{
-		"model": "claude-sonnet-4-5",
-		"messages": [{"role": "user", "content": "hi"}]
-	}`)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-	var resp map[string]any
-	json.Unmarshal(w.Body.Bytes(), &resp)
-	assert.Equal(t, "MiniMax-M2.5", resp["model"])
-}
-
 func TestHandleChat_DefaultModel(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	var upstreamModel any
@@ -367,18 +320,17 @@ func TestHandleChat_DefaultModel(t *testing.T) {
 		},
 	}, "")
 
-	h := NewHandler(provider, nil)
-	r := gin.New()
-	h.RegisterRoutes(r)
+	rt := router.NewConfigRouter(provider)
+	h := NewHandler(provider, nil, rt)
+	engine := gin.New()
+	h.RegisterRoutes(engine)
 
-	// No model specified in request - passthrough sends original body without model
-	w := doRequest(r, "POST", "/v1/chat/completions", `{
+	w := doRequest(engine, "POST", "/v1/chat/completions", `{
 		"messages": [{"role": "user", "content": "hi"}]
 	}`)
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	// When no model in request body, passthrough does not inject one
-	assert.Nil(t, upstreamModel)
+	assert.Equal(t, "default-model", upstreamModel)
 }
 
 func TestHandleResponses_ConvertedToChat(t *testing.T) {
@@ -487,7 +439,6 @@ func TestHandleAnthropic_InvalidBody(t *testing.T) {
 
 func TestHandleChat_ConvertedToAnthropic(t *testing.T) {
 	r, _ := setupRouter(t, "anthropic", func(w http.ResponseWriter, r *http.Request) {
-		// Verify the request was converted to Anthropic format
 		var req map[string]any
 		json.NewDecoder(r.Body).Decode(&req)
 		assert.Equal(t, "test-model", req["model"])
@@ -559,10 +510,8 @@ func TestHandleHealth(t *testing.T) {
 func TestHandleReload(t *testing.T) {
 	r, _ := setupRouter(t, "chat", func(w http.ResponseWriter, r *http.Request) {})
 
-	// Reload will fail because config file doesn't exist, but endpoint is reachable
 	w := doRequest(r, "POST", "/api/reload", "")
 
-	// Accepts either 200 (if somehow succeeds) or 500 (file not found)
 	assert.True(t, w.Code == http.StatusOK || w.Code == http.StatusInternalServerError)
 }
 
@@ -578,4 +527,53 @@ func TestHandleAPIStatus(t *testing.T) {
 	upstream := resp["upstream"].(map[string]any)
 	assert.Equal(t, "chat", upstream["format"])
 	assert.Equal(t, "test-model", upstream["model"])
+}
+
+func TestExtractClientAPIKey(t *testing.T) {
+	tests := []struct {
+		name     string
+		setup    func(req *http.Request)
+		expected string
+	}{
+		{
+			name: "x-api-key header",
+			setup: func(req *http.Request) {
+				req.Header.Set("x-api-key", "gw-zhipu")
+			},
+			expected: "gw-zhipu",
+		},
+		{
+			name: "bearer token",
+			setup: func(req *http.Request) {
+				req.Header.Set("Authorization", "Bearer gw-deepseek")
+			},
+			expected: "gw-deepseek",
+		},
+		{
+			name: "x-api-key takes priority",
+			setup: func(req *http.Request) {
+				req.Header.Set("x-api-key", "gw-zhipu")
+				req.Header.Set("Authorization", "Bearer other")
+			},
+			expected: "gw-zhipu",
+		},
+		{
+			name:     "no auth header",
+			setup:    func(req *http.Request) {},
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+			req := httptest.NewRequest("POST", "/test", nil)
+			tt.setup(req)
+			c.Request = req
+
+			result := extractClientAPIKey(c)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
 }

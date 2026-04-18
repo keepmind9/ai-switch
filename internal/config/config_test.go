@@ -319,6 +319,80 @@ func TestDefaultConfigPath(t *testing.T) {
 	}
 }
 
+func TestLoad_Routes(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+
+	content := `
+server:
+  host: "0.0.0.0"
+  port: 12345
+upstream:
+  base_url: "https://api.example.com/v1"
+  api_key: "key"
+  model: "model"
+providers:
+  zhipu:
+    name: "Zhipu"
+    base_url: "https://open.bigmodel.cn/api/anthropic"
+    api_key: "zhipu-key"
+    format: "anthropic"
+routes:
+  "gw-zhipu":
+    provider: "zhipu"
+    default_model: "glm-5.1"
+    scene_map:
+      default: "glm-5.1"
+      background: "glm-4.5-air"
+      think: "glm-5.1"
+      websearch: "glm-4.7"
+    model_map:
+      "gpt-4o": "glm-5.1"
+  "gw-deepseek":
+    provider: "deepseek"
+    default_model: "deepseek-chat"
+`
+	err := os.WriteFile(cfgPath, []byte(content), 0644)
+	require.NoError(t, err)
+
+	cfg, err := Load(cfgPath)
+	require.NoError(t, err)
+
+	require.Len(t, cfg.Routes, 2)
+
+	zhipuRule := cfg.Routes["gw-zhipu"]
+	assert.Equal(t, "zhipu", zhipuRule.Provider)
+	assert.Equal(t, "glm-5.1", zhipuRule.DefaultModel)
+	assert.Equal(t, "glm-4.5-air", zhipuRule.SceneMap["background"])
+	assert.Equal(t, "glm-4.7", zhipuRule.SceneMap["websearch"])
+	assert.Equal(t, "glm-5.1", zhipuRule.ModelMap["gpt-4o"])
+
+	dsRule := cfg.Routes["gw-deepseek"]
+	assert.Equal(t, "deepseek", dsRule.Provider)
+	assert.Equal(t, "deepseek-chat", dsRule.DefaultModel)
+}
+
+func TestLoad_RoutesEmpty(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+
+	content := `
+server:
+  host: "0.0.0.0"
+  port: 12345
+upstream:
+  base_url: "https://api.example.com/v1"
+  api_key: "key"
+  model: "model"
+`
+	err := os.WriteFile(cfgPath, []byte(content), 0644)
+	require.NoError(t, err)
+
+	cfg, err := Load(cfgPath)
+	require.NoError(t, err)
+	assert.Nil(t, cfg.Routes)
+}
+
 func TestExpandEnv(t *testing.T) {
 	tests := []struct {
 		name     string

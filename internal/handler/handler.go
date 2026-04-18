@@ -15,6 +15,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/keepmind9/llm-gateway/internal/config"
 	"github.com/keepmind9/llm-gateway/internal/converter"
+	"github.com/keepmind9/llm-gateway/internal/router"
 	"github.com/keepmind9/llm-gateway/internal/store"
 	"github.com/keepmind9/llm-gateway/internal/types"
 )
@@ -27,14 +28,16 @@ type Handler struct {
 	converter  *converter.Converter
 	client     *http.Client
 	usageStore *store.UsageStore
+	router     router.Router
 }
 
-func NewHandler(provider *config.Provider, usageStore *store.UsageStore) *Handler {
+func NewHandler(provider *config.Provider, usageStore *store.UsageStore, r router.Router) *Handler {
 	return &Handler{
 		provider:   provider,
 		converter:  converter.NewConverter(),
 		client:     &http.Client{},
 		usageStore: usageStore,
+		router:     r,
 	}
 }
 
@@ -74,12 +77,24 @@ func (h *Handler) handleReload(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "reloaded"})
 }
 
-// forwardRequest sends a request to the upstream API and returns the response.
-func (h *Handler) forwardRequest(cfg *config.Config, path string, body []byte) (*http.Response, error) {
-	if cfg.Upstream.Path != "" {
-		path = cfg.Upstream.Path
+// extractClientAPIKey extracts the API key from client request headers.
+func extractClientAPIKey(c *gin.Context) string {
+	if key := c.GetHeader("x-api-key"); key != "" {
+		return key
 	}
-	upstreamURL := strings.TrimSuffix(cfg.Upstream.BaseURL, "/") + path
+	auth := c.GetHeader("Authorization")
+	if strings.HasPrefix(auth, "Bearer ") {
+		return strings.TrimPrefix(auth, "Bearer ")
+	}
+	return ""
+}
+
+// forwardRequest sends a request to the upstream API and returns the response.
+func (h *Handler) forwardRequest(result *router.RouteResult, path string, body []byte) (*http.Response, error) {
+	if result.Path != "" {
+		path = result.Path
+	}
+	upstreamURL := strings.TrimSuffix(result.BaseURL, "/") + path
 	req, err := http.NewRequest("POST", upstreamURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
@@ -87,12 +102,12 @@ func (h *Handler) forwardRequest(cfg *config.Config, path string, body []byte) (
 
 	req.Header.Set("Content-Type", "application/json")
 
-	switch cfg.Upstream.Format {
+	switch result.Format {
 	case "anthropic":
-		req.Header.Set("x-api-key", cfg.Upstream.APIKey)
+		req.Header.Set("x-api-key", result.APIKey)
 		req.Header.Set("anthropic-version", "2023-06-01")
 	default:
-		req.Header.Set("Authorization", "Bearer "+cfg.Upstream.APIKey)
+		req.Header.Set("Authorization", "Bearer "+result.APIKey)
 	}
 
 	return h.client.Do(req)
@@ -190,9 +205,6 @@ func (h *Handler) streamToChatSSE(c *gin.Context, resp *http.Response, convertFn
 
 // handleResponses handles /v1/responses endpoint (Codex CLI, OpenAI Responses API).
 func (h *Handler) handleResponses(c *gin.Context) {
-	cfg := h.provider.Get()
-	upstreamFormat := cfg.Upstream.Format
-
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"code": "invalid_request", "message": "failed to read request body"}})
@@ -205,29 +217,32 @@ func (h *Handler) handleResponses(c *gin.Context) {
 		return
 	}
 
+	apiKey := extractClientAPIKey(c)
+	result, routeErr := h.router.Route("responses", apiKey, body)
+	if routeErr != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": "route_error", "message": routeErr.Error()}})
+		return
+	}
+
 	model := responsesReq.Model
 	if model == "" {
-		model = cfg.Upstream.Model
+		model = result.Model
 	}
 
 	isStreaming := responsesReq.Stream
 
-	switch upstreamFormat {
+	switch result.Format {
 	case "chat", "":
-		h.responsesViaChat(c, cfg, &responsesReq, model, isStreaming)
+		h.responsesViaChat(c, result, &responsesReq, model, isStreaming)
 	case "responses":
-		h.passthroughRequest(c, cfg, body, isStreaming)
+		h.passthroughRequest(c, result, body, isStreaming)
 	case "anthropic":
-		// Responses → Chat → Anthropic (chain through hub)
-		h.responsesViaChatToAnthropic(c, cfg, &responsesReq, model, isStreaming)
+		h.responsesViaChatToAnthropic(c, result, &responsesReq, model, isStreaming)
 	}
 }
 
 // handleAnthropic handles /v1/messages endpoint (Claude Code, Anthropic Messages API).
 func (h *Handler) handleAnthropic(c *gin.Context) {
-	cfg := h.provider.Get()
-	upstreamFormat := cfg.Upstream.Format
-
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"code": "invalid_request", "message": "failed to read request body"}})
@@ -240,30 +255,33 @@ func (h *Handler) handleAnthropic(c *gin.Context) {
 		return
 	}
 
+	apiKey := extractClientAPIKey(c)
+	result, routeErr := h.router.Route("anthropic", apiKey, body)
+	if routeErr != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": "route_error", "message": routeErr.Error()}})
+		return
+	}
+
 	model := anthReq.Model
 	if model == "" {
-		model = cfg.Upstream.Model
+		model = result.Model
 	}
 	anthReq.Model = model
 
 	isStreaming := anthReq.Stream
 
-	switch upstreamFormat {
+	switch result.Format {
 	case "chat", "":
-		h.anthropicViaChat(c, cfg, &anthReq, model, isStreaming)
+		h.anthropicViaChat(c, result, &anthReq, model, isStreaming)
 	case "anthropic":
-		h.passthroughRequest(c, cfg, body, isStreaming)
+		h.passthroughRequest(c, result, body, isStreaming)
 	case "responses":
-		// Anthropic → Chat → Responses (chain through hub)
-		h.anthropicViaChatToResponses(c, cfg, &anthReq, model, isStreaming)
+		h.anthropicViaChatToResponses(c, result, &anthReq, model, isStreaming)
 	}
 }
 
 // handleChat handles /v1/chat/completions endpoint (Chat Completions passthrough).
 func (h *Handler) handleChat(c *gin.Context) {
-	cfg := h.provider.Get()
-	upstreamFormat := cfg.Upstream.Format
-
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"code": "invalid_request", "message": "failed to read request body"}})
@@ -276,42 +294,40 @@ func (h *Handler) handleChat(c *gin.Context) {
 		return
 	}
 
-	if chatReq.Model == "" {
-		chatReq.Model = cfg.Upstream.Model
+	apiKey := extractClientAPIKey(c)
+	result, routeErr := h.router.Route("chat", apiKey, body)
+	if routeErr != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": "route_error", "message": routeErr.Error()}})
+		return
 	}
-	chatReq.Model = cfg.Upstream.ResolveModel(chatReq.Model)
+
+	if chatReq.Model == "" {
+		chatReq.Model = result.Model
+	}
 
 	isStreaming := chatReq.Stream
 
-	switch upstreamFormat {
+	switch result.Format {
 	case "chat", "":
-		h.passthroughRequest(c, cfg, body, isStreaming)
+		h.passthroughRequest(c, result, body, isStreaming)
 	case "anthropic":
-		h.chatViaAnthropic(c, cfg, &chatReq, isStreaming)
+		h.chatViaAnthropic(c, result, &chatReq, isStreaming)
 	case "responses":
-		h.chatViaResponses(c, cfg, &chatReq, isStreaming)
+		h.chatViaResponses(c, result, &chatReq, isStreaming)
 	}
 }
 
 // --- Routing implementations ---
 
 // passthroughRequest forwards the request body directly to upstream.
-func (h *Handler) passthroughRequest(c *gin.Context, cfg *config.Config, body []byte, isStreaming bool) {
-	var parsed struct {
-		Model string `json:"model"`
-	}
-	json.Unmarshal(body, &parsed)
-	if parsed.Model != "" {
-		newModel := cfg.Upstream.ResolveModel(parsed.Model)
-		if newModel != parsed.Model {
-			var raw map[string]any
-			json.Unmarshal(body, &raw)
-			raw["model"] = newModel
-			body, _ = json.Marshal(raw)
-		}
+func (h *Handler) passthroughRequest(c *gin.Context, result *router.RouteResult, body []byte, isStreaming bool) {
+	var raw map[string]any
+	if json.Unmarshal(body, &raw) == nil && result.Model != "" {
+		raw["model"] = result.Model
+		body, _ = json.Marshal(raw)
 	}
 
-	resp, err := h.forwardRequest(cfg, h.upstreamPath(cfg), body)
+	resp, err := h.forwardRequest(result, formatToPath(result.Format), body)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": gin.H{"code": "upstream_error", "message": "failed to call upstream: " + err.Error()}})
 		return
@@ -333,18 +349,18 @@ func (h *Handler) passthroughRequest(c *gin.Context, cfg *config.Config, body []
 }
 
 // responsesViaChat converts Responses→Chat, forwards to upstream, converts back.
-func (h *Handler) responsesViaChat(c *gin.Context, cfg *config.Config, req *types.ResponsesRequest, model string, isStreaming bool) {
+func (h *Handler) responsesViaChat(c *gin.Context, result *router.RouteResult, req *types.ResponsesRequest, model string, isStreaming bool) {
 	chatReq, err := h.converter.ResponsesToChat(req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": "conversion_error", "message": err.Error()}})
 		return
 	}
 
-	chatReq.Model = cfg.Upstream.ResolveModel(cfg.Upstream.Model)
+	chatReq.Model = result.Model
 	chatReq.Stream = isStreaming
 
 	chatBody, _ := json.Marshal(chatReq)
-	resp, err := h.forwardRequest(cfg, "/chat/completions", chatBody)
+	resp, err := h.forwardRequest(result, "/chat/completions", chatBody)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": gin.H{"code": "upstream_error", "message": err.Error()}})
 		return
@@ -381,18 +397,18 @@ func (h *Handler) responsesViaChat(c *gin.Context, cfg *config.Config, req *type
 }
 
 // anthropicViaChat converts Anthropic→Chat, forwards, converts back.
-func (h *Handler) anthropicViaChat(c *gin.Context, cfg *config.Config, req *converter.AnthropicRequest, model string, isStreaming bool) {
+func (h *Handler) anthropicViaChat(c *gin.Context, result *router.RouteResult, req *converter.AnthropicRequest, model string, isStreaming bool) {
 	chatReq, err := h.converter.AnthropicToChat(req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": "conversion_error", "message": err.Error()}})
 		return
 	}
 
-	chatReq.Model = cfg.Upstream.ResolveModel(cfg.Upstream.Model)
+	chatReq.Model = result.Model
 	chatReq.Stream = isStreaming
 
 	chatBody, _ := json.Marshal(chatReq)
-	resp, err := h.forwardRequest(cfg, "/chat/completions", chatBody)
+	resp, err := h.forwardRequest(result, "/chat/completions", chatBody)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": gin.H{"code": "upstream_error", "message": err.Error()}})
 		return
@@ -429,7 +445,7 @@ func (h *Handler) anthropicViaChat(c *gin.Context, cfg *config.Config, req *conv
 }
 
 // chatViaAnthropic converts Chat→Anthropic, forwards, converts back.
-func (h *Handler) chatViaAnthropic(c *gin.Context, cfg *config.Config, chatReq *types.ChatRequest, isStreaming bool) {
+func (h *Handler) chatViaAnthropic(c *gin.Context, result *router.RouteResult, chatReq *types.ChatRequest, isStreaming bool) {
 	anthReq, err := h.converter.ChatRequestToAnthropic(chatReq)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": "conversion_error", "message": err.Error()}})
@@ -439,7 +455,7 @@ func (h *Handler) chatViaAnthropic(c *gin.Context, cfg *config.Config, chatReq *
 	anthReq.Stream = isStreaming
 	anthBody, _ := json.Marshal(anthReq)
 
-	resp, err := h.forwardRequest(cfg, "/messages", anthBody)
+	resp, err := h.forwardRequest(result, "/v1/messages", anthBody)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": gin.H{"code": "upstream_error", "message": err.Error()}})
 		return
@@ -476,12 +492,12 @@ func (h *Handler) chatViaAnthropic(c *gin.Context, cfg *config.Config, chatReq *
 }
 
 // chatViaResponses converts Chat→Responses, forwards, converts back.
-func (h *Handler) chatViaResponses(c *gin.Context, cfg *config.Config, chatReq *types.ChatRequest, isStreaming bool) {
+func (h *Handler) chatViaResponses(c *gin.Context, result *router.RouteResult, chatReq *types.ChatRequest, isStreaming bool) {
 	respReq := converter.BuildResponsesFromChat(chatReq, isStreaming)
-	respReq.Model = cfg.Upstream.ResolveModel(chatReq.Model)
+	respReq.Model = result.Model
 
 	respBody, _ := json.Marshal(respReq)
-	resp, err := h.forwardRequest(cfg, "/v1/responses", respBody)
+	resp, err := h.forwardRequest(result, "/v1/responses", respBody)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": gin.H{"code": "upstream_error", "message": err.Error()}})
 		return
@@ -506,7 +522,7 @@ func (h *Handler) chatViaResponses(c *gin.Context, cfg *config.Config, chatReq *
 }
 
 // responsesViaChatToAnthropic chains Responses→Chat→Anthropic.
-func (h *Handler) responsesViaChatToAnthropic(c *gin.Context, cfg *config.Config, req *types.ResponsesRequest, model string, isStreaming bool) {
+func (h *Handler) responsesViaChatToAnthropic(c *gin.Context, result *router.RouteResult, req *types.ResponsesRequest, model string, isStreaming bool) {
 	chatReq, err := h.converter.ResponsesToChat(req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": "conversion_error", "message": err.Error()}})
@@ -514,11 +530,11 @@ func (h *Handler) responsesViaChatToAnthropic(c *gin.Context, cfg *config.Config
 	}
 	chatReq.Model = model
 	chatReq.Stream = isStreaming
-	h.chatViaAnthropic(c, cfg, chatReq, isStreaming)
+	h.chatViaAnthropic(c, result, chatReq, isStreaming)
 }
 
 // anthropicViaChatToResponses chains Anthropic→Chat→Responses.
-func (h *Handler) anthropicViaChatToResponses(c *gin.Context, cfg *config.Config, req *converter.AnthropicRequest, model string, isStreaming bool) {
+func (h *Handler) anthropicViaChatToResponses(c *gin.Context, result *router.RouteResult, req *converter.AnthropicRequest, model string, isStreaming bool) {
 	chatReq, err := h.converter.AnthropicToChat(req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": "conversion_error", "message": err.Error()}})
@@ -528,7 +544,7 @@ func (h *Handler) anthropicViaChatToResponses(c *gin.Context, cfg *config.Config
 	chatReq.Stream = isStreaming
 
 	chatBody, _ := json.Marshal(chatReq)
-	resp, err := h.forwardRequest(cfg, "/v1/responses", chatBody)
+	resp, err := h.forwardRequest(result, "/v1/responses", chatBody)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": gin.H{"code": "upstream_error", "message": err.Error()}})
 		return
@@ -552,9 +568,9 @@ func (h *Handler) anthropicViaChatToResponses(c *gin.Context, cfg *config.Config
 	c.Data(http.StatusOK, "application/json", respBody)
 }
 
-// upstreamPath returns the API path based on upstream format.
-func (h *Handler) upstreamPath(cfg *config.Config) string {
-	switch cfg.Upstream.Format {
+// formatToPath returns the API path based on upstream format.
+func formatToPath(format string) string {
+	switch format {
 	case "anthropic":
 		return "/v1/messages"
 	case "responses":

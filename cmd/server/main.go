@@ -17,6 +17,7 @@ import (
 	"github.com/keepmind9/llm-gateway/internal/config"
 	"github.com/keepmind9/llm-gateway/internal/handler"
 	"github.com/keepmind9/llm-gateway/internal/middleware"
+	"github.com/keepmind9/llm-gateway/internal/router"
 	"github.com/keepmind9/llm-gateway/internal/store"
 )
 
@@ -74,7 +75,8 @@ func main() {
 		r.Use(middleware.UsageMiddleware(usageStore, upstreamName))
 	}
 
-	h := handler.NewHandler(provider, usageStore)
+	cfgRouter := router.NewConfigRouter(provider)
+	h := handler.NewHandler(provider, usageStore, cfgRouter)
 	h.RegisterRoutes(r)
 
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)

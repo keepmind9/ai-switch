@@ -29,3 +29,23 @@ providers:
     format: "chat"
     logo_url: ""
     sponsor: true
+  zhipu:
+    name: "Zhipu"
+    base_url: "https://open.bigmodel.cn/api/anthropic"
+    api_key: "${ZHIPU_API_KEY}"
+    format: "anthropic"
+
+routes:
+  "gw-zhipu":
+    provider: "zhipu"
+    default_model: "glm-5.1"
+    scene_map:
+      default: "glm-5.1"
+      background: "glm-4.5-air"
+      think: "glm-5.1"
+      websearch: "glm-4.7"
+    model_map:
+      "gpt-4o": "glm-5.1"
+  "gw-deepseek":
+    provider: "deepseek"
+    default_model: "deepseek-chat"
