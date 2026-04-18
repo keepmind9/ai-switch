@@ -2,14 +2,19 @@ package handler
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
+	"github.com/gin-gonic/gin"
 	"github.com/keepmind9/llm-gateway/internal/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// --- Unit tests for forwardRequest and upstreamPath ---
 
 func TestForwardRequest_DefaultPath(t *testing.T) {
 	var requestedPath string
@@ -184,4 +189,393 @@ func TestUpstreamPath(t *testing.T) {
 			assert.Equal(t, tt.expected, h.upstreamPath(cfg))
 		})
 	}
+}
+
+// --- Integration tests for endpoint handlers ---
+
+// setupRouter creates a test Gin engine with the handler wired to a mock upstream.
+func setupRouter(t *testing.T, upstreamFormat string, upstreamHandler http.HandlerFunc) (*gin.Engine, *httptest.Server) {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
+
+	ts := httptest.NewServer(upstreamHandler)
+	t.Cleanup(ts.Close)
+
+	provider := config.NewProvider(&config.Config{
+		Upstream: config.UpstreamConfig{
+			BaseURL: ts.URL,
+			APIKey:  "test-key",
+			Format:  upstreamFormat,
+			Model:   "test-model",
+		},
+	}, "")
+
+	h := NewHandler(provider, nil)
+	r := gin.New()
+	h.RegisterRoutes(r)
+
+	return r, ts
+}
+
+func doRequest(r *gin.Engine, method, path, body string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(method, path, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	return w
+}
+
+// chatUpstreamHandler returns a mock upstream that responds to Chat Completions.
+func chatUpstreamHandler(t *testing.T) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var req map[string]any
+		json.Unmarshal(body, &req)
+
+		resp := map[string]any{
+			"id":      "chatcmpl-test",
+			"object":  "chat.completion",
+			"created": 1234567890,
+			"model":   req["model"],
+			"choices": []map[string]any{
+				{
+					"index": 0,
+					"message": map[string]any{
+						"role":    "assistant",
+						"content": "Hello from upstream",
+					},
+					"finish_reason": "stop",
+				},
+			},
+			"usage": map[string]any{
+				"prompt_tokens":     10,
+				"completion_tokens": 5,
+				"total_tokens":      15,
+			},
+		}
+		json.NewEncoder(w).Encode(resp)
+	}
+}
+
+func TestHandleChat_Passthrough(t *testing.T) {
+	r, _ := setupRouter(t, "chat", chatUpstreamHandler(t))
+
+	w := doRequest(r, "POST", "/v1/chat/completions", `{
+		"model": "gpt-4o",
+		"messages": [{"role": "user", "content": "hi"}]
+	}`)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, "gpt-4o", resp["model"])
+
+	choices := resp["choices"].([]any)
+	require.Len(t, choices, 1)
+	msg := choices[0].(map[string]any)["message"].(map[string]any)
+	assert.Equal(t, "Hello from upstream", msg["content"])
+}
+
+func TestHandleChat_InvalidBody(t *testing.T) {
+	r, _ := setupRouter(t, "chat", func(w http.ResponseWriter, r *http.Request) {})
+
+	w := doRequest(r, "POST", "/v1/chat/completions", `not json`)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestHandleChat_UpstreamError(t *testing.T) {
+	r, _ := setupRouter(t, "chat", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		w.Write([]byte(`{"error":{"message":"unavailable"}}`))
+	})
+
+	w := doRequest(r, "POST", "/v1/chat/completions", `{
+		"model": "gpt-4o",
+		"messages": [{"role": "user", "content": "hi"}]
+	}`)
+
+	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
+}
+
+func TestHandleChat_ModelMapping(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req map[string]any
+		json.NewDecoder(r.Body).Decode(&req)
+		resp := map[string]any{
+			"id":      "chatcmpl-test",
+			"object":  "chat.completion",
+			"model":   req["model"],
+			"choices": []map[string]any{{"index": 0, "message": map[string]any{"role": "assistant", "content": "ok"}, "finish_reason": "stop"}},
+			"usage":   map[string]any{"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+		}
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer ts.Close()
+
+	provider := config.NewProvider(&config.Config{
+		Upstream: config.UpstreamConfig{
+			BaseURL:  ts.URL,
+			APIKey:   "key",
+			Format:   "chat",
+			Model:    "fallback-model",
+			ModelMap: map[string]string{"claude-sonnet-4-5": "MiniMax-M2.5"},
+		},
+	}, "")
+
+	h := NewHandler(provider, nil)
+	r := gin.New()
+	h.RegisterRoutes(r)
+
+	w := doRequest(r, "POST", "/v1/chat/completions", `{
+		"model": "claude-sonnet-4-5",
+		"messages": [{"role": "user", "content": "hi"}]
+	}`)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var resp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.Equal(t, "MiniMax-M2.5", resp["model"])
+}
+
+func TestHandleChat_DefaultModel(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	var upstreamModel any
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req map[string]any
+		json.NewDecoder(r.Body).Decode(&req)
+		upstreamModel = req["model"]
+		resp := map[string]any{
+			"id":      "chatcmpl-test",
+			"object":  "chat.completion",
+			"model":   req["model"],
+			"choices": []map[string]any{{"index": 0, "message": map[string]any{"role": "assistant", "content": "ok"}, "finish_reason": "stop"}},
+			"usage":   map[string]any{"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+		}
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer ts.Close()
+
+	provider := config.NewProvider(&config.Config{
+		Upstream: config.UpstreamConfig{
+			BaseURL: ts.URL,
+			APIKey:  "key",
+			Format:  "chat",
+			Model:   "default-model",
+		},
+	}, "")
+
+	h := NewHandler(provider, nil)
+	r := gin.New()
+	h.RegisterRoutes(r)
+
+	// No model specified in request - passthrough sends original body without model
+	w := doRequest(r, "POST", "/v1/chat/completions", `{
+		"messages": [{"role": "user", "content": "hi"}]
+	}`)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	// When no model in request body, passthrough does not inject one
+	assert.Nil(t, upstreamModel)
+}
+
+func TestHandleResponses_ConvertedToChat(t *testing.T) {
+	r, _ := setupRouter(t, "chat", chatUpstreamHandler(t))
+
+	w := doRequest(r, "POST", "/v1/responses", `{
+		"model": "gpt-4o",
+		"input": "Say hello",
+		"stream": false
+	}`)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, "list", resp["object"])
+
+	responses := resp["responses"].([]any)
+	require.Len(t, responses, 1)
+	item := responses[0].(map[string]any)
+	content := item["content"].([]any)
+	require.Len(t, content, 1)
+	assert.Equal(t, "Hello from upstream", content[0].(map[string]any)["text"])
+}
+
+func TestHandleResponses_Passthrough(t *testing.T) {
+	r, _ := setupRouter(t, "responses", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{
+			"id":     "resp-test",
+			"object": "response",
+			"model":  "test-model",
+			"output": []map[string]any{{"type": "message", "content": "direct"}},
+			"usage":  map[string]any{"input_tokens": 5, "output_tokens": 3, "total_tokens": 8},
+		})
+	})
+
+	w := doRequest(r, "POST", "/v1/responses", `{
+		"model": "gpt-4o",
+		"input": "hi"
+	}`)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var resp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.Equal(t, "resp-test", resp["id"])
+}
+
+func TestHandleResponses_InvalidBody(t *testing.T) {
+	r, _ := setupRouter(t, "chat", func(w http.ResponseWriter, r *http.Request) {})
+
+	w := doRequest(r, "POST", "/v1/responses", `bad json`)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestHandleAnthropic_ConvertedToChat(t *testing.T) {
+	r, _ := setupRouter(t, "chat", chatUpstreamHandler(t))
+
+	w := doRequest(r, "POST", "/v1/messages", `{
+		"model": "claude-3-sonnet",
+		"max_tokens": 1024,
+		"messages": [{"role": "user", "content": "Hello"}]
+	}`)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, "message", resp["type"])
+
+	content := resp["content"].([]any)
+	require.Len(t, content, 1)
+	assert.Equal(t, "Hello from upstream", content[0].(map[string]any)["text"])
+}
+
+func TestHandleAnthropic_Passthrough(t *testing.T) {
+	r, _ := setupRouter(t, "anthropic", func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "test-key", r.Header.Get("x-api-key"))
+		assert.Equal(t, "2023-06-01", r.Header.Get("anthropic-version"))
+		json.NewEncoder(w).Encode(map[string]any{
+			"id":      "msg-test",
+			"object":  "response",
+			"role":    "assistant",
+			"content": []map[string]any{{"type": "text", "text": "direct"}},
+			"usage":   map[string]any{"input_tokens": 5, "output_tokens": 3},
+		})
+	})
+
+	w := doRequest(r, "POST", "/v1/messages", `{
+		"model": "claude-3-sonnet",
+		"max_tokens": 1024,
+		"messages": [{"role": "user", "content": "hi"}]
+	}`)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var resp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.Equal(t, "msg-test", resp["id"])
+}
+
+func TestHandleAnthropic_InvalidBody(t *testing.T) {
+	r, _ := setupRouter(t, "chat", func(w http.ResponseWriter, r *http.Request) {})
+
+	w := doRequest(r, "POST", "/v1/messages", `{invalid}`)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestHandleChat_ConvertedToAnthropic(t *testing.T) {
+	r, _ := setupRouter(t, "anthropic", func(w http.ResponseWriter, r *http.Request) {
+		// Verify the request was converted to Anthropic format
+		var req map[string]any
+		json.NewDecoder(r.Body).Decode(&req)
+		assert.Equal(t, "test-model", req["model"])
+		assert.Equal(t, float64(1024), req["max_tokens"])
+
+		json.NewEncoder(w).Encode(map[string]any{
+			"id":          "msg-converted",
+			"type":        "message",
+			"role":        "assistant",
+			"model":       "test-model",
+			"content":     []map[string]any{{"type": "text", "text": "Anthropic reply"}},
+			"stop_reason": "end_turn",
+			"usage":       map[string]any{"input_tokens": 10, "output_tokens": 5},
+		})
+	})
+
+	w := doRequest(r, "POST", "/v1/chat/completions", `{
+		"model": "test-model",
+		"max_tokens": 1024,
+		"messages": [{"role": "user", "content": "hi"}]
+	}`)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var resp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.Equal(t, "chat.completion", resp["object"])
+
+	choices := resp["choices"].([]any)
+	require.Len(t, choices, 1)
+	msg := choices[0].(map[string]any)["message"].(map[string]any)
+	assert.Equal(t, "Anthropic reply", msg["content"])
+	assert.Equal(t, "stop", choices[0].(map[string]any)["finish_reason"])
+}
+
+func TestHandleChat_ConvertedToResponses(t *testing.T) {
+	r, _ := setupRouter(t, "responses", func(w http.ResponseWriter, r *http.Request) {
+		var req map[string]any
+		json.NewDecoder(r.Body).Decode(&req)
+		assert.Equal(t, "test-model", req["model"])
+
+		json.NewEncoder(w).Encode(map[string]any{
+			"id":     "resp-converted",
+			"object": "response",
+			"model":  "test-model",
+			"output": []map[string]any{{"type": "message", "content": "Responses reply"}},
+			"usage":  map[string]any{"input_tokens": 10, "output_tokens": 5, "total_tokens": 15},
+		})
+	})
+
+	w := doRequest(r, "POST", "/v1/chat/completions", `{
+		"model": "test-model",
+		"messages": [{"role": "user", "content": "hi"}]
+	}`)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestHandleHealth(t *testing.T) {
+	r, _ := setupRouter(t, "chat", func(w http.ResponseWriter, r *http.Request) {})
+
+	w := doRequest(r, "GET", "/health", "")
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var resp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.Equal(t, "ok", resp["status"])
+}
+
+func TestHandleReload(t *testing.T) {
+	r, _ := setupRouter(t, "chat", func(w http.ResponseWriter, r *http.Request) {})
+
+	// Reload will fail because config file doesn't exist, but endpoint is reachable
+	w := doRequest(r, "POST", "/api/reload", "")
+
+	// Accepts either 200 (if somehow succeeds) or 500 (file not found)
+	assert.True(t, w.Code == http.StatusOK || w.Code == http.StatusInternalServerError)
+}
+
+func TestHandleAPIStatus(t *testing.T) {
+	r, _ := setupRouter(t, "chat", func(w http.ResponseWriter, r *http.Request) {})
+
+	w := doRequest(r, "GET", "/api/status", "")
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var resp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &resp)
+
+	upstream := resp["upstream"].(map[string]any)
+	assert.Equal(t, "chat", upstream["format"])
+	assert.Equal(t, "test-model", upstream["model"])
 }

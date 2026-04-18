@@ -14,6 +14,7 @@ This includes: variable/function names, error messages, comments, documentation,
 - Use `github.com/stretchr/testify` for all tests
 - Maintain test coverage above 50%
 - Write table-driven tests for multiple scenarios
+- Tests must be meaningful: test real behavior and edge cases, not just inflate coverage numbers
 
 ## Code Quality Standards
 
