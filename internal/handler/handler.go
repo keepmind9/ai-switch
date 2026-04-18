@@ -133,15 +133,20 @@ func (h *Handler) streamChatToClient(c *gin.Context, resp *http.Response, conver
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
+	done := false
 	for scanner.Scan() {
 		line := scanner.Text()
 		data := converter.ParseSSEDataLine(line)
 		if data == "" {
 			continue
 		}
-		if done := convertFn(ginWriter, data); done {
+		if convertFn(ginWriter, data) {
+			done = true
 			break
 		}
+	}
+	if !done {
+		convertFn(ginWriter, "[DONE]")
 	}
 }
 
@@ -220,9 +225,12 @@ func (h *Handler) handleResponses(c *gin.Context) {
 	apiKey := extractClientAPIKey(c)
 	result, routeErr := h.router.Route("responses", apiKey, body)
 	if routeErr != nil {
+		slog.Error("route error", "error", routeErr, "api_key", apiKey)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": "route_error", "message": routeErr.Error()}})
 		return
 	}
+
+	slog.Info("responses request", "model", responsesReq.Model, "stream", responsesReq.Stream, "upstream_format", result.Format, "upstream_base", result.BaseURL, "resolved_model", result.Model)
 
 	model := responsesReq.Model
 	if model == "" {

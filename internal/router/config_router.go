@@ -3,6 +3,7 @@ package router
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/keepmind9/llm-gateway/internal/config"
 )
@@ -21,9 +22,9 @@ func NewConfigRouter(provider *config.Provider) *ConfigRouter {
 func (r *ConfigRouter) Route(clientProtocol, apiKey string, body []byte) (*RouteResult, error) {
 	cfg := r.provider.Get()
 
-	// Lookup API key in routes
+	// Lookup API key in routes (viper lowercases map keys, so match lowercase)
 	if len(cfg.Routes) > 0 {
-		if rule, ok := cfg.Routes[apiKey]; ok {
+		if rule, ok := cfg.Routes[strings.ToLower(apiKey)]; ok {
 			prov, ok := cfg.Providers[rule.Provider]
 			if !ok {
 				return nil, fmt.Errorf("route references unknown provider %q", rule.Provider)
