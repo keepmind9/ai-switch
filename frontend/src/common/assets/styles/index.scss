@@ -1,32 +1,18 @@
-// Global CSS variables
+// Global styles
 @import "./variables.css";
-// Transition
 @import "./transition.scss";
-// Element Plus
 @import "./element-plus.css";
 @import "./element-plus.scss";
-// Register multi-theme
 @import "./theme/register.scss";
-// Mixins
 @import "./mixins.scss";
-// View Transition
 @import "./view-transition.scss";
 
-// Business pages should generally mount class="app-container" on the root element for consistent styling
 .app-container {
-  padding: 20px;
+  padding: 24px;
 }
 
 html {
   height: 100%;
-  // Greyscale mode
-  &.grey-mode {
-    filter: grayscale(1);
-  }
-  // Color weakness mode
-  &.color-weakness {
-    filter: invert(0.8);
-  }
 }
 
 body {
@@ -35,9 +21,8 @@ body {
   background-color: var(--v3-body-bg-color);
   -moz-osx-font-smoothing: grayscale;
   -webkit-font-smoothing: antialiased;
-  font-family:
-    Inter, "Helvetica Neue", Helvetica, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", Arial,
-    sans-serif;
+  font-family: "Inter", "Helvetica Neue", Helvetica, "PingFang SC", "Hiragino Sans GB",
+    "Microsoft YaHei", Arial, sans-serif;
   @extend %scrollbar;
 }
 
@@ -61,4 +46,60 @@ a:hover {
 
 div:focus {
   outline: none;
+}
+
+// Shared admin styles
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+
+  h3 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+  }
+}
+
+.stat-card {
+  .stat-label {
+    font-size: 13px;
+    color: var(--el-text-color-secondary);
+    margin-bottom: 8px;
+  }
+  .stat-value {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--el-text-color-primary);
+    line-height: 1.2;
+  }
+  .stat-value--primary {
+    color: var(--el-color-primary);
+  }
+}
+
+.card-header-label {
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
+  font-weight: 500;
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 8px;
+}
+
+.map-editor-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+  align-items: center;
+}
+
+.mono {
+  font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace;
+  font-size: 12px;
 }

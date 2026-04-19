@@ -15,7 +15,6 @@ const settingsStore = useSettingsStore()
       </router-view>
       <Footer v-if="settingsStore.showFooter" />
     </div>
-    <el-backtop />
     <el-backtop target=".app-scrollbar" />
   </section>
 </template>

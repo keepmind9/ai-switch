@@ -42,23 +42,24 @@ function toggleSidebar() {
   color: var(--v3-navigationbar-text-color);
   display: flex;
   justify-content: space-between;
+  align-items: center;
+  background-color: var(--v3-header-bg-color);
+  border-bottom: var(--v3-header-border-bottom);
   .hamburger {
     display: flex;
     align-items: center;
     height: 100%;
-    padding: 0 15px;
+    padding: 0 16px;
     cursor: pointer;
   }
   .breadcrumb {
     flex: 1;
-    // Reference Bootstrap responsive design, set width to 576
     @media screen and (max-width: 576px) {
       display: none;
     }
   }
   .sidebar {
     flex: 1;
-    // Set min-width to allow el-menu width in Sidebar to adapt automatically
     min-width: 0px;
     :deep(.el-menu) {
       background-color: transparent;
@@ -72,20 +73,13 @@ function toggleSidebar() {
     }
   }
   .right-menu {
-    margin-right: 10px;
+    margin-right: 12px;
     height: 100%;
     display: flex;
     align-items: center;
     &-item {
-      margin: 0 10px;
+      margin: 0 8px;
       cursor: pointer;
-      &:last-child {
-        margin-left: 20px;
-      }
-    }
-    .user {
-      display: flex;
-      align-items: center;
     }
   }
 }

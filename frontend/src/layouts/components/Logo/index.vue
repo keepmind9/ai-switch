@@ -13,10 +13,21 @@ const { isTop } = useLayoutMode()
   <div class="layout-logo-container" :class="{ 'collapse': collapse, 'layout-mode-top': isTop }">
     <transition name="layout-logo-fade">
       <router-link v-if="collapse" key="collapse" to="/">
-        <span class="layout-logo-icon">LG</span>
+        <div class="layout-logo-icon">
+          <svg viewBox="0 0 32 32" width="28" height="28">
+            <rect width="32" height="32" rx="8" fill="var(--el-color-primary)" />
+            <text x="16" y="22" font-family="Inter,Arial,sans-serif" font-size="16" font-weight="700" fill="white" text-anchor="middle">G</text>
+          </svg>
+        </div>
       </router-link>
       <router-link v-else key="expand" to="/">
-        <span class="layout-logo-text">LLM Gateway</span>
+        <div class="layout-logo-text">
+          <svg viewBox="0 0 32 32" width="24" height="24" class="logo-svg">
+            <rect width="32" height="32" rx="8" fill="var(--el-color-primary)" />
+            <text x="16" y="22" font-family="Inter,Arial,sans-serif" font-size="16" font-weight="700" fill="white" text-anchor="middle">G</text>
+          </svg>
+          <span class="logo-text">LLM Gateway</span>
+        </div>
       </router-link>
     </transition>
   </div>
@@ -27,17 +38,23 @@ const { isTop } = useLayoutMode()
   position: relative;
   width: 100%;
   height: var(--v3-header-height);
-  line-height: var(--v3-header-height);
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   overflow: hidden;
   .layout-logo-icon {
     display: none;
   }
   .layout-logo-text {
-    font-size: 18px;
-    font-weight: 700;
-    color: #ffffff;
-    letter-spacing: 1px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    .logo-text {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--el-text-color-primary);
+      letter-spacing: 0.5px;
+    }
   }
 }
 .layout-mode-top {
@@ -46,16 +63,9 @@ const { isTop } = useLayoutMode()
 }
 .collapse {
   .layout-logo-icon {
-    display: inline-block;
-    font-size: 16px;
-    font-weight: 700;
-    color: var(--el-color-primary);
-    background: var(--el-color-primary-light-9);
-    width: 32px;
-    height: 32px;
-    line-height: 32px;
-    border-radius: 6px;
-    vertical-align: middle;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
   .layout-logo-text {
     display: none;

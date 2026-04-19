@@ -1,16 +1,11 @@
 <script lang="ts" setup>
 import { useDevice } from "@@/composables/useDevice"
 import { useLayoutMode } from "@@/composables/useLayoutMode"
-import { getCssVar } from "@@/utils/css"
 import { useAppStore } from "@/pinia/stores/app"
 import { useSettingsStore } from "@/pinia/stores/settings"
 import { constantRoutes } from "@/router/index"
 import { Logo } from "../index"
 import Item from "./Item.vue"
-
-const v3SidebarMenuBgColor = getCssVar("--v3-sidebar-menu-bg-color")
-const v3SidebarMenuTextColor = getCssVar("--v3-sidebar-menu-text-color")
-const v3SidebarMenuActiveTextColor = getCssVar("--v3-sidebar-menu-active-text-color")
 
 const { isMobile } = useDevice()
 const { isLeft, isTop } = useLayoutMode()
@@ -22,11 +17,7 @@ const activeMenu = computed(() => route.meta.activeMenu || route.path)
 const noHiddenRoutes = computed(() => constantRoutes.filter(item => !item.meta?.hidden))
 const isCollapse = computed(() => !appStore.sidebar.opened)
 const isLogo = computed(() => isLeft.value && settingsStore.showLogo)
-const backgroundColor = computed(() => (isLeft.value ? v3SidebarMenuBgColor : undefined))
-const textColor = computed(() => (isLeft.value ? v3SidebarMenuTextColor : undefined))
-const activeTextColor = computed(() => (isLeft.value ? v3SidebarMenuActiveTextColor : undefined))
 const sidebarMenuItemHeight = computed(() => !isTop.value ? "var(--v3-sidebar-menu-item-height)" : "var(--v3-navigationbar-height)")
-const sidebarMenuHoverBgColor = computed(() => !isTop.value ? "var(--v3-sidebar-menu-hover-bg-color)" : "transparent")
 const tipLineWidth = computed(() => !isTop.value ? "2px" : "0px")
 </script>
 
@@ -37,9 +28,6 @@ const tipLineWidth = computed(() => !isTop.value ? "2px" : "0px")
       <el-menu
         :default-active="activeMenu"
         :collapse="isCollapse && !isTop"
-        :background-color="backgroundColor"
-        :text-color="textColor"
-        :active-text-color="activeTextColor"
         :collapse-transition="false"
         :mode="isTop && !isMobile ? 'horizontal' : 'vertical'"
       >
@@ -59,10 +47,12 @@ const tipLineWidth = computed(() => !isTop.value ? "2px" : "0px")
   &::before {
     content: "";
     position: absolute;
-    top: 0;
+    top: 50%;
     left: 0;
+    transform: translateY(-50%);
     width: v-bind(tipLineWidth);
-    height: 100%;
+    height: 60%;
+    border-radius: 0 3px 3px 0;
     background-color: var(--v3-sidebar-menu-tip-line-bg-color);
   }
 }
@@ -76,13 +66,10 @@ const tipLineWidth = computed(() => !isTop.value ? "2px" : "0px")
 .el-scrollbar {
   height: 100%;
   :deep(.scrollbar-wrapper) {
-    // Limit horizontal width
     overflow-x: hidden;
   }
-  // Scrollbar
   :deep(.el-scrollbar__bar) {
     &.is-horizontal {
-      // Hide horizontal scrollbar
       display: none;
     }
   }
@@ -92,6 +79,8 @@ const tipLineWidth = computed(() => !isTop.value ? "2px" : "0px")
   user-select: none;
   border: none;
   width: 100%;
+  background-color: transparent;
+  padding: 8px;
 }
 
 .el-menu--horizontal {
@@ -104,16 +93,23 @@ const tipLineWidth = computed(() => !isTop.value ? "2px" : "0px")
 :deep(.el-menu--horizontal .el-menu-item) {
   height: v-bind(sidebarMenuItemHeight);
   line-height: v-bind(sidebarMenuItemHeight);
-  &.is-active,
+  border-radius: 8px;
+  margin-bottom: 2px;
+  transition: background-color 0.2s, color 0.2s;
+  &.is-active {
+    color: var(--el-color-primary);
+    background-color: var(--el-color-primary-light-9);
+    font-weight: 500;
+  }
   &:hover {
-    background-color: v-bind(sidebarMenuHoverBgColor);
+    background-color: var(--el-fill-color-light);
   }
 }
 
 :deep(.el-sub-menu) {
   &.is-active {
     > .el-sub-menu__title {
-      color: v-bind(activeTextColor);
+      color: var(--el-color-primary);
     }
   }
 }
@@ -126,7 +122,7 @@ const tipLineWidth = computed(() => !isTop.value ? "2px" : "0px")
   :deep(.el-sub-menu.is-active) {
     .el-sub-menu__title {
       @extend %tip-line;
-      background-color: v-bind(sidebarMenuHoverBgColor);
+      background-color: var(--el-color-primary-light-9);
     }
   }
 }
