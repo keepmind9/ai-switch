@@ -54,6 +54,9 @@ func Load(path string) (*Config, error) {
 	viper.SetConfigFile(path)
 	viper.SetConfigType("yaml")
 
+	viper.SetDefault("server.host", "0.0.0.0")
+	viper.SetDefault("server.port", 12345)
+
 	if err := viper.ReadInConfig(); err != nil {
 		return nil, err
 	}

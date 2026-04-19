@@ -1,0 +1,104 @@
+# Provider presets for the admin UI.
+# Add new providers here — no Go code changes needed.
+# The file is embedded into the binary at compile time.
+
+presets:
+  - key: minimax
+    name: MiniMax
+    base_url: "https://api.minimaxi.com"
+    format: chat
+    icon: minimax
+    icon_color: "#FF6B6B"
+    category: cn_official
+    api_key_url: "https://platform.minimaxi.com"
+    is_partner: false
+
+  - key: deepseek
+    name: DeepSeek
+    base_url: "https://api.deepseek.com"
+    format: chat
+    icon: deepseek
+    icon_color: "#4D6BFE"
+    category: cn_official
+    api_key_url: "https://platform.deepseek.com"
+    is_partner: false
+
+  - key: openai
+    name: OpenAI
+    base_url: "https://api.openai.com"
+    format: chat
+    icon: openai
+    icon_color: "#10A37F"
+    category: official
+    api_key_url: "https://platform.openai.com/api-keys"
+    is_partner: false
+
+  - key: anthropic
+    name: Anthropic
+    base_url: "https://api.anthropic.com"
+    format: anthropic
+    icon: anthropic
+    icon_color: "#D4A574"
+    category: official
+    api_key_url: "https://console.anthropic.com"
+    is_partner: false
+
+  - key: zhipu
+    name: Zhipu (GLM)
+    base_url: "https://open.bigmodel.cn/api/anthropic"
+    format: anthropic
+    icon: zhipu
+    icon_color: "#3B82F6"
+    category: cn_official
+    api_key_url: "https://open.bigmodel.cn"
+    is_partner: false
+
+  - key: gemini
+    name: Google Gemini
+    base_url: "https://generativelanguage.googleapis.com"
+    format: chat
+    icon: gemini
+    icon_color: "#4285F4"
+    category: official
+    api_key_url: "https://aistudio.google.com/apikey"
+    is_partner: false
+
+  - key: moonshot
+    name: Moonshot (Kimi)
+    base_url: "https://api.moonshot.cn"
+    format: chat
+    icon: moonshot
+    icon_color: "#7C3AED"
+    category: cn_official
+    api_key_url: "https://platform.moonshot.cn"
+    is_partner: false
+
+  - key: openrouter
+    name: OpenRouter
+    base_url: "https://openrouter.ai/api"
+    format: chat
+    icon: openrouter
+    icon_color: "#6366F1"
+    category: aggregator
+    api_key_url: "https://openrouter.ai/keys"
+    is_partner: false
+
+  - key: siliconflow
+    name: SiliconFlow
+    base_url: "https://api.siliconflow.cn"
+    format: chat
+    icon: siliconflow
+    icon_color: "#8B5CF6"
+    category: aggregator
+    api_key_url: "https://cloud.siliconflow.cn"
+    is_partner: false
+
+  - key: aliyun
+    name: Aliyun (Bailian)
+    base_url: "https://dashscope.aliyuncs.com/compatible-mode"
+    format: chat
+    icon: aliyun
+    icon_color: "#FF6A00"
+    category: cn_official
+    api_key_url: "https://bailian.console.aliyun.com"
+    is_partner: false
