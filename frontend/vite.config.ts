@@ -33,7 +33,7 @@ export default defineConfig(({ mode }) => {
   },
   build: {
     outDir: "../internal/handler/static",
-    emptyOutDir: true,
+    emptyOutDir: false,
     rollupOptions: {
       output: {
         manualChunks: {
