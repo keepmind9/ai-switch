@@ -82,6 +82,9 @@ func Load(path string) (*Config, error) {
 		if !validFormats[p.Format] {
 			return nil, fmt.Errorf("invalid format %q for provider %q: must be one of chat, responses, anthropic", p.Format, k)
 		}
+		// Strip common API path prefix to prevent double /v1/v1 in upstream URL.
+		// Users often copy base_url from provider docs which include /v1.
+		p.BaseURL = strings.TrimRight(strings.TrimSuffix(p.BaseURL, "/v1"), "/")
 		cfg.Providers[k] = p
 	}
 

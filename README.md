@@ -45,26 +45,34 @@ server:
   host: "0.0.0.0"
   port: 12345
 
-upstream:
-  base_url: "https://api.minimaxi.com/v1"
-  api_key: "${API_KEY}"
-  model: "MiniMax-M2.5"
-  format: "chat"        # chat | responses | anthropic
-  model_map:
-    "claude-sonnet-4-5": "MiniMax-M2.5"
-    "gpt-4o": "MiniMax-M2.5"
+default_provider: "minimax"
 
 providers:
-  deepseek:
-    name: "DeepSeek"
-    base_url: "https://api.deepseek.com/v1"
-    api_key: "${DEEPSEEK_API_KEY}"
-    model: "deepseek-chat"
+  minimax:
+    name: "MiniMax"
+    # base_url with /v1 suffix is OK — it will be auto-stripped
+    base_url: "https://api.minimaxi.com"
+    api_key: "${MINIMAX_API_KEY}"
+    model: "MiniMax-M2.5"
     format: "chat"
-    sponsor: true
+    model_map:
+      "claude-sonnet-4-5": "MiniMax-M2.5"
+      "gpt-4o": "MiniMax-M2.5"
+
+routes:
+  # Map key IS the gateway API key used by clients
+  "gw-my-key":
+    provider: "minimax"
+    default_model: "MiniMax-M2.5"
 ```
 
 Config loading priority: `-c` flag > `./config.yaml` > `~/.llm-gateway/config.yaml`
+
+> **Note:** `base_url` with `/v1` suffix is auto-stripped on load to prevent double path issues.
+
+### Routes
+
+The map key in `routes` is the gateway API key that clients send for authentication. When a client sends `Authorization: Bearer <key>`, the gateway looks up the matching route.
 
 ### Upstream Format
 
@@ -91,7 +99,7 @@ export ANTHROPIC_API_KEY=any
 [model_providers.proxy]
 name = "llm-gateway"
 base_url = "http://localhost:12345/v1"
-api_key = "any"
+api_key = "your-gateway-key"
 wire_api = "responses"
 ```
 

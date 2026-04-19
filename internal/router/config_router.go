@@ -22,8 +22,8 @@ func NewConfigRouter(provider *config.Provider) *ConfigRouter {
 func (r *ConfigRouter) Route(clientProtocol, apiKey string, body []byte) (*RouteResult, error) {
 	cfg := r.provider.Get()
 
-	// Lookup API key in routes (viper lowercases map keys, so match lowercase)
 	if len(cfg.Routes) > 0 {
+		// Map key is the gateway API key; viper lowercases map keys, so match lowercase.
 		if rule, ok := cfg.Routes[strings.ToLower(apiKey)]; ok {
 			prov, ok := cfg.Providers[rule.Provider]
 			if !ok {

@@ -7,7 +7,7 @@ default_provider: "minimax"
 providers:
   minimax:
     name: "MiniMax"
-    # base_url should NOT include /v1 — the gateway adds it automatically
+    # /v1 suffix is auto-stripped — you can use either format
     base_url: "https://api.minimaxi.com"
     api_key: "${MINIMAX_API_KEY}"
     model: "MiniMax-M2.5"
@@ -31,6 +31,7 @@ providers:
     api_key: "${ZHIPU_API_KEY}"
     format: "anthropic"
 
+# Routes: map key is the gateway API key used by clients for authentication
 routes:
   "gw-zhipu":
     provider: "zhipu"

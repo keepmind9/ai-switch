@@ -44,7 +44,7 @@ providers:
 	p, ok := cfg.Providers["openai"]
 	require.True(t, ok)
 	assert.Equal(t, "OpenAI", p.Name)
-	assert.Equal(t, "https://api.example.com/v1", p.BaseURL)
+	assert.Equal(t, "https://api.example.com", p.BaseURL)
 	assert.Equal(t, "sk-test-key", p.APIKey)
 	assert.Equal(t, "test-model", p.Model)
 	assert.Equal(t, "chat", p.Format)
