@@ -19,3 +19,11 @@ Thumbs.db
 # Config with secrets
 config.yaml
 docs/plans
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
+# Frontend build output
+internal/handler/static/*
+!internal/handler/static/.gitkeep

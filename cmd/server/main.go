@@ -79,6 +79,11 @@ func main() {
 	h := handler.NewHandler(provider, usageStore, cfgRouter)
 	h.RegisterRoutes(r)
 
+	// Admin API (localhost only)
+	adminH := handler.NewAdminHandler(provider)
+	adminGroup := r.Group("/api", middleware.LocalhostOnly())
+	adminH.RegisterRoutes(adminGroup)
+
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
 	srv := &http.Server{
 		Addr:    addr,

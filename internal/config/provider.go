@@ -17,6 +17,11 @@ func NewProvider(cfg *Config, path string) *Provider {
 	return &Provider{cfg: cfg, path: path}
 }
 
+// Path returns the config file path.
+func (p *Provider) Path() string {
+	return p.path
+}
+
 // Get returns a snapshot of the current config. The returned pointer
 // must not be modified by callers.
 func (p *Provider) Get() *Config {

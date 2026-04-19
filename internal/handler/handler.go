@@ -8,6 +8,7 @@ import (
 	"io"
 	"io/fs"
 	"log/slog"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -53,13 +54,38 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 		r.GET("/api/stats", h.handleStats)
 	}
 
-	// Serve UI
+	// Serve UI (localhost only)
 	staticSub, _ := fs.Sub(staticFS, "static")
-	r.GET("/ui", func(c *gin.Context) {
-		data, _ := fs.ReadFile(staticSub, "index.html")
+	serveUI := func(c *gin.Context) {
+		ip := net.ParseIP(c.ClientIP())
+		if ip == nil || !ip.IsLoopback() {
+			c.JSON(http.StatusForbidden, gin.H{"error": "admin access restricted to localhost"})
+			return
+		}
+		data, err := fs.ReadFile(staticSub, "index.html")
+		if err != nil {
+			c.String(http.StatusOK, "Frontend not built. Run `make build-all` to build the admin UI.")
+			return
+		}
 		c.Data(http.StatusOK, "text/html; charset=utf-8", data)
+	}
+	r.GET("/ui", serveUI)
+	r.GET("/ui/assets/*filepath", func(c *gin.Context) {
+		ip := net.ParseIP(c.ClientIP())
+		if ip == nil || !ip.IsLoopback() {
+			c.JSON(http.StatusForbidden, gin.H{"error": "admin access restricted to localhost"})
+			return
+		}
+		c.FileFromFS(c.Request.URL.Path[len("/ui"):], http.FS(staticSub))
 	})
-	r.StaticFS("/ui/assets", http.FS(staticSub))
+	// SPA catch-all: any /ui/* path that doesn't match above returns index.html
+	r.NoRoute(func(c *gin.Context) {
+		if strings.HasPrefix(c.Request.URL.Path, "/ui") {
+			serveUI(c)
+			return
+		}
+		c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+	})
 
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
@@ -579,9 +605,9 @@ func (h *Handler) anthropicViaChatToResponses(c *gin.Context, result *router.Rou
 // Upstream API paths. Convention: all paths include /v1 prefix.
 // base_url should NOT include /v1 — the gateway appends these paths.
 const (
-	PathChat       = "/v1/chat/completions"
-	PathMessages   = "/v1/messages"
-	PathResponses  = "/v1/responses"
+	PathChat      = "/v1/chat/completions"
+	PathMessages  = "/v1/messages"
+	PathResponses = "/v1/responses"
 )
 
 // formatToPath returns the upstream API path based on format.
@@ -638,13 +664,13 @@ func (h *Handler) handleAPIStatus(c *gin.Context) {
 	providers := make([]gin.H, 0)
 	for key, p := range cfg.Providers {
 		providers = append(providers, gin.H{
-			"key":       key,
-			"name":      p.Name,
-			"base_url":  p.BaseURL,
-			"model":     p.Model,
-			"format":    p.Format,
-			"sponsor":   p.Sponsor,
-			"logo_url":  p.LogoURL,
+			"key":      key,
+			"name":     p.Name,
+			"base_url": p.BaseURL,
+			"model":    p.Model,
+			"format":   p.Format,
+			"sponsor":  p.Sponsor,
+			"logo_url": p.LogoURL,
 		})
 	}
 	status["providers"] = providers

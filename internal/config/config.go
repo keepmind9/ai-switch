@@ -10,40 +10,44 @@ import (
 )
 
 type Config struct {
-	Server          ServerConfig              `mapstructure:"server"`
-	DefaultProvider string                    `mapstructure:"default_provider"`
-	Providers       map[string]ProviderConfig `mapstructure:"providers"`
-	Routes          map[string]RouteRule      `mapstructure:"routes"`
+	Server          ServerConfig              `mapstructure:"server" yaml:"server"`
+	DefaultProvider string                    `mapstructure:"default_provider" yaml:"default_provider"`
+	Providers       map[string]ProviderConfig `mapstructure:"providers" yaml:"providers"`
+	Routes          map[string]RouteRule      `mapstructure:"routes" yaml:"routes"`
 }
 
 type RouteRule struct {
-	Provider     string            `mapstructure:"provider"`
-	DefaultModel string            `mapstructure:"default_model"`
-	SceneMap     map[string]string `mapstructure:"scene_map"`
-	ModelMap     map[string]string `mapstructure:"model_map"`
+	Provider     string            `mapstructure:"provider" yaml:"provider"`
+	DefaultModel string            `mapstructure:"default_model" yaml:"default_model"`
+	SceneMap     map[string]string `mapstructure:"scene_map" yaml:"scene_map"`
+	ModelMap     map[string]string `mapstructure:"model_map" yaml:"model_map"`
 }
 
 type ServerConfig struct {
-	Host string `mapstructure:"host"`
-	Port int    `mapstructure:"port"`
+	Host string `mapstructure:"host" yaml:"host"`
+	Port int    `mapstructure:"port" yaml:"port"`
 }
 
 type ProviderConfig struct {
-	Name     string            `mapstructure:"name"`
-	BaseURL  string            `mapstructure:"base_url"`
-	Path     string            `mapstructure:"path"`
-	APIKey   string            `mapstructure:"api_key"`
-	Model    string            `mapstructure:"model"`
-	Format   string            `mapstructure:"format"`
-	ModelMap map[string]string `mapstructure:"model_map"`
-	LogoURL  string            `mapstructure:"logo_url"`
-	Sponsor  bool              `mapstructure:"sponsor"`
+	Name     string            `mapstructure:"name" yaml:"name"`
+	BaseURL  string            `mapstructure:"base_url" yaml:"base_url"`
+	Path     string            `mapstructure:"path" yaml:"path"`
+	APIKey   string            `mapstructure:"api_key" yaml:"api_key"`
+	Model    string            `mapstructure:"model" yaml:"model"`
+	Format   string            `mapstructure:"format" yaml:"format"`
+	ModelMap map[string]string `mapstructure:"model_map" yaml:"model_map"`
+	LogoURL  string            `mapstructure:"logo_url" yaml:"logo_url"`
+	Sponsor  bool              `mapstructure:"sponsor" yaml:"sponsor"`
 }
 
 var validFormats = map[string]bool{
 	"chat":      true,
 	"responses": true,
 	"anthropic": true,
+}
+
+func ValidFormat(f string) bool {
+	return validFormats[f]
 }
 
 func Load(path string) (*Config, error) {
