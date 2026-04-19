@@ -11,15 +11,15 @@ import (
 var presetsFS embed.FS
 
 type ProviderPreset struct {
-	Key        string `json:"key" yaml:"key"`
-	Name       string `json:"name" yaml:"name"`
-	BaseURL    string `json:"base_url" yaml:"base_url"`
-	Format     string `json:"format" yaml:"format"`
-	Icon       string `json:"icon" yaml:"icon"`
-	IconColor  string `json:"icon_color" yaml:"icon_color"`
-	Category   string `json:"category" yaml:"category"`
-	APIKeyURL  string `json:"api_key_url" yaml:"api_key_url"`
-	IsPartner  bool   `json:"is_partner" yaml:"is_partner"`
+	Key       string `json:"key" yaml:"key"`
+	Name      string `json:"name" yaml:"name"`
+	BaseURL   string `json:"base_url" yaml:"base_url"`
+	Format    string `json:"format" yaml:"format"`
+	Icon      string `json:"icon" yaml:"icon"`
+	IconColor string `json:"icon_color" yaml:"icon_color"`
+	Category  string `json:"category" yaml:"category"`
+	APIKeyURL string `json:"api_key_url" yaml:"api_key_url"`
+	IsPartner bool   `json:"is_partner" yaml:"is_partner"`
 }
 
 type presetsFile struct {
