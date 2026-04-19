@@ -5,6 +5,7 @@ bin/
 # Runtime
 *.log
 /server
+/llm-gateway
 
 # IDE
 .idea/
@@ -16,13 +17,18 @@ bin/
 .DS_Store
 Thumbs.db
 
+HANDOFF.md
+
 # Config with secrets
 config.yaml
 docs/plans
 
 # Frontend
-frontend/node_modules/
+frontend/node_modules
 frontend/dist/
+frontend/.vscode/
+frontend/.npmrc
+frontend/*.local
 
 # Frontend build output
 internal/handler/static/*
