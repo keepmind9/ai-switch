@@ -64,65 +64,82 @@ onMounted(load)
 
 <template>
   <div class="app-container">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-      <h3 style="margin:0">Routes</h3>
-      <el-button type="primary" :icon="showForm ? Close : Plus" @click="showForm ? cancelForm() : openCreate()">{{ showForm ? "Cancel" : "Add Route" }}</el-button>
+    <div class="page-header">
+      <h3>Routes</h3>
+      <el-button type="primary" :icon="showForm ? Close : Plus" @click="showForm ? cancelForm() : openCreate()">
+        {{ showForm ? "Cancel" : "Add Route" }}
+      </el-button>
     </div>
 
-    <el-card v-if="showForm" shadow="never" style="margin-bottom:16px">
+    <!-- Form -->
+    <el-card v-if="showForm" shadow="never" class="form-card">
       <el-form :model="form" label-position="top">
         <el-row :gutter="16">
           <el-col :span="8">
             <el-form-item label="Gateway Key">
-              <div style="display:flex;gap:8px;width:100%">
-                <el-input v-model="form.key" :disabled="isEdit" placeholder="Gateway API key" style="flex:1" />
+              <div class="key-input-row">
+                <el-input v-model="form.key" :disabled="isEdit" placeholder="Gateway API key" />
                 <el-button v-if="!isEdit" @click="handleGenerateKey">Generate</el-button>
               </div>
             </el-form-item>
           </el-col>
           <el-col :span="8">
             <el-form-item label="Provider">
-              <el-select v-model="form.provider" placeholder="Select provider" style="width:100%">
+              <el-select v-model="form.provider" placeholder="Select provider" class="w-full">
                 <el-option v-for="p in providers" :key="p.key" :label="p.name" :value="p.key" />
               </el-select>
             </el-form-item>
           </el-col>
-          <el-col :span="8"><el-form-item label="Default Model"><el-input v-model="form.default_model" /></el-form-item></el-col>
+          <el-col :span="8">
+            <el-form-item label="Default Model"><el-input v-model="form.default_model" /></el-form-item>
+          </el-col>
         </el-row>
         <el-form-item label="Scene Map">
-          <div style="width:100%">
-            <div v-for="(item, idx) in sceneMapData" :key="idx" style="display:flex;gap:8px;margin-bottom:8px">
-              <el-select v-model="item.key" placeholder="Scene" style="width:150px"><el-option v-for="s in sceneOptions" :key="s" :label="s" :value="s" /></el-select>
-              <el-input v-model="item.value" placeholder="Model name" style="flex:1" />
+          <div class="map-editor">
+            <div v-for="(item, idx) in sceneMapData" :key="idx" class="map-editor-row">
+              <el-select v-model="item.key" placeholder="Scene" class="scene-select">
+                <el-option v-for="s in sceneOptions" :key="s" :label="s" :value="s" />
+              </el-select>
+              <el-input v-model="item.value" placeholder="Model name" class="map-input" />
               <el-button link type="danger" @click="removeSceneEntry(idx)"><el-icon><Delete /></el-icon></el-button>
             </div>
             <el-button size="small" @click="addSceneEntry">+ Add Scene</el-button>
           </div>
         </el-form-item>
         <el-form-item label="Model Map">
-          <div style="width:100%">
-            <div v-for="(item, idx) in modelMapData" :key="idx" style="display:flex;gap:8px;margin-bottom:8px">
-              <el-input v-model="item.key" placeholder="Client model" style="flex:1" />
-              <el-input v-model="item.value" placeholder="Upstream model" style="flex:1" />
+          <div class="map-editor">
+            <div v-for="(item, idx) in modelMapData" :key="idx" class="map-editor-row">
+              <el-input v-model="item.key" placeholder="Client model" class="map-input" />
+              <el-input v-model="item.value" placeholder="Upstream model" class="map-input" />
               <el-button link type="danger" @click="removeModelEntry(idx)"><el-icon><Delete /></el-icon></el-button>
             </div>
             <el-button size="small" @click="addModelEntry">+ Add Model Mapping</el-button>
           </div>
         </el-form-item>
-        <div style="text-align:right"><el-button @click="cancelForm">Cancel</el-button><el-button type="primary" @click="handleSubmit">{{ isEdit ? "Update" : "Create" }}</el-button></div>
+        <div class="form-actions">
+          <el-button @click="cancelForm">Cancel</el-button>
+          <el-button type="primary" @click="handleSubmit">{{ isEdit ? "Update" : "Create" }}</el-button>
+        </div>
       </el-form>
     </el-card>
 
+    <!-- Table -->
     <el-card shadow="never">
       <el-table :data="routes" v-loading="loading" stripe>
-        <el-table-column label="Gateway Key" width="200"><template #default="{ row }"><span style="font-family:monospace;font-size:12px">{{ row.key }}</span></template></el-table-column>
+        <el-table-column label="Gateway Key" width="200">
+          <template #default="{ row }"><span class="mono">{{ row.key }}</span></template>
+        </el-table-column>
         <el-table-column prop="provider" label="Provider" width="140" />
         <el-table-column prop="default_model" label="Default Model" width="180" />
         <el-table-column label="Scene Map" min-width="200">
-          <template #default="{ row }"><el-tag v-for="(v, k) in row.scene_map" :key="k" size="small" style="margin-right:4px">{{ k }}: {{ v }}</el-tag></template>
+          <template #default="{ row }">
+            <el-tag v-for="(v, k) in row.scene_map" :key="k" size="small" class="tag-spacing">{{ k }}: {{ v }}</el-tag>
+          </template>
         </el-table-column>
         <el-table-column label="Model Map" min-width="200">
-          <template #default="{ row }"><el-tag v-for="(v, k) in row.model_map" :key="k" type="info" size="small" style="margin-right:4px">{{ k }}: {{ v }}</el-tag></template>
+          <template #default="{ row }">
+            <el-tag v-for="(v, k) in row.model_map" :key="k" type="info" size="small" class="tag-spacing">{{ k }}: {{ v }}</el-tag>
+          </template>
         </el-table-column>
         <el-table-column label="Actions" width="150" fixed="right">
           <template #default="{ row }">
@@ -134,3 +151,44 @@ onMounted(load)
     </el-card>
   </div>
 </template>
+
+<style lang="scss" scoped>
+.form-card {
+  margin-bottom: 16px;
+}
+
+.key-input-row {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+
+.map-editor {
+  width: 100%;
+}
+
+.map-editor-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+  align-items: center;
+}
+
+.scene-select {
+  width: 150px;
+  flex-shrink: 0;
+}
+
+.map-input {
+  flex: 1;
+}
+
+.w-full {
+  width: 100%;
+}
+
+.tag-spacing {
+  margin-right: 4px;
+  margin-bottom: 2px;
+}
+</style>

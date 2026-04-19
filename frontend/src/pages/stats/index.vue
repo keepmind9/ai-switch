@@ -2,6 +2,7 @@
 import { ref, onMounted, computed } from "vue"
 import { queryStats, type UsageRecord } from "@/api/stats"
 import { listProviders, type Provider } from "@/api/providers"
+import { TrendCharts } from "@element-plus/icons-vue"
 import { use } from "echarts/core"
 import { CanvasRenderer } from "echarts/renderers"
 import { BarChart } from "echarts/charts"
@@ -62,14 +63,50 @@ const chartOption = computed(() => {
   }
   const dates = Object.keys(daily).sort()
   return {
-    tooltip: { trigger: "axis" },
-    legend: { data: ["Input Tokens", "Output Tokens"] },
-    grid: { left: 60, right: 20, top: 40, bottom: 30 },
-    xAxis: { type: "category", data: dates },
-    yAxis: { type: "value" },
+    tooltip: {
+      trigger: "axis",
+      backgroundColor: "rgba(0, 0, 0, 0.8)",
+      borderWidth: 0,
+      textStyle: { color: "#fff" },
+    },
+    legend: {
+      data: ["Input Tokens", "Output Tokens"],
+      bottom: 0,
+      icon: "roundRect",
+      itemWidth: 12,
+      itemHeight: 8,
+    },
+    grid: { left: 60, right: 20, top: 20, bottom: 40 },
+    xAxis: {
+      type: "category",
+      data: dates,
+      axisLine: { lineStyle: { color: "var(--el-border-color)" } },
+      axisLabel: { color: "var(--el-text-color-secondary)", fontSize: 11 },
+    },
+    yAxis: {
+      type: "value",
+      splitLine: { lineStyle: { color: "var(--el-border-color-lighter)" } },
+      axisLabel: { color: "var(--el-text-color-secondary)", fontSize: 11 },
+    },
     series: [
-      { name: "Input Tokens", type: "bar", stack: "tokens", data: dates.map(d => daily[d].input) },
-      { name: "Output Tokens", type: "bar", stack: "tokens", data: dates.map(d => daily[d].output) },
+      {
+        name: "Input Tokens",
+        type: "bar",
+        stack: "tokens",
+        barMaxWidth: 24,
+        itemStyle: { borderRadius: [0, 0, 0, 0] },
+        color: "var(--el-color-primary)",
+        data: dates.map(d => daily[d].input),
+      },
+      {
+        name: "Output Tokens",
+        type: "bar",
+        stack: "tokens",
+        barMaxWidth: 24,
+        itemStyle: { borderRadius: [4, 4, 0, 0] },
+        color: "var(--el-color-success)",
+        data: dates.map(d => daily[d].output),
+      },
     ],
   }
 })
@@ -95,18 +132,27 @@ onMounted(load)
 
 <template>
   <div class="app-container">
-    <el-card shadow="never" style="margin-bottom: 16px">
+    <!-- Filters -->
+    <el-card shadow="never" class="filter-card">
       <el-row :gutter="16" align="middle">
         <el-col :span="10">
-          <el-date-picker v-model="dateRange" type="daterange" range-separator="—" start-placeholder="Start" end-placeholder="End" value-format="YYYY-MM-DD" style="width: 100%" />
+          <el-date-picker
+            v-model="dateRange"
+            type="daterange"
+            range-separator="—"
+            start-placeholder="Start"
+            end-placeholder="End"
+            value-format="YYYY-MM-DD"
+            class="w-full"
+          />
         </el-col>
         <el-col :span="5">
-          <el-select v-model="filterProvider" placeholder="All Providers" clearable style="width: 100%">
+          <el-select v-model="filterProvider" placeholder="All Providers" clearable class="w-full">
             <el-option v-for="p in providers" :key="p.key" :label="p.name" :value="p.key" />
           </el-select>
         </el-col>
         <el-col :span="5">
-          <el-select v-model="filterModel" placeholder="All Models" clearable style="width: 100%">
+          <el-select v-model="filterModel" placeholder="All Models" clearable class="w-full">
             <el-option v-for="m in modelOptions" :key="m" :label="m" :value="m" />
           </el-select>
         </el-col>
@@ -116,40 +162,67 @@ onMounted(load)
       </el-row>
     </el-card>
 
-    <el-row :gutter="16" style="margin-bottom: 16px">
+    <!-- Summary Cards -->
+    <el-row :gutter="16" class="stat-row">
       <el-col :span="6">
-        <el-card shadow="never">
-          <template #header><span style="font-size: 13px; color: var(--el-text-color-secondary)">Total Requests</span></template>
-          <div style="font-size: 24px; font-weight: 600; color: var(--el-color-primary)">{{ summary.requests.toLocaleString() }}</div>
+        <el-card shadow="never" class="stat-card">
+          <div class="stat-icon stat-icon--primary">
+            <el-icon :size="22"><TrendCharts /></el-icon>
+          </div>
+          <div class="stat-info">
+            <div class="stat-label">Total Requests</div>
+            <div class="stat-value">{{ summary.requests.toLocaleString() }}</div>
+          </div>
         </el-card>
       </el-col>
       <el-col :span="6">
-        <el-card shadow="never">
-          <template #header><span style="font-size: 13px; color: var(--el-text-color-secondary)">Total Tokens</span></template>
-          <div style="font-size: 24px; font-weight: 600; color: var(--el-color-primary)">{{ summary.total_tokens.toLocaleString() }}</div>
+        <el-card shadow="never" class="stat-card">
+          <div class="stat-icon stat-icon--success">
+            <el-icon :size="22"><TrendCharts /></el-icon>
+          </div>
+          <div class="stat-info">
+            <div class="stat-label">Total Tokens</div>
+            <div class="stat-value stat-value--primary">{{ summary.total_tokens.toLocaleString() }}</div>
+          </div>
         </el-card>
       </el-col>
       <el-col :span="6">
-        <el-card shadow="never">
-          <template #header><span style="font-size: 13px; color: var(--el-text-color-secondary)">Input Tokens</span></template>
-          <div style="font-size: 24px; font-weight: 600">{{ summary.input_tokens.toLocaleString() }}</div>
+        <el-card shadow="never" class="stat-card">
+          <div class="stat-icon">
+            <el-icon :size="22"><TrendCharts /></el-icon>
+          </div>
+          <div class="stat-info">
+            <div class="stat-label">Input Tokens</div>
+            <div class="stat-value">{{ summary.input_tokens.toLocaleString() }}</div>
+          </div>
         </el-card>
       </el-col>
       <el-col :span="6">
-        <el-card shadow="never">
-          <template #header><span style="font-size: 13px; color: var(--el-text-color-secondary)">Output Tokens</span></template>
-          <div style="font-size: 24px; font-weight: 600">{{ summary.output_tokens.toLocaleString() }}</div>
+        <el-card shadow="never" class="stat-card">
+          <div class="stat-icon">
+            <el-icon :size="22"><TrendCharts /></el-icon>
+          </div>
+          <div class="stat-info">
+            <div class="stat-label">Output Tokens</div>
+            <div class="stat-value">{{ summary.output_tokens.toLocaleString() }}</div>
+          </div>
         </el-card>
       </el-col>
     </el-row>
 
-    <el-card shadow="never" style="margin-bottom: 16px">
-      <template #header><span style="font-size: 13px; color: var(--el-text-color-secondary)">Daily Token Usage</span></template>
-      <v-chart :option="chartOption" style="height: 350px" autoresize />
+    <!-- Chart -->
+    <el-card shadow="never" class="section-card">
+      <template #header>
+        <div class="card-header-label">Daily Token Usage</div>
+      </template>
+      <v-chart :option="chartOption" class="chart" autoresize />
     </el-card>
 
-    <el-card shadow="never">
-      <template #header><span style="font-size: 13px; color: var(--el-text-color-secondary)">Usage Records</span></template>
+    <!-- Table -->
+    <el-card shadow="never" class="section-card">
+      <template #header>
+        <div class="card-header-label">Usage Records</div>
+      </template>
       <el-table :data="filtered" v-loading="loading" stripe max-height="400">
         <el-table-column prop="date" label="Date" width="120" />
         <el-table-column prop="provider" label="Provider" width="120" />
@@ -170,3 +243,70 @@ onMounted(load)
     </el-card>
   </div>
 </template>
+
+<style lang="scss" scoped>
+.filter-card {
+  margin-bottom: 16px;
+}
+
+.stat-row {
+  margin-bottom: 16px;
+}
+
+.stat-card {
+  :deep(.el-card__body) {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 16px 20px;
+  }
+
+  .stat-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: var(--el-fill-color-light);
+    color: var(--el-text-color-secondary);
+    flex-shrink: 0;
+
+    &--primary {
+      background-color: var(--el-color-primary-light-9);
+      color: var(--el-color-primary);
+    }
+    &--success {
+      background-color: var(--el-color-success-light-9);
+      color: var(--el-color-success);
+    }
+  }
+
+  .stat-info {
+    .stat-label {
+      font-size: 13px;
+      color: var(--el-text-color-secondary);
+      margin-bottom: 4px;
+    }
+    .stat-value {
+      font-size: 24px;
+      font-weight: 700;
+      color: var(--el-text-color-primary);
+      line-height: 1.2;
+      &--primary { color: var(--el-color-primary); }
+    }
+  }
+}
+
+.section-card {
+  margin-bottom: 16px;
+}
+
+.chart {
+  height: 350px;
+}
+
+.w-full {
+  width: 100%;
+}
+</style>

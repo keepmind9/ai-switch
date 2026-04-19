@@ -84,50 +84,86 @@ onMounted(load)
 
 <template>
   <div class="app-container">
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px">
-      <h3 style="margin: 0">Providers</h3>
+    <div class="page-header">
+      <h3>Providers</h3>
       <el-button type="primary" :icon="showForm ? Close : Plus" @click="showForm ? cancelForm() : openCreate()">
         {{ showForm ? "Cancel" : "Add Provider" }}
       </el-button>
     </div>
 
-    <!-- Inline Form -->
-    <el-card v-if="showForm" shadow="never" style="margin-bottom: 16px">
-      <div v-if="!isEdit" style="margin-bottom: 16px">
-        <div style="margin-bottom: 8px; color: var(--el-text-color-secondary); font-size: 13px">Quick setup:</div>
-        <el-space wrap>
-          <el-check-tag v-for="p in presets" :key="p.key" :checked="selectedPreset === p.key" @change="applyPreset(p.key)" :style="presetTagStyle(p)">
-            <span v-if="p.is_partner" style="color: #f59e0b; margin-right: 2px">&#9733;</span>{{ p.name }}
+    <!-- Form -->
+    <el-card v-if="showForm" shadow="never" class="form-card">
+      <div v-if="!isEdit" class="preset-section">
+        <div class="preset-label">Quick setup:</div>
+        <el-space wrap :size="8">
+          <el-check-tag
+            v-for="p in presets"
+            :key="p.key"
+            :checked="selectedPreset === p.key"
+            @change="applyPreset(p.key)"
+            :style="presetTagStyle(p)"
+          >
+            <span v-if="p.is_partner" class="partner-star">&#9733;</span>{{ p.name }}
           </el-check-tag>
         </el-space>
       </div>
       <el-form :model="form" label-position="top">
         <el-row :gutter="16">
-          <el-col :span="6" v-if="!isEdit"><el-form-item label="Provider Key"><el-input v-model="form.key" placeholder="e.g. minimax" /></el-form-item></el-col>
-          <el-col :span="6"><el-form-item label="Name"><el-input v-model="form.name" /></el-form-item></el-col>
-          <el-col :span="isEdit ? 8 : 12"><el-form-item label="Base URL"><el-input v-model="form.base_url" placeholder="https://api.example.com" /></el-form-item></el-col>
-          <el-col :span="6"><el-form-item :label="isEdit ? 'API Key (keep empty)' : 'API Key'"><el-input v-model="form.api_key" type="password" show-password /></el-form-item></el-col>
+          <el-col :span="6" v-if="!isEdit">
+            <el-form-item label="Provider Key">
+              <el-input v-model="form.key" placeholder="e.g. minimax" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="6">
+            <el-form-item label="Name"><el-input v-model="form.name" /></el-form-item>
+          </el-col>
+          <el-col :span="isEdit ? 8 : 12">
+            <el-form-item label="Base URL"><el-input v-model="form.base_url" placeholder="https://api.example.com" /></el-form-item>
+          </el-col>
+          <el-col :span="6">
+            <el-form-item :label="isEdit ? 'API Key (keep empty)' : 'API Key'">
+              <el-input v-model="form.api_key" type="password" show-password />
+            </el-form-item>
+          </el-col>
         </el-row>
         <el-row :gutter="16">
-          <el-col :span="6"><el-form-item label="Default Model"><el-input v-model="form.model" /></el-form-item></el-col>
-          <el-col :span="6"><el-form-item label="Format"><el-select v-model="form.format" style="width:100%"><el-option label="Chat" value="chat" /><el-option label="Anthropic" value="anthropic" /><el-option label="Responses" value="responses" /></el-select></el-form-item></el-col>
-          <el-col :span="6"><el-form-item label="Path Override"><el-input v-model="form.path" placeholder="(optional)" /></el-form-item></el-col>
-          <el-col :span="6"><el-form-item label="Sponsor"><el-switch v-model="form.sponsor" /></el-form-item></el-col>
+          <el-col :span="6">
+            <el-form-item label="Default Model"><el-input v-model="form.model" /></el-form-item>
+          </el-col>
+          <el-col :span="6">
+            <el-form-item label="Format">
+              <el-select v-model="form.format" class="w-full">
+                <el-option label="Chat" value="chat" />
+                <el-option label="Anthropic" value="anthropic" />
+                <el-option label="Responses" value="responses" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="6">
+            <el-form-item label="Path Override"><el-input v-model="form.path" placeholder="(optional)" /></el-form-item>
+          </el-col>
+          <el-col :span="6">
+            <el-form-item label="Sponsor"><el-switch v-model="form.sponsor" /></el-form-item>
+          </el-col>
         </el-row>
         <el-form-item label="Model Map">
-          <div style="width:100%">
-            <div v-for="(item, idx) in mapEditorData" :key="idx" style="display:flex;gap:8px;margin-bottom:8px">
-              <el-input v-model="item.key" placeholder="Client model" style="flex:1" />
-              <el-input v-model="item.value" placeholder="Upstream model" style="flex:1" />
+          <div class="map-editor">
+            <div v-for="(item, idx) in mapEditorData" :key="idx" class="map-editor-row">
+              <el-input v-model="item.key" placeholder="Client model" class="map-input" />
+              <el-input v-model="item.value" placeholder="Upstream model" class="map-input" />
               <el-button link type="danger" @click="removeMapEntry(idx)"><el-icon><Delete /></el-icon></el-button>
             </div>
             <el-button size="small" @click="addMapEntry">+ Add Mapping</el-button>
           </div>
         </el-form-item>
-        <div style="text-align:right"><el-button @click="cancelForm">Cancel</el-button><el-button type="primary" @click="handleSubmit">{{ isEdit ? "Update" : "Create" }}</el-button></div>
+        <div class="form-actions">
+          <el-button @click="cancelForm">Cancel</el-button>
+          <el-button type="primary" @click="handleSubmit">{{ isEdit ? "Update" : "Create" }}</el-button>
+        </div>
       </el-form>
     </el-card>
 
+    <!-- Table -->
     <el-card shadow="never">
       <el-table :data="providers" v-loading="loading" stripe>
         <el-table-column prop="name" label="Name" width="150" />
@@ -137,13 +173,17 @@ onMounted(load)
         <el-table-column prop="model" label="Model" width="150" />
         <el-table-column label="API Key" width="160">
           <template #default="{ row }">
-            <div style="display:flex;align-items:center;gap:4px">
-              <span style="font-family:monospace;font-size:12px">{{ revealedKeys[row.key] || row.api_key }}</span>
+            <div class="api-key-cell">
+              <span class="mono">{{ revealedKeys[row.key] || row.api_key }}</span>
               <el-button link size="small" @click="handleReveal(row)"><el-icon><View /></el-icon></el-button>
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="Default" width="80"><template #default="{ row }"><el-tag v-if="row.is_default" type="success" size="small">Default</el-tag></template></el-table-column>
+        <el-table-column label="Default" width="80">
+          <template #default="{ row }">
+            <el-tag v-if="row.is_default" type="success" size="small">Default</el-tag>
+          </template>
+        </el-table-column>
         <el-table-column label="Actions" width="150" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" size="small" :icon="Edit" @click="openEdit(row)">Edit</el-button>
@@ -154,3 +194,48 @@ onMounted(load)
     </el-card>
   </div>
 </template>
+
+<style lang="scss" scoped>
+.form-card {
+  margin-bottom: 16px;
+}
+
+.preset-section {
+  margin-bottom: 20px;
+  .preset-label {
+    font-size: 13px;
+    color: var(--el-text-color-secondary);
+    margin-bottom: 10px;
+  }
+}
+
+.map-editor {
+  width: 100%;
+}
+
+.map-editor-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+  align-items: center;
+}
+
+.map-input {
+  flex: 1;
+}
+
+.w-full {
+  width: 100%;
+}
+
+.api-key-cell {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.partner-star {
+  color: #f59e0b;
+  margin-right: 2px;
+}
+</style>
