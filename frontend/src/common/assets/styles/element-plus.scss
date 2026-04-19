@@ -1,0 +1,15 @@
+// Custom Element Plus styles
+
+// Pagination
+.el-pagination {
+  // Reference Bootstrap responsive design WIDTH = 768
+  @media screen and (max-width: 768px) {
+    .el-pagination__total,
+    .el-pagination__sizes,
+    .el-pagination__jump,
+    .btn-prev,
+    .btn-next {
+      display: none;
+    }
+  }
+}

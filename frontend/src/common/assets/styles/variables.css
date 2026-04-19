@@ -1,0 +1,72 @@
+/* Global CSS variables — usable in CSS, SCSS, and importable in JS */
+
+:root {
+  /* Body */
+  --v3-body-text-color: var(--el-text-color-primary);
+  --v3-body-bg-color: var(--el-bg-color-page);
+  /* Header area = NavigationBar component + TagsView component */
+  --v3-header-height: calc(
+    var(--v3-navigationbar-height) + var(--v3-tagsview-height) + var(--v3-header-border-bottom-width)
+  );
+  --v3-header-bg-color: var(--el-bg-color);
+  --v3-header-box-shadow: var(--el-box-shadow-lighter);
+  --v3-header-border-bottom-width: 1px;
+  --v3-header-border-bottom: var(--v3-header-border-bottom-width) solid var(--el-fill-color);
+  /* NavigationBar component */
+  --v3-navigationbar-height: 50px;
+  --v3-navigationbar-text-color: var(--el-text-color-regular);
+  /* Sidebar component (active in left mode, inactive in top mode, partial in mixed mode) */
+  --v3-sidebar-width: 220px;
+  --v3-sidebar-hide-width: 58px;
+  --v3-sidebar-border-right: 1px solid var(--el-fill-color);
+  --v3-sidebar-menu-item-height: 60px;
+  --v3-sidebar-menu-tip-line-bg-color: var(--el-color-primary);
+  --v3-sidebar-menu-bg-color: #001428;
+  --v3-sidebar-menu-hover-bg-color: #409eff10;
+  --v3-sidebar-menu-text-color: #cfd3dc;
+  --v3-sidebar-menu-active-text-color: #ffffff;
+  /* TagsView component */
+  --v3-tagsview-height: 34px;
+  --v3-tagsview-text-color: var(--el-text-color-regular);
+  --v3-tagsview-tag-active-text-color: #ffffff;
+  --v3-tagsview-tag-bg-color: var(--el-bg-color);
+  --v3-tagsview-tag-active-bg-color: var(--el-color-primary);
+  --v3-tagsview-tag-border-radius: 2px;
+  --v3-tagsview-tag-border-color: var(--el-border-color-lighter);
+  --v3-tagsview-tag-active-border-color: var(--el-color-primary);
+  --v3-tagsview-tag-icon-hover-bg-color: #00000030;
+  --v3-tagsview-tag-icon-hover-color: #ffffff;
+  --v3-tagsview-contextmenu-text-color: var(--el-text-color-regular);
+  --v3-tagsview-contextmenu-hover-text-color: var(--el-text-color-primary);
+  --v3-tagsview-contextmenu-bg-color: var(--el-bg-color-overlay);
+  --v3-tagsview-contextmenu-hover-bg-color: var(--el-fill-color);
+  --v3-tagsview-contextmenu-box-shadow: var(--el-box-shadow);
+  /* Hamburger component */
+  --v3-hamburger-text-color: var(--el-text-color-primary);
+  /* RightPanel component */
+  --v3-rightpanel-button-bg-color: #001428;
+}
+
+/* Hide unnecessary components when content area is enlarged */
+body.content-large {
+  /* Header area = TagsView component */
+  --v3-header-height: var(--v3-tagsview-height);
+  /* NavigationBar component */
+  --v3-navigationbar-height: 0px;
+  /* Sidebar component */
+  --v3-sidebar-width: 0px;
+  --v3-sidebar-hide-width: 0px;
+}
+
+/* Hide unnecessary components when content area is fullscreen */
+body.content-full {
+  /* Header area */
+  --v3-header-height: 0px;
+  /* NavigationBar component */
+  --v3-navigationbar-height: 0px;
+  /* Sidebar component */
+  --v3-sidebar-width: 0px;
+  --v3-sidebar-hide-width: 0px;
+  /* TagsView component */
+  --v3-tagsview-height: 0px;
+}

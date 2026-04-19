@@ -1,0 +1,64 @@
+// Global CSS variables
+@import "./variables.css";
+// Transition
+@import "./transition.scss";
+// Element Plus
+@import "./element-plus.css";
+@import "./element-plus.scss";
+// Register multi-theme
+@import "./theme/register.scss";
+// Mixins
+@import "./mixins.scss";
+// View Transition
+@import "./view-transition.scss";
+
+// Business pages should generally mount class="app-container" on the root element for consistent styling
+.app-container {
+  padding: 20px;
+}
+
+html {
+  height: 100%;
+  // Greyscale mode
+  &.grey-mode {
+    filter: grayscale(1);
+  }
+  // Color weakness mode
+  &.color-weakness {
+    filter: invert(0.8);
+  }
+}
+
+body {
+  height: 100%;
+  color: var(--v3-body-text-color);
+  background-color: var(--v3-body-bg-color);
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-font-smoothing: antialiased;
+  font-family:
+    Inter, "Helvetica Neue", Helvetica, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", Arial,
+    sans-serif;
+  @extend %scrollbar;
+}
+
+#app {
+  height: 100%;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+a,
+a:focus,
+a:hover {
+  color: inherit;
+  outline: none;
+  text-decoration: none;
+}
+
+div:focus {
+  outline: none;
+}

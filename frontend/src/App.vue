@@ -1,39 +1,13 @@
-<script setup lang="ts">
-import { RouterView } from 'vue-router'
-import { Monitor, Connection, Key, DataAnalysis } from '@element-plus/icons-vue'
+<script lang="ts" setup>
+import { useTheme } from "@@/composables/useTheme"
+import en from "element-plus/es/locale/lang/en"
+
+const { initTheme } = useTheme()
+initTheme()
 </script>
 
 <template>
-  <aside class="sidebar">
-    <div class="sidebar-logo">LLM Gateway</div>
-    <ul class="sidebar-nav">
-      <li>
-        <router-link to="/">
-          <el-icon><Monitor /></el-icon>
-          Dashboard
-        </router-link>
-      </li>
-      <li>
-        <router-link to="/providers">
-          <el-icon><Connection /></el-icon>
-          Providers
-        </router-link>
-      </li>
-      <li>
-        <router-link to="/routes">
-          <el-icon><Key /></el-icon>
-          Routes
-        </router-link>
-      </li>
-      <li>
-        <router-link to="/stats">
-          <el-icon><DataAnalysis /></el-icon>
-          Usage Stats
-        </router-link>
-      </li>
-    </ul>
-  </aside>
-  <main class="main-content">
-    <RouterView />
-  </main>
+  <el-config-provider :locale="en">
+    <router-view />
+  </el-config-provider>
 </template>

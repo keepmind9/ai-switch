@@ -17,7 +17,11 @@ export interface Preset {
   name: string
   base_url: string
   format: string
-  logo_url: string
+  icon: string
+  icon_color: string
+  category: string
+  api_key_url: string
+  is_partner: boolean
 }
 
 export const queryStats = (params?: { provider?: string; model?: string; start_date?: string; end_date?: string }) =>

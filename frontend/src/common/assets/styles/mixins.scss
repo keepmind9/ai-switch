@@ -1,0 +1,42 @@
+// Clearfix
+%clearfix {
+  &::after {
+    content: "";
+    display: table;
+    clear: both;
+  }
+}
+
+// Custom scrollbar styling
+%scrollbar {
+  // Entire scrollbar
+  &::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  // Scrollbar thumb
+  &::-webkit-scrollbar-thumb {
+    border-radius: 4px;
+    background-color: #90939955;
+  }
+  &::-webkit-scrollbar-thumb:hover {
+    background-color: #90939977;
+  }
+  &::-webkit-scrollbar-thumb:active {
+    background-color: #90939999;
+  }
+  // Intersection when both vertical and horizontal scrollbars are present
+  &::-webkit-scrollbar-corner {
+    background-color: transparent;
+  }
+}
+
+// Show ellipsis on text overflow
+%ellipsis {
+  // Hide overflowing text
+  overflow: hidden;
+  // Prevent text wrapping
+  white-space: nowrap;
+  // Show ellipsis at the end when text overflows
+  text-overflow: ellipsis;
+}
