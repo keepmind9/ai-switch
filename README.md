@@ -166,12 +166,14 @@ The `format` field tells the gateway what protocol the upstream API speaks:
 
 ## Client Setup
 
-> **Important**: You must configure the **full URL** (including path) for your AI CLI tool. The gateway identifies the client protocol by the request path (`/v1/messages`, `/v1/responses`, `/v1/chat/completions`). This is different from tools like `cc-switch` that only need a base URL.
+> **Note:** Different tools handle URL paths differently. Claude Code and Codex CLI append their own paths (`/v1/messages`, `/v1/responses`) to the base URL, so only set the host:port part. For generic Chat Completions tools, point to `http://localhost:12345/v1`.
 
 ### Claude Code
 
+Claude Code automatically appends `/v1/messages` to the base URL:
+
 ```bash
-export ANTHROPIC_BASE_URL=http://localhost:12345/v1/messages
+export ANTHROPIC_BASE_URL=http://localhost:12345
 export ANTHROPIC_API_KEY=gw-your-route-key
 ```
 
