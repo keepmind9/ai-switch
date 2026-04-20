@@ -227,21 +227,23 @@ func (a *AdminHandler) deleteProvider(c *gin.Context) {
 func (a *AdminHandler) listRoutes(c *gin.Context) {
 	cfg := a.provider.Get()
 	type routeItem struct {
-		Key          string            `json:"key"`
-		Provider     string            `json:"provider"`
-		DefaultModel string            `json:"default_model"`
-		SceneMap     map[string]string `json:"scene_map"`
-		ModelMap     map[string]string `json:"model_map"`
+		Key                  string            `json:"key"`
+		Provider             string            `json:"provider"`
+		DefaultModel         string            `json:"default_model"`
+		SceneMap             map[string]string `json:"scene_map"`
+		ModelMap             map[string]string `json:"model_map"`
+		LongContextThreshold int               `json:"long_context_threshold"`
 	}
 
 	items := make([]routeItem, 0, len(cfg.Routes))
 	for k, r := range cfg.Routes {
 		items = append(items, routeItem{
-			Key:          maskKey(k),
-			Provider:     r.Provider,
-			DefaultModel: r.DefaultModel,
-			SceneMap:     r.SceneMap,
-			ModelMap:     r.ModelMap,
+			Key:                  maskKey(k),
+			Provider:             r.Provider,
+			DefaultModel:         r.DefaultModel,
+			SceneMap:             r.SceneMap,
+			ModelMap:             r.ModelMap,
+			LongContextThreshold: r.LongContextThreshold,
 		})
 	}
 	c.JSON(http.StatusOK, gin.H{"data": items})
@@ -249,11 +251,12 @@ func (a *AdminHandler) listRoutes(c *gin.Context) {
 
 func (a *AdminHandler) createRoute(c *gin.Context) {
 	var req struct {
-		Key          string            `json:"key" binding:"required"`
-		Provider     string            `json:"provider" binding:"required"`
-		DefaultModel string            `json:"default_model"`
-		SceneMap     map[string]string `json:"scene_map"`
-		ModelMap     map[string]string `json:"model_map"`
+		Key                  string            `json:"key" binding:"required"`
+		Provider             string            `json:"provider" binding:"required"`
+		DefaultModel         string            `json:"default_model"`
+		SceneMap             map[string]string `json:"scene_map"`
+		ModelMap             map[string]string `json:"model_map"`
+		LongContextThreshold *int              `json:"long_context_threshold"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -278,12 +281,17 @@ func (a *AdminHandler) createRoute(c *gin.Context) {
 		return
 	}
 
-	cfg.Routes[req.Key] = config.RouteRule{
+	route := config.RouteRule{
 		Provider:     req.Provider,
 		DefaultModel: req.DefaultModel,
 		SceneMap:     req.SceneMap,
 		ModelMap:     req.ModelMap,
 	}
+	if req.LongContextThreshold != nil {
+		route.LongContextThreshold = *req.LongContextThreshold
+	}
+
+	cfg.Routes[req.Key] = route
 
 	if err := a.writeAndReload(cfg); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -297,10 +305,11 @@ func (a *AdminHandler) updateRoute(c *gin.Context) {
 	key := c.Param("key")
 
 	var req struct {
-		Provider     *string            `json:"provider"`
-		DefaultModel *string            `json:"default_model"`
-		SceneMap     *map[string]string `json:"scene_map"`
-		ModelMap     *map[string]string `json:"model_map"`
+		Provider             *string            `json:"provider"`
+		DefaultModel         *string            `json:"default_model"`
+		SceneMap             *map[string]string `json:"scene_map"`
+		ModelMap             *map[string]string `json:"model_map"`
+		LongContextThreshold *int               `json:"long_context_threshold"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -333,6 +342,9 @@ func (a *AdminHandler) updateRoute(c *gin.Context) {
 	}
 	if req.ModelMap != nil {
 		rule.ModelMap = *req.ModelMap
+	}
+	if req.LongContextThreshold != nil {
+		rule.LongContextThreshold = *req.LongContextThreshold
 	}
 
 	cfg.Routes[key] = rule
@@ -458,10 +470,11 @@ func copyConfig(cfg *config.Config) *config.Config {
 			mm[mk] = mv
 		}
 		cp.Routes[k] = config.RouteRule{
-			Provider:     v.Provider,
-			DefaultModel: v.DefaultModel,
-			SceneMap:     sm,
-			ModelMap:     mm,
+			Provider:             v.Provider,
+			DefaultModel:         v.DefaultModel,
+			SceneMap:             sm,
+			ModelMap:             mm,
+			LongContextThreshold: v.LongContextThreshold,
 		}
 	}
 	return cp
