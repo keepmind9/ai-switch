@@ -115,6 +115,14 @@ func extractClientAPIKey(c *gin.Context) string {
 	return ""
 }
 
+func buildUpstreamURL(result *router.RouteResult) string {
+	path := formatToPath(result.Format)
+	if result.Path != "" {
+		path = result.Path
+	}
+	return strings.TrimSuffix(result.BaseURL, "/") + path
+}
+
 // forwardRequest sends a request to the upstream API and returns the response.
 func (h *Handler) forwardRequest(result *router.RouteResult, path string, body []byte) (*http.Response, error) {
 	if result.Path != "" {
@@ -256,7 +264,7 @@ func (h *Handler) handleResponses(c *gin.Context) {
 		return
 	}
 
-	slog.Info("responses request", "model", responsesReq.Model, "stream", responsesReq.Stream, "upstream_format", result.Format, "upstream_base", result.BaseURL, "resolved_model", result.Model)
+	slog.Info("responses request", "model", responsesReq.Model, "stream", responsesReq.Stream, "upstream_format", result.Format, "upstream_url", buildUpstreamURL(result), "resolved_model", result.Model)
 
 	model := responsesReq.Model
 	if model == "" {
@@ -297,7 +305,7 @@ func (h *Handler) handleAnthropic(c *gin.Context) {
 		return
 	}
 
-	slog.Info("anthropic request", "model", anthReq.Model, "stream", anthReq.Stream, "upstream_format", result.Format, "upstream_base", result.BaseURL, "resolved_model", result.Model)
+	slog.Info("anthropic request", "model", anthReq.Model, "stream", anthReq.Stream, "upstream_format", result.Format, "upstream_url", buildUpstreamURL(result), "resolved_model", result.Model)
 
 	model := anthReq.Model
 	if model == "" {
@@ -339,7 +347,7 @@ func (h *Handler) handleChat(c *gin.Context) {
 		return
 	}
 
-	slog.Info("chat request", "model", chatReq.Model, "stream", chatReq.Stream, "upstream_format", result.Format, "upstream_base", result.BaseURL, "resolved_model", result.Model)
+	slog.Info("chat request", "model", chatReq.Model, "stream", chatReq.Stream, "upstream_format", result.Format, "upstream_url", buildUpstreamURL(result), "resolved_model", result.Model)
 
 	if chatReq.Model == "" {
 		chatReq.Model = result.Model
