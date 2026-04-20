@@ -2,11 +2,12 @@ package router
 
 // RouteResult holds the resolved routing decision.
 type RouteResult struct {
-	BaseURL string // upstream base_url
-	APIKey  string // upstream api_key
-	Format  string // upstream format (chat/anthropic/responses)
-	Model   string // resolved model name to send upstream
-	Path    string // optional path override
+	BaseURL  string // upstream base_url
+	APIKey   string // upstream api_key
+	Format   string // upstream format (chat/anthropic/responses)
+	Model    string // resolved model name to send upstream
+	Path     string // optional path override
+	ThinkTag string // optional: strip <tag>...</tag> from responses
 }
 
 // Router resolves a request to an upstream provider + model.

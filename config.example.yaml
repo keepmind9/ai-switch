@@ -15,6 +15,8 @@ providers:
     model_map:
       "claude-sonnet-4-5": "MiniMax-M2.5"
       "gpt-4o": "MiniMax-M2.5"
+    # Strip think tags from responses (optional, for reasoning models)
+    # think_tag: "think"
     logo_url: ""
     sponsor: true
   deepseek:

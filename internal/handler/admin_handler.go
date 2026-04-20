@@ -50,6 +50,7 @@ func (a *AdminHandler) listProviders(c *gin.Context) {
 		ModelMap  map[string]string `json:"model_map"`
 		LogoURL   string            `json:"logo_url"`
 		Sponsor   bool              `json:"sponsor"`
+		ThinkTag  string            `json:"think_tag"`
 		IsDefault bool              `json:"is_default"`
 	}
 
@@ -66,6 +67,7 @@ func (a *AdminHandler) listProviders(c *gin.Context) {
 			ModelMap:  p.ModelMap,
 			LogoURL:   p.LogoURL,
 			Sponsor:   p.Sponsor,
+			ThinkTag:  p.ThinkTag,
 			IsDefault: k == cfg.DefaultProvider,
 		})
 	}
@@ -84,6 +86,7 @@ func (a *AdminHandler) createProvider(c *gin.Context) {
 		ModelMap map[string]string `json:"model_map"`
 		LogoURL  string            `json:"logo_url"`
 		Sponsor  bool              `json:"sponsor"`
+		ThinkTag string            `json:"think_tag"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -140,6 +143,7 @@ func (a *AdminHandler) updateProvider(c *gin.Context) {
 		ModelMap *map[string]string `json:"model_map"`
 		LogoURL  *string            `json:"logo_url"`
 		Sponsor  *bool              `json:"sponsor"`
+		ThinkTag *string            `json:"think_tag"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -187,6 +191,9 @@ func (a *AdminHandler) updateProvider(c *gin.Context) {
 	}
 	if req.Sponsor != nil {
 		p.Sponsor = *req.Sponsor
+	}
+	if req.ThinkTag != nil {
+		p.ThinkTag = *req.ThinkTag
 	}
 
 	cfg.Providers[key] = p

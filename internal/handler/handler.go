@@ -292,9 +292,12 @@ func (h *Handler) handleAnthropic(c *gin.Context) {
 	apiKey := extractClientAPIKey(c)
 	result, routeErr := h.router.Route("anthropic", apiKey, body)
 	if routeErr != nil {
+		slog.Error("route error", "error", routeErr, "protocol", "anthropic", "api_key", apiKey)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": "route_error", "message": routeErr.Error()}})
 		return
 	}
+
+	slog.Info("anthropic request", "model", anthReq.Model, "stream", anthReq.Stream, "upstream_format", result.Format, "upstream_base", result.BaseURL, "resolved_model", result.Model)
 
 	model := anthReq.Model
 	if model == "" {
@@ -331,9 +334,12 @@ func (h *Handler) handleChat(c *gin.Context) {
 	apiKey := extractClientAPIKey(c)
 	result, routeErr := h.router.Route("chat", apiKey, body)
 	if routeErr != nil {
+		slog.Error("route error", "error", routeErr, "protocol", "chat", "api_key", apiKey)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": "route_error", "message": routeErr.Error()}})
 		return
 	}
+
+	slog.Info("chat request", "model", chatReq.Model, "stream", chatReq.Stream, "upstream_format", result.Format, "upstream_base", result.BaseURL, "resolved_model", result.Model)
 
 	if chatReq.Model == "" {
 		chatReq.Model = result.Model
@@ -407,7 +413,7 @@ func (h *Handler) responsesViaChat(c *gin.Context, result *router.RouteResult, r
 	}
 
 	if isStreaming {
-		state := &converter.ResponsesStreamState{Created: time.Now().Unix(), Model: model}
+		state := &converter.ResponsesStreamState{Created: time.Now().Unix(), Model: model, ThinkTag: result.ThinkTag}
 		h.streamChatToClient(c, resp, func(w converter.SSEWriter, data string) bool {
 			return converter.ConvertChatChunkToResponsesSSE(w, state, data)
 		})
@@ -421,7 +427,7 @@ func (h *Handler) responsesViaChat(c *gin.Context, result *router.RouteResult, r
 		return
 	}
 
-	responsesResp, err := h.converter.ChatToResponses(&chatResp, model)
+	responsesResp, err := h.converter.ChatToResponses(&chatResp, model, result.ThinkTag)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": "conversion_error", "message": err.Error()}})
 		return
@@ -455,7 +461,7 @@ func (h *Handler) anthropicViaChat(c *gin.Context, result *router.RouteResult, r
 	}
 
 	if isStreaming {
-		state := &converter.AnthropicStreamState{Model: model}
+		state := &converter.AnthropicStreamState{Model: model, ThinkTag: result.ThinkTag}
 		h.streamChatToClient(c, resp, func(w converter.SSEWriter, data string) bool {
 			return converter.ConvertChatChunkToAnthropicSSE(w, state, data)
 		})
@@ -469,7 +475,7 @@ func (h *Handler) anthropicViaChat(c *gin.Context, result *router.RouteResult, r
 		return
 	}
 
-	anthResp, err := h.converter.ChatToAnthropic(&chatResp, model)
+	anthResp, err := h.converter.ChatToAnthropic(&chatResp, model, result.ThinkTag)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": "conversion_error", "message": err.Error()}})
 		return

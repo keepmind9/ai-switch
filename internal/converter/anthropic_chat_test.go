@@ -164,7 +164,7 @@ func TestChatToAnthropic_Basic(t *testing.T) {
 		},
 	}
 
-	resp, err := c.ChatToAnthropic(chatResp, "claude-sonnet-4-5")
+	resp, err := c.ChatToAnthropic(chatResp, "claude-sonnet-4-5", "")
 	require.NoError(t, err)
 
 	assert.Equal(t, "chatcmpl-abc", resp.ID)
@@ -202,7 +202,7 @@ func TestChatToAnthropic_StopReasonMapping(t *testing.T) {
 				},
 			}
 
-			resp, err := c.ChatToAnthropic(chatResp, "model")
+			resp, err := c.ChatToAnthropic(chatResp, "model", "")
 			require.NoError(t, err)
 			assert.Equal(t, tt.expectedStop, resp.StopReason)
 		})
@@ -217,7 +217,7 @@ func TestChatToAnthropic_EmptyChoices(t *testing.T) {
 		Choices: []types.ChatChoice{},
 	}
 
-	resp, err := c.ChatToAnthropic(chatResp, "model")
+	resp, err := c.ChatToAnthropic(chatResp, "model", "")
 	require.NoError(t, err)
 
 	assert.Empty(t, resp.Content)
@@ -455,7 +455,7 @@ func TestRoundTrip_AnthropicToChatAndBack(t *testing.T) {
 	}
 
 	// Chat → Anthropic
-	anthResp, err := c.ChatToAnthropic(chatResp, "claude-sonnet-4-5")
+	anthResp, err := c.ChatToAnthropic(chatResp, "claude-sonnet-4-5", "")
 	require.NoError(t, err)
 
 	assert.Equal(t, "message", anthResp.Type)

@@ -38,6 +38,7 @@ type ProviderConfig struct {
 	ModelMap map[string]string `mapstructure:"model_map" yaml:"model_map"`
 	LogoURL  string            `mapstructure:"logo_url" yaml:"logo_url"`
 	Sponsor  bool              `mapstructure:"sponsor" yaml:"sponsor"`
+	ThinkTag string            `mapstructure:"think_tag" yaml:"think_tag,omitempty"`
 }
 
 var validFormats = map[string]bool{

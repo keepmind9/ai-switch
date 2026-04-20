@@ -75,15 +75,18 @@ func ConvertChatChunkToResponsesSSE(w SSEWriter, state *ResponsesStreamState, da
 		}
 
 		if choice.Delta.Content != "" {
-			state.AccText += choice.Delta.Content
-			w.WriteEvent("response.output_text.delta", map[string]any{
-				"type":            "response.output_text.delta",
-				"sequence_number": state.nextSeq(),
-				"output_index":    state.OutputIndex,
-				"content_index":   state.ContentIndex,
-				"item_id":         state.ItemID,
-				"delta":           choice.Delta.Content,
-			})
+			content := state.TagState.FilterChunk(choice.Delta.Content, state.ThinkTag)
+			if content != "" {
+				state.AccText += content
+				w.WriteEvent("response.output_text.delta", map[string]any{
+					"type":            "response.output_text.delta",
+					"sequence_number": state.nextSeq(),
+					"output_index":    state.OutputIndex,
+					"content_index":   state.ContentIndex,
+					"item_id":         state.ItemID,
+					"delta":           content,
+				})
+			}
 		}
 
 		if choice.FinishReason != "" && choice.FinishReason != "null" {

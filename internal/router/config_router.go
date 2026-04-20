@@ -44,11 +44,12 @@ func (r *ConfigRouter) Route(clientProtocol, apiKey string, body []byte) (*Route
 
 func providerToResult(prov config.ProviderConfig, model string) *RouteResult {
 	return &RouteResult{
-		BaseURL: prov.BaseURL,
-		APIKey:  prov.APIKey,
-		Format:  prov.Format,
-		Model:   model,
-		Path:    prov.Path,
+		BaseURL:  prov.BaseURL,
+		APIKey:   prov.APIKey,
+		Format:   prov.Format,
+		Model:    model,
+		Path:     prov.Path,
+		ThinkTag: prov.ThinkTag,
 	}
 }
 

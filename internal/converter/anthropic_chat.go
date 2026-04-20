@@ -88,7 +88,7 @@ func (c *Converter) AnthropicToChat(req *AnthropicRequest) (*types.ChatRequest, 
 }
 
 // ChatToAnthropic converts a Chat Completions response to an Anthropic Messages response.
-func (c *Converter) ChatToAnthropic(chatResp *types.ChatResponse, model string) (*AnthropicResponse, error) {
+func (c *Converter) ChatToAnthropic(chatResp *types.ChatResponse, model, thinkTag string) (*AnthropicResponse, error) {
 	var content []AnthropicContentBlock
 	var stopReason string
 
@@ -96,7 +96,7 @@ func (c *Converter) ChatToAnthropic(chatResp *types.ChatResponse, model string) 
 		choice := chatResp.Choices[0]
 		content = append(content, AnthropicContentBlock{
 			Type: "text",
-			Text: choice.Message.Content,
+			Text: StripThinkTag(choice.Message.Content, thinkTag),
 		})
 		stopReason = chatStopToAnthropic(choice.FinishReason)
 	}

@@ -16,6 +16,8 @@ type ResponsesStreamState struct {
 	AccText      string
 	SeqNum       int
 	Model        string
+	ThinkTag     string
+	TagState     ThinkTagState
 }
 
 func (s *ResponsesStreamState) nextSeq() int {
@@ -32,6 +34,8 @@ type AnthropicStreamState struct {
 	AccText      string
 	InputTokens  int
 	OutputTokens int
+	ThinkTag     string
+	TagState     ThinkTagState
 }
 
 func (s *AnthropicStreamState) nextBlockIndex() int {

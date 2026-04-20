@@ -60,6 +60,10 @@ func ConvertChatChunkToAnthropicSSE(w SSEWriter, state *AnthropicStreamState, da
 
 		// Content delta
 		if choice.Delta.Content != "" {
+			content := state.TagState.FilterChunk(choice.Delta.Content, state.ThinkTag)
+			if content == "" {
+				continue
+			}
 			if !state.ContentSent {
 				state.ContentSent = true
 				state.MessageID = chunk.ID
@@ -91,7 +95,7 @@ func ConvertChatChunkToAnthropicSSE(w SSEWriter, state *AnthropicStreamState, da
 				})
 			}
 
-			state.AccText += choice.Delta.Content
+			state.AccText += content
 			state.OutputTokens++
 
 			w.WriteEvent("content_block_delta", map[string]any{
@@ -99,7 +103,7 @@ func ConvertChatChunkToAnthropicSSE(w SSEWriter, state *AnthropicStreamState, da
 				"index": 0,
 				"delta": map[string]any{
 					"type": "text_delta",
-					"text": choice.Delta.Content,
+					"text": content,
 				},
 			})
 		}

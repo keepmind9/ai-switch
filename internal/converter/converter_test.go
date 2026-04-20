@@ -138,7 +138,7 @@ func TestChatToResponses(t *testing.T) {
 		},
 	}
 
-	resp, err := c.ChatToResponses(chatResp, "test-model")
+	resp, err := c.ChatToResponses(chatResp, "test-model", "")
 	require.NoError(t, err)
 
 	assert.Equal(t, "chatcmpl-123", resp.ID)
@@ -170,7 +170,7 @@ func TestChatToResponses_MultipleChoices(t *testing.T) {
 		Usage: types.ChatUsage{PromptTokens: 10, CompletionTokens: 10, TotalTokens: 20},
 	}
 
-	resp, err := c.ChatToResponses(chatResp, "model")
+	resp, err := c.ChatToResponses(chatResp, "model", "")
 	require.NoError(t, err)
 
 	require.Len(t, resp.Responses, 2)
