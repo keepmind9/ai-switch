@@ -385,6 +385,42 @@ routes:
 	dsRule := cfg.Routes["gw-deepseek"]
 	assert.Equal(t, "deepseek", dsRule.Provider)
 	assert.Equal(t, "deepseek-chat", dsRule.DefaultModel)
+	assert.Equal(t, 0, dsRule.LongContextThreshold)
+}
+
+func TestLoad_RoutesWithLongContextThreshold(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+
+	content := `
+server:
+  host: "0.0.0.0"
+  port: 12345
+default_provider: "default"
+providers:
+  default:
+    name: "Default"
+    base_url: "https://api.example.com/v1"
+    api_key: "key"
+    model: "model"
+routes:
+  "gw-test":
+    provider: "default"
+    default_model: "test-model"
+    long_context_threshold: 60000
+    scene_map:
+      default: "test-model"
+      longContext: "test-model-large"
+`
+	err := os.WriteFile(cfgPath, []byte(content), 0644)
+	require.NoError(t, err)
+
+	cfg, err := Load(cfgPath)
+	require.NoError(t, err)
+
+	rule := cfg.Routes["gw-test"]
+	assert.Equal(t, 60000, rule.LongContextThreshold)
+	assert.Equal(t, "test-model-large", rule.SceneMap["longcontext"])
 }
 
 func TestLoad_RoutesEmpty(t *testing.T) {

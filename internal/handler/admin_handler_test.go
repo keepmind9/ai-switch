@@ -205,6 +205,60 @@ func TestCreateRoute(t *testing.T) {
 	assert.Equal(t, http.StatusCreated, w.Code)
 }
 
+func TestCreateRouteWithLongContextThreshold(t *testing.T) {
+	r, cfgPath := setupAdminTest(t)
+
+	// Create a route with long_context_threshold
+	threshold := 60000
+	body, _ := json.Marshal(map[string]any{
+		"key":                    "gw-longctx",
+		"provider":               "minimax",
+		"default_model":          "MiniMax-M2.7",
+		"long_context_threshold": threshold,
+		"scene_map": map[string]string{
+			"default":     "MiniMax-M2.7",
+			"longContext": "MiniMax-M2.7-large",
+		},
+	})
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/admin/routes", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusCreated, w.Code)
+
+	// Verify the route was persisted with long_context_threshold
+	loaded, err := config.Load(cfgPath)
+	require.NoError(t, err)
+
+	route := loaded.Routes["gw-longctx"]
+	assert.Equal(t, "minimax", route.Provider)
+	assert.Equal(t, threshold, route.LongContextThreshold)
+	assert.Equal(t, "MiniMax-M2.7-large", route.SceneMap["longcontext"])
+
+	// Update the threshold
+	newThreshold := 120000
+	updateBody, _ := json.Marshal(map[string]any{
+		"long_context_threshold": newThreshold,
+	})
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPut, "/api/admin/routes/gw-longctx", bytes.NewReader(updateBody))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// Verify updated threshold persisted
+	loaded, err = config.Load(cfgPath)
+	require.NoError(t, err)
+
+	route = loaded.Routes["gw-longctx"]
+	assert.Equal(t, newThreshold, route.LongContextThreshold)
+	assert.Equal(t, "MiniMax-M2.7-large", route.SceneMap["longcontext"])
+}
+
 func TestDeleteRoute(t *testing.T) {
 	r, _ := setupAdminTest(t)
 
