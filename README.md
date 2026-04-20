@@ -46,20 +46,17 @@ server:
   host: "0.0.0.0"
   port: 12345
 
-default_provider: "minimax"
+default_route: "gw-default"
 
 providers:
   minimax:
     name: "MiniMax"
     base_url: "https://api.minimaxi.com"
     api_key: "${MINIMAX_API_KEY}"
-    model: "MiniMax-M2.5"
     format: "chat"
-    # Optional: strip <think/> blocks from responses
-    # think_tag: "think"
 
 routes:
-  "gw-my-key":
+  "gw-default":
     provider: "minimax"
     default_model: "MiniMax-M2.5"
     model_map:
@@ -78,7 +75,7 @@ Config loading priority: `-c` flag > `./config.yaml` > `~/.llm-gateway/config.ya
 
 ### Providers
 
-Providers define upstream LLM vendor information:
+Providers define upstream LLM vendor connection info:
 
 ```yaml
 providers:
@@ -86,9 +83,10 @@ providers:
     name: "MiniMax"
     base_url: "https://api.minimaxi.com"
     api_key: "${MINIMAX_API_KEY}"
-    model: "MiniMax-M2.5"
     format: "chat"          # chat (default) | responses | anthropic
     think_tag: "think"      # optional: strip reasoning tags from responses
+    models:                 # optional: available models for this provider
+      - "MiniMax-M2.5"
 ```
 
 ### Routes
@@ -155,6 +153,23 @@ routes:
       longContext: "glm-5.1"
       image: "glm-4.7"
 ```
+
+#### Cross-Provider Routing
+
+Use the `provider:model` format in scene_map, model_map, or default_model to route requests to a different provider within the same route:
+
+```yaml
+routes:
+  "gw-default":
+    provider: "minimax"
+    default_model: "MiniMax-M2.5"
+    scene_map:
+      default: "MiniMax-M2.5"
+      think: "deepseek:deepseek-chat"    # route think to DeepSeek
+      websearch: "zhipu:glm-4.7"         # route websearch to Zhipu
+```
+
+Plain model names (without `:`) use the route's default `provider`.
 
 ### Upstream Format
 
