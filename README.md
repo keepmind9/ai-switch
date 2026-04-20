@@ -11,7 +11,8 @@ A lightweight local LLM gateway proxy that lets any AI CLI tool use third-party 
 - **Lightweight**: Pure Go, no external dependencies, single binary
 - **Hot reload**: Update config without restart (`POST /api/reload` or `kill -HUP`)
 - **Cross-platform**: macOS, Linux, Windows (pure Go SQLite, no CGO)
-- **Model mapping**: Map client model names to upstream model names
+- **Scene routing**: Route Claude Code requests to different models based on request type (thinking, web search, background tasks)
+- **Model mapping**: Map client model names to upstream model names at the route level
 - **Multiple providers**: Pre-configure providers for quick switching
 
 ## Supported Protocols
@@ -50,29 +51,110 @@ default_provider: "minimax"
 providers:
   minimax:
     name: "MiniMax"
-    # base_url with /v1 suffix is OK — it will be auto-stripped
     base_url: "https://api.minimaxi.com"
     api_key: "${MINIMAX_API_KEY}"
     model: "MiniMax-M2.5"
     format: "chat"
-    model_map:
-      "claude-sonnet-4-5": "MiniMax-M2.5"
-      "gpt-4o": "MiniMax-M2.5"
+    # Optional: strip <think/> blocks from responses
+    # think_tag: "think"
 
 routes:
-  # Map key IS the gateway API key used by clients
   "gw-my-key":
     provider: "minimax"
     default_model: "MiniMax-M2.5"
+    model_map:
+      "claude-sonnet-4-5": "MiniMax-M2.5"
+      "gpt-4o": "MiniMax-M2.5"
+    scene_map:
+      default: "MiniMax-M2.5"
+      think: "MiniMax-M2.5"
+      websearch: "MiniMax-M2.5"
+      background: "MiniMax-M2.5"
 ```
 
 Config loading priority: `-c` flag > `./config.yaml` > `~/.llm-gateway/config.yaml`
 
 > **Note:** `base_url` with `/v1` suffix is auto-stripped on load to prevent double path issues.
 
+### Providers
+
+Providers define upstream LLM vendor information:
+
+```yaml
+providers:
+  minimax:
+    name: "MiniMax"
+    base_url: "https://api.minimaxi.com"
+    api_key: "${MINIMAX_API_KEY}"
+    model: "MiniMax-M2.5"
+    format: "chat"          # chat (default) | responses | anthropic
+    think_tag: "think"      # optional: strip reasoning tags from responses
+```
+
 ### Routes
 
-The map key in `routes` is the gateway API key that clients send for authentication. When a client sends `Authorization: Bearer <key>`, the gateway looks up the matching route.
+Routes map gateway API keys to providers and models. The map key is the gateway API key that clients send for authentication.
+
+```yaml
+routes:
+  "gw-my-key":
+    provider: "minimax"
+    default_model: "MiniMax-M2.5"
+```
+
+#### Model Resolution Priority
+
+When a request arrives, the gateway resolves the upstream model in this order:
+
+1. **ModelMap** — exact model name match (all protocols, case-insensitive)
+2. **SceneMap** — heuristic scene detection (Anthropic protocol only)
+3. **DefaultModel** — fallback
+
+#### Model Map
+
+Map client model names to upstream models. Works for all protocols, case-insensitive:
+
+```yaml
+routes:
+  "gw-my-key":
+    provider: "minimax"
+    default_model: "MiniMax-M2.5"
+    model_map:
+      "claude-sonnet-4-5": "MiniMax-M2.5"
+      "gpt-4o": "MiniMax-M2.5"
+```
+
+#### Scene Map (Claude Code)
+
+When the gateway receives an Anthropic Messages request (from Claude Code), it can detect the request scene and route to different models. This is useful for optimizing cost and performance across different Claude Code usage patterns.
+
+**Detected scenes:**
+
+| Scene | Key | Detection | Claude Code Usage |
+|-------|-----|-----------|-------------------|
+| Long Context | `longContext` | Token count exceeds `long_context_threshold` (disabled by default) | Requests with very large context windows |
+| Background | `background` | Model name contains "haiku" | Lightweight background tasks (Claude Code uses Haiku internally) |
+| Web Search | `websearch` | Tools array contains `web_search_*` type | Web search tool invocations |
+| Thinking | `think` | `thinking` field present in request | Plan mode, Think/UltraThink modes, extended reasoning |
+| Image | `image` | User messages contain image content blocks | Image analysis tasks |
+| Default | `default` | Fallback when no other scene matches | General coding, editing, and conversation |
+
+**Detection priority:** `longContext` > `background` > `websearch` > `think` > `image` > `default`
+
+```yaml
+routes:
+  "gw-claude":
+    provider: "zhipu"
+    default_model: "glm-5.1"
+    long_context_threshold: 60000
+    scene_map:
+      default: "glm-5.1"
+      think: "glm-5.1"
+      websearch: "glm-4.7"
+      background: "glm-4.5-air"
+      longContext: "glm-5.1"
+      image: "glm-4.7"
+```
 
 ### Upstream Format
 
@@ -89,8 +171,8 @@ The `format` field tells the gateway what protocol the upstream API speaks:
 ### Claude Code
 
 ```bash
-export ANTHROPIC_BASE_URL=http://localhost:12345
-export ANTHROPIC_API_KEY=any
+export ANTHROPIC_BASE_URL=http://localhost:12345/v1/messages
+export ANTHROPIC_API_KEY=gw-your-route-key
 ```
 
 ### Codex CLI
@@ -99,7 +181,7 @@ export ANTHROPIC_API_KEY=any
 [model_providers.proxy]
 name = "llm-gateway"
 base_url = "http://localhost:12345/v1"
-api_key = "your-gateway-key"
+api_key = "gw-your-route-key"
 wire_api = "responses"
 ```
 
@@ -107,7 +189,23 @@ wire_api = "responses"
 
 Point any tool's `base_url` to `http://localhost:12345/v1`.
 
-## API Endpoints
+## Admin API
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /admin/providers` | List providers |
+| `POST /admin/providers` | Create provider |
+| `PUT /admin/providers/:key` | Update provider |
+| `DELETE /admin/providers/:key` | Delete provider |
+| `GET /admin/routes` | List routes |
+| `POST /admin/routes` | Create route |
+| `PUT /admin/routes/:key` | Update route |
+| `DELETE /admin/routes/:key` | Delete route |
+| `POST /admin/routes/generate-key` | Generate a gateway API key |
+| `GET /admin/presets` | List provider presets |
+| `GET /admin/status` | Gateway status |
+
+## Core API Endpoints
 
 | Endpoint | Description |
 |----------|-------------|
