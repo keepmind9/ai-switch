@@ -2,18 +2,15 @@
 import { ref, onMounted } from "vue"
 import { Monitor, Connection, Key } from "@element-plus/icons-vue"
 import { getAdminStatus, listPresets, type Preset } from "@/api/stats"
-import { listProviders, type Provider } from "@/api/providers"
 
 const status = ref<any>({})
-const providers = ref<Provider[]>([])
 const presets = ref<Preset[]>([])
 const loading = ref(true)
 
 onMounted(async () => {
   try {
-    const [s, p, pr] = await Promise.all([getAdminStatus(), listProviders(), listPresets()])
+    const [s, pr] = await Promise.all([getAdminStatus(), listPresets()])
     status.value = s.data
-    providers.value = p.data.data
     presets.value = pr.data.data
   } finally {
     loading.value = false
@@ -78,25 +75,6 @@ onMounted(async () => {
           {{ p.name }}
         </el-tag>
       </el-space>
-    </el-card>
-
-    <!-- Configured Providers -->
-    <el-card v-if="providers.length" shadow="never" class="section-card">
-      <template #header>
-        <div class="card-header-label">Configured Providers</div>
-      </template>
-      <el-table :data="providers" stripe>
-        <el-table-column prop="name" label="Name" width="150" />
-        <el-table-column prop="key" label="Key" width="120" />
-        <el-table-column prop="base_url" label="Base URL" />
-        <el-table-column prop="format" label="Format" width="100" />
-        <el-table-column prop="model" label="Model" width="150" />
-        <el-table-column label="Default" width="80">
-          <template #default="{ row }">
-            <el-tag v-if="row.is_default" type="success" size="small">Default</el-tag>
-          </template>
-        </el-table-column>
-      </el-table>
     </el-card>
   </div>
 </template>

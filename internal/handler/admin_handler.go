@@ -240,7 +240,7 @@ func (a *AdminHandler) listRoutes(c *gin.Context) {
 	items := make([]routeItem, 0, len(cfg.Routes))
 	for k, r := range cfg.Routes {
 		items = append(items, routeItem{
-			Key:                  maskKey(k),
+			Key:                  k,
 			Provider:             r.Provider,
 			DefaultModel:         r.DefaultModel,
 			SceneMap:             r.SceneMap,
