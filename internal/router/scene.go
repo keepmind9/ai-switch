@@ -5,6 +5,15 @@ import (
 	"strings"
 )
 
+const (
+	SceneDefault     = "default"
+	SceneLongContext = "longContext"
+	SceneBackground  = "background"
+	SceneWebSearch   = "websearch"
+	SceneThink       = "think"
+	SceneImage       = "image"
+)
+
 // SceneConfig holds configuration for scene detection.
 type SceneConfig struct {
 	LongContextThreshold int
@@ -28,40 +37,40 @@ func DetectScene(body []byte, cfg SceneConfig) string {
 		Messages []sceneMessage `json:"messages"`
 	}
 	if err := json.Unmarshal(body, &req); err != nil {
-		return "default"
+		return SceneDefault
 	}
 
 	// Priority 1: longContext
 	if cfg.LongContextThreshold > 0 {
 		tokenCount := countTokens(body)
 		if tokenCount > cfg.LongContextThreshold {
-			return "longContext"
+			return SceneLongContext
 		}
 	}
 
 	// Priority 2: background — haiku model
 	if strings.Contains(strings.ToLower(req.Model), "haiku") {
-		return "background"
+		return SceneBackground
 	}
 
 	// Priority 3: websearch
 	for _, tool := range req.Tools {
 		if strings.HasPrefix(tool.Type, "web_search_") {
-			return "websearch"
+			return SceneWebSearch
 		}
 	}
 
 	// Priority 4: think
 	if req.Thinking != nil {
-		return "think"
+		return SceneThink
 	}
 
 	// Priority 5: image
 	if hasImageContent(req.Messages) {
-		return "image"
+		return SceneImage
 	}
 
-	return "default"
+	return SceneDefault
 }
 
 type sceneMessage struct {
