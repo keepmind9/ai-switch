@@ -12,9 +12,6 @@ providers:
     api_key: "${MINIMAX_API_KEY}"
     model: "MiniMax-M2.5"
     format: "chat"
-    model_map:
-      "claude-sonnet-4-5": "MiniMax-M2.5"
-      "gpt-4o": "MiniMax-M2.5"
     # Strip think tags from responses (optional, for reasoning models)
     # think_tag: "think"
     logo_url: ""
