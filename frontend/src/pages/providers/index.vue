@@ -1,18 +1,19 @@
 <script setup lang="ts">
-import { ref, onMounted } from "vue"
+import { ref, onMounted, computed } from "vue"
 import { ElMessage, ElMessageBox } from "element-plus"
-import { Plus, View, Edit, Close, Hide, CopyDocument } from "@element-plus/icons-vue"
+import { Plus, View, Edit, Close, Hide, CopyDocument, Search, Refresh, Link, Delete } from "@element-plus/icons-vue"
 import { listProviders, createProvider, updateProvider, deleteProvider, revealAPIKey, type Provider } from "@/api/providers"
 import { listPresets, type Preset } from "@/api/stats"
 
 const providers = ref<Provider[]>([])
 const presets = ref<Preset[]>([])
 const loading = ref(true)
-const showForm = ref(false)
+const showDrawer = ref(false)
 const isEdit = ref(false)
 const selectedPreset = ref("")
 const form = ref<any>({})
 const revealedKeys = ref<Record<string, string>>({})
+const searchQuery = ref("")
 
 const defaultForm = { key: "", name: "", base_url: "", path: "", api_key: "", format: "chat", logo_url: "", sponsor: false, models: [] as string[] }
 const modelInput = ref("")
@@ -28,24 +29,43 @@ async function load() {
   }
 }
 
+const filteredProviders = computed(() => {
+  if (!searchQuery.value) return providers.value
+  const q = searchQuery.value.toLowerCase()
+  return providers.value.filter(p => p.name.toLowerCase().includes(q) || p.key.toLowerCase().includes(q) || p.base_url.toLowerCase().includes(q))
+})
+
 function applyPreset(key: string) {
   if (selectedPreset.value === key) { selectedPreset.value = ""; return }
   const p = presets.value.find(x => x.key === key)
-  if (p) { form.value.base_url = p.base_url; form.value.format = p.format; form.value.name = p.name; form.value.key = p.key }
+  if (p) { 
+    form.value.base_url = p.base_url
+    form.value.format = p.format
+    form.value.name = p.name
+    form.value.key = p.key 
+  }
   selectedPreset.value = key
 }
 
 function openCreate() {
-  isEdit.value = false; form.value = { ...defaultForm }; selectedPreset.value = ""; showForm.value = true
+  isEdit.value = false; form.value = { ...defaultForm }; selectedPreset.value = ""; showDrawer.value = true
 }
 
 function openEdit(row: Provider) {
   isEdit.value = true
-  form.value = { key: row.key, name: row.name, base_url: row.base_url, path: row.path, api_key: "", format: row.format, logo_url: row.logo_url, sponsor: row.sponsor, models: [...(row.models || [])] }
-  selectedPreset.value = ""; showForm.value = true
+  form.value = { 
+    key: row.key, 
+    name: row.name, 
+    base_url: row.base_url, 
+    path: row.path, 
+    api_key: "", 
+    format: row.format, 
+    logo_url: row.logo_url, 
+    sponsor: row.sponsor, 
+    models: [...(row.models || [])] 
+  }
+  selectedPreset.value = ""; showDrawer.value = true
 }
-
-function cancelForm() { showForm.value = false }
 
 function addModel() {
   const m = modelInput.value.trim()
@@ -54,14 +74,34 @@ function addModel() {
 function removeModel(idx: number) { form.value.models.splice(idx, 1) }
 
 async function handleDelete(key: string) {
-  await ElMessageBox.confirm(`Delete provider "${key}"?`, "Confirm", { type: "warning" })
-  await deleteProvider(key); ElMessage.success("Deleted"); load()
+  try {
+    await ElMessageBox.confirm(`Are you sure you want to delete provider "${key}"? This action cannot be undone.`, "Delete Provider", { 
+      confirmButtonText: 'Delete',
+      cancelButtonText: 'Cancel',
+      confirmButtonClass: 'el-button--danger',
+      type: "warning" 
+    })
+    await deleteProvider(key)
+    ElMessage.success("Provider deleted successfully")
+    load()
+  } catch (e) {}
 }
 
 async function handleSubmit() {
-  if (isEdit.value) { const { key, ...data } = form.value; await updateProvider(key, data); ElMessage.success("Updated") }
-  else { await createProvider(form.value); ElMessage.success("Created") }
-  showForm.value = false; load()
+  try {
+    if (isEdit.value) { 
+      const { key, ...data } = form.value
+      await updateProvider(key, data)
+      ElMessage.success("Provider updated successfully") 
+    } else { 
+      await createProvider(form.value)
+      ElMessage.success("Provider created successfully") 
+    }
+    showDrawer.value = false
+    load()
+  } catch (e) {
+    ElMessage.error("Failed to save provider")
+  }
 }
 
 function handleToggleReveal(row: Provider) {
@@ -74,12 +114,7 @@ async function revealKey(row: Provider) {
 
 async function handleCopyKey(row: Provider) {
   const key = revealedKeys.value[row.key] || row.api_key
-  try { await navigator.clipboard.writeText(key); ElMessage.success("Copied") } catch { ElMessage.info(key) }
-}
-
-function presetTagStyle(p: Preset) {
-  const sel = selectedPreset.value === p.key
-  return { cursor: "pointer", borderColor: sel ? p.icon_color : "", backgroundColor: sel ? p.icon_color + "22" : "", color: sel ? p.icon_color : "" }
+  try { await navigator.clipboard.writeText(key); ElMessage.success("Copied to clipboard") } catch { ElMessage.info(key) }
 }
 
 onMounted(load)
@@ -88,183 +123,242 @@ onMounted(load)
 <template>
   <div class="app-container">
     <div class="page-header">
-      <h3>Providers</h3>
-      <el-button type="primary" :icon="showForm ? Close : Plus" @click="showForm ? cancelForm() : openCreate()">
-        {{ showForm ? "Cancel" : "Add Provider" }}
-      </el-button>
+      <div>
+        <h3>AI Providers</h3>
+        <p class="text-sm text-slate-500 mt-1">Manage upstream LLM services and API connections.</p>
+      </div>
+      <div class="flex gap-3">
+        <el-input v-model="searchQuery" placeholder="Search providers..." :prefix-icon="Search" clearable style="width: 240px" />
+        <el-button type="primary" :icon="Plus" @click="openCreate">Add Provider</el-button>
+        <el-button :icon="Refresh" circle @click="load" />
+      </div>
     </div>
 
-    <!-- Form -->
-    <el-card v-if="showForm" shadow="never" class="form-card">
-      <div v-if="!isEdit" class="preset-section">
-        <div class="preset-label">Quick setup:</div>
-        <el-space wrap :size="8">
-          <el-check-tag
-            v-for="p in presets"
-            :key="p.key"
-            :checked="selectedPreset === p.key"
-            @change="applyPreset(p.key)"
-            :style="presetTagStyle(p)"
-          >
-            <span v-if="p.is_partner" class="partner-star">&#9733;</span>{{ p.name }}
-          </el-check-tag>
-        </el-space>
-      </div>
-      <el-form :model="form" label-position="top">
-        <el-row :gutter="16">
-          <el-col :span="6" v-if="!isEdit">
-            <el-form-item label="Provider Key">
-              <el-input v-model="form.key" placeholder="e.g. minimax" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="6">
-            <el-form-item label="Name"><el-input v-model="form.name" /></el-form-item>
-          </el-col>
-          <el-col :span="isEdit ? 8 : 12">
-            <el-form-item label="Base URL"><el-input v-model="form.base_url" placeholder="https://api.example.com" /></el-form-item>
-          </el-col>
-          <el-col :span="6">
-            <el-form-item :label="isEdit ? 'API Key (keep empty)' : 'API Key'">
-              <el-input v-model="form.api_key" type="password" show-password />
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-row :gutter="16">
-          <el-col :span="6">
-            <el-form-item label="Format">
-              <el-select v-model="form.format" class="w-full">
-                <el-option label="Chat" value="chat" />
-                <el-option label="Anthropic" value="anthropic" />
-                <el-option label="Responses" value="responses" />
-              </el-select>
-            </el-form-item>
-          </el-col>
-          <el-col :span="6">
-            <el-form-item label="Path Override"><el-input v-model="form.path" placeholder="(optional)" /></el-form-item>
-          </el-col>
-          <el-col :span="6">
-            <el-form-item label="Sponsor"><el-switch v-model="form.sponsor" /></el-form-item>
-          </el-col>
-        </el-row>
-        <el-form-item label="Models">
-          <div class="models-editor">
-            <div class="models-tags">
-              <el-tag v-for="(m, idx) in form.models" :key="idx" closable @close="removeModel(Number(idx))" class="model-tag">{{ m }}</el-tag>
-            </div>
-            <div class="models-input-row">
-              <el-input v-model="modelInput" placeholder="Add model name" @keyup.enter="addModel" />
-              <el-button @click="addModel">Add</el-button>
-            </div>
-          </div>
-        </el-form-item>
-        <div class="form-actions">
-          <el-button @click="cancelForm">Cancel</el-button>
-          <el-button type="primary" @click="handleSubmit">{{ isEdit ? "Update" : "Create" }}</el-button>
-        </div>
-      </el-form>
-    </el-card>
-
-    <!-- Table -->
-    <el-card shadow="never">
-      <el-table :data="providers" v-loading="loading" stripe>
-        <el-table-column prop="key" label="Key" width="120" />
-        <el-table-column prop="name" label="Name" width="150" />
-        <el-table-column prop="base_url" label="Base URL" />
-        <el-table-column prop="format" label="Format" width="100" />
-        <el-table-column label="Models" min-width="200">
+    <el-card shadow="never" class="border-none!">
+      <el-table :data="filteredProviders" v-loading="loading" stripe size="large" class="provider-table">
+        <el-table-column prop="name" label="Provider" min-width="200">
           <template #default="{ row }">
-            <el-tag v-for="m in (row.models || [])" :key="m" size="small" class="tag-spacing">{{ m }}</el-tag>
-            <span v-if="!row.models?.length" class="text-muted">—</span>
+            <div class="flex items-center gap-3">
+              <div class="w-8 h-8 rounded bg-slate-100 flex items-center justify-center overflow-hidden shrink-0">
+                <img v-if="row.logo_url" :src="row.logo_url" class="max-w-full max-h-full object-contain" />
+                <span v-else class="text-xs font-bold text-slate-400">{{ row.key.slice(0,2).toUpperCase() }}</span>
+              </div>
+              <div>
+                <div class="font-bold text-slate-700">{{ row.name }}</div>
+                <div class="text-xs text-slate-400 mono! mt-0.5">{{ row.key }}</div>
+              </div>
+            </div>
           </template>
         </el-table-column>
-        <el-table-column label="API Key" width="200">
+        
+        <el-table-column prop="base_url" label="Endpoint" min-width="220">
           <template #default="{ row }">
-            <div class="api-key-cell">
-              <span class="mono api-key-text" :class="{ 'api-key-truncated': !revealedKeys[row.key] }">{{ revealedKeys[row.key] || row.api_key }}</span>
+            <div class="flex items-center gap-1 group">
+              <span class="text-sm text-slate-500 truncate max-w-200px">{{ row.base_url }}</span>
+              <el-link :href="row.base_url" target="_blank" :icon="Link" class="opacity-0 group-hover:opacity-100 transition-opacity" />
+            </div>
+          </template>
+        </el-table-column>
+        
+        <el-table-column prop="format" label="Format" width="120">
+          <template #default="{ row }">
+            <el-tag :type="row.format === 'chat' ? 'primary' : 'warning'" size="small" effect="light" class="capitalize">
+              {{ row.format }}
+            </el-tag>
+          </template>
+        </el-table-column>
+
+        <el-table-column label="API Key" width="220">
+          <template #default="{ row }">
+            <div class="flex items-center gap-2">
+              <span class="mono text-xs px-2 py-1 rounded truncate max-w-120px" :style="{ backgroundColor: 'var(--v3-key-bg)', color: revealedKeys[row.key] ? 'var(--v3-key-text-color)' : 'var(--el-text-color-placeholder)' }">
+                {{ revealedKeys[row.key] || '••••••••••••••••' }}
+              </span>
               <el-button link size="small" @click="handleToggleReveal(row)"><el-icon><component :is="revealedKeys[row.key] ? Hide : View" /></el-icon></el-button>
               <el-button v-if="revealedKeys[row.key]" link size="small" @click="handleCopyKey(row)"><el-icon><CopyDocument /></el-icon></el-button>
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="Actions" width="150" fixed="right">
+
+        <el-table-column label="Actions" width="120" fixed="right" align="right">
           <template #default="{ row }">
-            <el-button link type="primary" size="small" :icon="Edit" @click="openEdit(row)">Edit</el-button>
-            <el-button link type="danger" size="small" @click="handleDelete(row.key)">Delete</el-button>
+            <div class="flex justify-end gap-1">
+              <el-tooltip content="Edit Settings" placement="top">
+                <el-button link type="primary" :icon="Edit" @click="openEdit(row)" />
+              </el-tooltip>
+              <el-tooltip content="Delete Provider" placement="top">
+                <el-button link type="danger" :icon="Delete" @click="handleDelete(row.key)" />
+              </el-tooltip>
+            </div>
           </template>
         </el-table-column>
       </el-table>
     </el-card>
+
+    <!-- Create/Edit Drawer -->
+    <el-drawer
+      v-model="showDrawer"
+      :title="isEdit ? 'Edit AI Provider' : 'Add New Provider'"
+      size="500px"
+      destroy-on-close
+    >
+      <div class="px-2">
+        <div v-if="!isEdit" class="mb-8">
+          <div class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Quick Setup Presets</div>
+          <div class="grid grid-cols-2 gap-2">
+            <div
+              v-for="p in presets"
+              :key="p.key"
+              class="preset-card"
+              :class="{ 'active': selectedPreset === p.key }"
+              @click="applyPreset(p.key)"
+            >
+              <div class="w-6 h-6 rounded shrink-0 flex items-center justify-center bg-slate-100 mr-2">
+                <span class="text-[10px] font-bold" :style="{ color: p.icon_color }">{{ p.key.slice(0,2).toUpperCase() }}</span>
+              </div>
+              <span class="text-sm font-medium truncate">{{ p.name }}</span>
+            </div>
+          </div>
+        </div>
+
+        <el-form :model="form" label-position="top" class="custom-form">
+          <el-row :gutter="16">
+            <el-col :span="12">
+              <el-form-item label="Provider ID" required>
+                <el-input v-model="form.key" :disabled="isEdit" placeholder="e.g. openai" />
+              </el-form-item>
+            </el-col>
+            <el-col :span="12">
+              <el-form-item label="Display Name" required>
+                <el-input v-model="form.name" placeholder="e.g. OpenAI (Primary)" />
+              </el-form-item>
+            </el-col>
+          </el-row>
+
+          <el-form-item label="Base API URL" required>
+            <el-input v-model="form.base_url" placeholder="https://api.openai.com/v1" />
+          </el-form-item>
+
+          <el-row :gutter="16">
+            <el-col :span="12">
+              <el-form-item label="URL Path Override">
+                <el-input v-model="form.path" placeholder="/v1/chat/completions" />
+              </el-form-item>
+            </el-col>
+            <el-col :span="12">
+              <el-form-item label="API Key">
+                <el-input v-model="form.api_key" type="password" show-password :placeholder="isEdit ? 'Keep empty to remain unchanged' : 'sk-••••••••'" />
+              </el-form-item>
+            </el-col>
+          </el-row>
+
+          <el-row :gutter="16">
+            <el-col :span="12">
+              <el-form-item label="Protocol Format">
+                <el-select v-model="form.format" class="w-full">
+                  <el-option label="OpenAI Chat" value="chat" />
+                  <el-option label="Anthropic" value="anthropic" />
+                  <el-option label="Legacy Responses" value="responses" />
+                </el-select>
+              </el-form-item>
+            </el-col>
+            <el-col :span="12">
+              <el-form-item label="Provider Type">
+                <div class="flex items-center h-40px gap-2">
+                  <el-switch v-model="form.sponsor" />
+                  <span class="text-sm text-slate-500">Is Partner/Sponsor</span>
+                </div>
+              </el-form-item>
+            </el-col>
+          </el-row>
+
+          <el-form-item label="Available Models">
+            <div class="rounded-lg p-3" style="background-color: var(--v3-section-bg); border: 1px solid var(--el-border-color-light)">
+              <div class="flex flex-wrap gap-2 mb-3">
+                <el-tag v-for="(m, idx) in form.models" :key="idx" closable @close="removeModel(Number(idx))" size="small" type="info">
+                  {{ m }}
+                </el-tag>
+                <span v-if="!form.models.length" class="text-xs text-slate-400 italic mt-1">No models added yet.</span>
+              </div>
+              <div class="flex gap-2">
+                <el-input v-model="modelInput" placeholder="Add model (e.g. gpt-4o)" size="small" @keyup.enter="addModel" />
+                <el-button @click="addModel" size="small" :icon="Plus">Add</el-button>
+              </div>
+            </div>
+          </el-form-item>
+        </el-form>
+      </div>
+      <template #footer>
+        <div class="flex justify-end gap-3 px-2">
+          <el-button @click="showDrawer = false">Cancel</el-button>
+          <el-button type="primary" @click="handleSubmit" style="min-width: 100px">
+            {{ isEdit ? 'Save Changes' : 'Create Provider' }}
+          </el-button>
+        </div>
+      </template>
+    </el-drawer>
   </div>
 </template>
 
 <style lang="scss" scoped>
-.form-card {
-  margin-bottom: 16px;
-}
-
-.preset-section {
-  margin-bottom: 20px;
-  .preset-label {
-    font-size: 13px;
-    color: var(--el-text-color-secondary);
-    margin-bottom: 10px;
+.provider-table {
+  :deep(.el-table__header) th {
+    background-color: #f8fafc;
+    color: #64748b;
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: 0.05em;
   }
 }
 
-.w-full {
-  width: 100%;
-}
-
-.api-key-cell {
+.preset-card {
   display: flex;
   align-items: center;
-  gap: 4px;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: #ffffff;
+  color: #1e293b;
+  
+  &:hover {
+    border-color: var(--el-color-primary);
+    background: #eff6ff;
+  }
+  
+  &.active {
+    border-color: var(--el-color-primary);
+    background: #eff6ff;
+    color: var(--el-color-primary);
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+  }
 }
 
-.api-key-text {
-  min-width: 0;
-  word-break: break-all;
+.custom-form {
+  :deep(.el-form-item__label) {
+    font-weight: 600;
+    color: var(--v3-form-label-color);
+    padding-bottom: 4px;
+  }
 }
 
-.api-key-truncated {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 120px;
-}
+html.dark {
+  .preset-card {
+    background: #1e293b;
+    border-color: #334155;
+    color: #f1f5f9;
+    
+    &:hover, &.active { 
+      background: #334155; 
+      border-color: #3b82f6; 
+      color: #3b82f6;
+    }
 
-.partner-star {
-  color: #f59e0b;
-  margin-right: 2px;
-}
-
-.models-editor {
-  width: 100%;
-}
-
-.models-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin-bottom: 8px;
-}
-
-.models-input-row {
-  display: flex;
-  gap: 8px;
-  width: 100%;
-}
-
-.model-tag {
-  margin-right: 0;
-}
-
-.tag-spacing {
-  margin-right: 4px;
-  margin-bottom: 2px;
-}
-
-.text-muted {
-  color: var(--el-text-color-placeholder);
+    :deep(.bg-slate-100) {
+      background-color: #0f172a;
+    }
+  }
 }
 </style>

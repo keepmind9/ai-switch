@@ -43,20 +43,6 @@ const tipLineWidth = computed(() => !isTop.value ? "2px" : "0px")
 </template>
 
 <style lang="scss" scoped>
-%tip-line {
-  &::before {
-    content: "";
-    position: absolute;
-    top: 50%;
-    left: 0;
-    transform: translateY(-50%);
-    width: v-bind(tipLineWidth);
-    height: 60%;
-    border-radius: 0 3px 3px 0;
-    background-color: var(--v3-sidebar-menu-tip-line-bg-color);
-  }
-}
-
 .has-logo {
   .el-scrollbar {
     height: calc(100% - var(--v3-header-height));
@@ -65,6 +51,7 @@ const tipLineWidth = computed(() => !isTop.value ? "2px" : "0px")
 
 .el-scrollbar {
   height: 100%;
+  background-color: var(--v3-sidebar-menu-bg-color);
   :deep(.scrollbar-wrapper) {
     overflow-x: hidden;
   }
@@ -80,11 +67,12 @@ const tipLineWidth = computed(() => !isTop.value ? "2px" : "0px")
   border: none;
   width: 100%;
   background-color: transparent;
-  padding: 8px;
+  padding: 12px;
 }
 
 .el-menu--horizontal {
   height: v-bind(sidebarMenuItemHeight);
+  padding: 0 12px;
 }
 
 :deep(.el-menu-item),
@@ -93,37 +81,49 @@ const tipLineWidth = computed(() => !isTop.value ? "2px" : "0px")
 :deep(.el-menu--horizontal .el-menu-item) {
   height: v-bind(sidebarMenuItemHeight);
   line-height: v-bind(sidebarMenuItemHeight);
-  border-radius: 8px;
-  margin-bottom: 2px;
-  transition: background-color 0.2s, color 0.2s;
+  border-radius: var(--v3-border-radius-small);
+  margin-bottom: 4px;
+  color: var(--v3-sidebar-menu-text-color);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  
+  .el-icon, .svg-icon {
+    transition: transform 0.2s;
+  }
+
   &.is-active {
-    color: var(--el-color-primary);
-    background-color: var(--el-color-primary-light-9);
-    font-weight: 500;
+    color: var(--v3-sidebar-menu-active-text-color);
+    background-color: var(--v3-sidebar-menu-active-bg-color);
+    font-weight: 600;
+    
+    .el-icon, .svg-icon {
+      transform: scale(1.1);
+    }
   }
-  &:hover {
-    background-color: var(--el-fill-color-light);
+  
+  &:hover:not(.is-active) {
+    background-color: var(--v3-sidebar-menu-hover-bg-color);
+    color: #1e293b;
   }
+}
+
+html.dark :deep(.el-menu-item:hover:not(.is-active)) {
+  color: #f1f5f9;
 }
 
 :deep(.el-sub-menu) {
   &.is-active {
     > .el-sub-menu__title {
-      color: var(--el-color-primary);
+      color: var(--v3-sidebar-menu-active-text-color);
+      font-weight: 600;
     }
   }
 }
 
-:deep(.el-menu-item.is-active) {
-  @extend %tip-line;
-}
-
 .el-menu--collapse {
-  :deep(.el-sub-menu.is-active) {
-    .el-sub-menu__title {
-      @extend %tip-line;
-      background-color: var(--el-color-primary-light-9);
-    }
+  padding: 12px 8px;
+  :deep(.el-menu-item), :deep(.el-sub-menu__title) {
+    justify-content: center;
+    padding: 0 !important;
   }
 }
 </style>

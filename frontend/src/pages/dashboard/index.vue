@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from "vue"
-import { Monitor, Connection, Key } from "@element-plus/icons-vue"
+import { Monitor, Connection, Key, Right } from "@element-plus/icons-vue"
 import { getAdminStatus, listPresets, type Preset } from "@/api/stats"
 
 const status = ref<any>({})
@@ -20,127 +20,166 @@ onMounted(async () => {
 
 <template>
   <div class="app-container">
-    <!-- Stats Cards -->
-    <el-row :gutter="16" class="stat-row">
-      <el-col :span="8">
-        <el-card shadow="never" class="stat-card">
-          <div class="stat-icon">
-            <el-icon :size="24"><Monitor /></el-icon>
-          </div>
-          <div class="stat-info">
-            <div class="stat-label">Server</div>
-            <div class="stat-value">{{ status.server?.host }}:{{ status.server?.port }}</div>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :span="8">
-        <el-card shadow="never" class="stat-card">
-          <div class="stat-icon stat-icon--primary">
-            <el-icon :size="24"><Connection /></el-icon>
-          </div>
-          <div class="stat-info">
-            <div class="stat-label">Providers</div>
-            <div class="stat-value stat-value--primary">{{ status.provider_count || 0 }}</div>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :span="8">
-        <el-card shadow="never" class="stat-card">
-          <div class="stat-icon stat-icon--success">
-            <el-icon :size="24"><Key /></el-icon>
-          </div>
-          <div class="stat-info">
-            <div class="stat-label">Routes</div>
-            <div class="stat-value stat-value--success">{{ status.route_count || 0 }}</div>
-          </div>
-        </el-card>
-      </el-col>
-    </el-row>
+    <div class="page-header">
+      <div>
+        <h3>System Overview</h3>
+        <p class="text-sm text-slate-500 mt-1">Monitor your LLM Gateway status and configured providers.</p>
+      </div>
+    </div>
 
-    <!-- Supported Providers -->
-    <el-card shadow="never" class="section-card">
-      <template #header>
-        <div class="card-header-label">Supported Providers</div>
+    <!-- Stats Grid -->
+    <el-skeleton :loading="loading" animated :rows="3">
+      <template #default>
+        <el-row :gutter="20" class="mb-6">
+          <el-col :xs="24" :sm="8">
+            <el-card shadow="hover" class="stat-card border-none!">
+              <div class="flex items-center gap-4">
+                <div class="stat-icon bg-blue-50! text-blue-600!">
+                  <el-icon :size="24"><Monitor /></el-icon>
+                </div>
+                <div class="stat-info">
+                  <div class="stat-label">Server Address</div>
+                  <div class="stat-value text-lg!">{{ status.server?.host || '—' }}:{{ status.server?.port || '—' }}</div>
+                </div>
+              </div>
+            </el-card>
+          </el-col>
+          <el-col :xs="24" :sm="8">
+            <el-card shadow="hover" class="stat-card border-none!">
+              <div class="flex items-center gap-4">
+                <div class="stat-icon bg-indigo-50! text-indigo-600!">
+                  <el-icon :size="24"><Connection /></el-icon>
+                </div>
+                <div class="stat-info">
+                  <div class="stat-label">Total Providers</div>
+                  <div class="stat-value text-indigo-600!">{{ status.provider_count || 0 }}</div>
+                </div>
+              </div>
+            </el-card>
+          </el-col>
+          <el-col :xs="24" :sm="8">
+            <el-card shadow="hover" class="stat-card border-none!">
+              <div class="flex items-center gap-4">
+                <div class="stat-icon bg-emerald-50! text-emerald-600!">
+                  <el-icon :size="24"><Key /></el-icon>
+                </div>
+                <div class="stat-info">
+                  <div class="stat-label">Active Routes</div>
+                  <div class="stat-value text-emerald-600!">{{ status.route_count || 0 }}</div>
+                </div>
+              </div>
+            </el-card>
+          </el-col>
+        </el-row>
+
+        <!-- Main Content -->
+        <el-row :gutter="20">
+          <el-col :span="24">
+            <el-card shadow="never" class="section-card border-none!">
+              <template #header>
+                <div class="flex items-center justify-between">
+                  <span class="card-header-label">Supported Presets</span>
+                  <el-button link type="primary">View Docs <el-icon class="ml-1"><Right /></el-icon></el-button>
+                </div>
+              </template>
+              <div class="preset-grid">
+                <div
+                  v-for="p in presets"
+                  :key="p.key"
+                  class="preset-item"
+                  :style="{ '--p-color': p.icon_color }"
+                >
+                  <div class="preset-icon" :style="{ backgroundColor: p.icon_color + '15' }">
+                    <span class="text-xs font-bold" :style="{ color: p.icon_color }">{{ p.key.slice(0, 2).toUpperCase() }}</span>
+                  </div>
+                  <div class="preset-name">
+                    {{ p.name }}
+                    <el-tooltip v-if="p.is_partner" content="Partner Provider" placement="top">
+                      <span class="partner-star">★</span>
+                    </el-tooltip>
+                  </div>
+                </div>
+              </div>
+            </el-card>
+          </el-col>
+        </el-row>
       </template>
-      <el-space wrap :size="8">
-        <el-tag
-          v-for="p in presets"
-          :key="p.key"
-          :color="p.icon_color"
-          effect="dark"
-          round
-          class="provider-tag"
-        >
-          <span v-if="p.is_partner" class="partner-star">&#9733;</span>
-          {{ p.name }}
-        </el-tag>
-      </el-space>
-    </el-card>
+    </el-skeleton>
   </div>
 </template>
 
 <style lang="scss" scoped>
-.stat-row {
-  margin-bottom: 16px;
-}
-
 .stat-card {
-  :deep(.el-card__body) {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    padding: 20px;
-  }
-
+  height: 100%;
   .stat-icon {
-    width: 48px;
-    height: 48px;
-    border-radius: 12px;
+    width: 52px;
+    height: 52px;
+    border-radius: 14px;
     display: flex;
     align-items: center;
     justify-content: center;
-    background-color: var(--el-fill-color-light);
-    color: var(--el-text-color-secondary);
     flex-shrink: 0;
-
-    &--primary {
-      background-color: var(--el-color-primary-light-9);
-      color: var(--el-color-primary);
-    }
-    &--success {
-      background-color: var(--el-color-success-light-9);
-      color: var(--el-color-success);
-    }
-  }
-
-  .stat-info {
-    .stat-label {
-      font-size: 13px;
-      color: var(--el-text-color-secondary);
-      margin-bottom: 4px;
-    }
-    .stat-value {
-      font-size: 20px;
-      font-weight: 700;
-      color: var(--el-text-color-primary);
-      line-height: 1.3;
-      &--primary { color: var(--el-color-primary); }
-      &--success { color: var(--el-color-success); }
-    }
   }
 }
 
-.section-card {
-  margin-bottom: 16px;
+.preset-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 16px;
 }
 
-.provider-tag {
-  transition: transform 0.15s;
-  &:hover { transform: translateY(-1px); }
+.preset-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 12px;
+  background-color: #f8fafc;
+  border: 1px solid #f1f5f9;
+  transition: all 0.2s ease;
+  cursor: default;
+
+  &:hover {
+    border-color: var(--p-color);
+    background-color: #ffffff;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+  }
+
+  .preset-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .preset-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: #334155;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+html.dark {
+  .preset-item {
+    background-color: #1e293b;
+    border-color: #334155;
+    .preset-name { color: #f1f5f9; }
+    &:hover { background-color: #1e293b; }
+  }
 }
 
 .partner-star {
   color: #f59e0b;
-  margin-right: 2px;
+  font-size: 14px;
 }
 </style>

@@ -1,33 +1,102 @@
 /* Global CSS variables — Design system for LLM Gateway Admin */
 
 :root {
+  /* Colors */
+  --el-color-primary: #3b82f6;
+  --el-color-primary-light-3: #75a9f9;
+  --el-color-primary-light-5: #9dbefb;
+  --el-color-primary-light-7: #c4d6fd;
+  --el-color-primary-light-8: #d8e4fe;
+  --el-color-primary-light-9: #ebf1ff;
+  --el-color-primary-dark-2: #2f69db;
+
+  /* Sizing & Borders */
+  --v3-border-radius-base: 12px;
+  --v3-border-radius-small: 8px;
+  
+  /* Shadows */
+  --v3-box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+  --v3-box-shadow-hover: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  --v3-card-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+
   /* Body */
-  --v3-body-text-color: var(--el-text-color-primary);
-  --v3-body-bg-color: var(--el-bg-color-page);
+  --v3-body-text-color: #1e293b;
+  --v3-body-bg-color: #f8fafc; /* Slate 50 */
+  --el-bg-color: #ffffff;
+  --el-bg-color-page: #f8fafc;
+  --el-bg-color-overlay: #ffffff;
+  --el-text-color-primary: #1e293b;
+  --el-text-color-regular: #475569;
+  --el-text-color-placeholder: #94a3b8;
+  --el-border-color: #e2e8f0;
+  --el-border-color-light: #f1f5f9;
+  --el-border-color-lighter: #f8fafc;
+  --el-fill-color-blank: #ffffff;
+  --el-mask-color: rgba(0, 0, 0, 0.5);
+  
+  /* Custom Variables for Keys */
+  --v3-key-bg: #f8fafc;
+  --v3-key-border: #e2e8f0;
+  --v3-key-text-color: #475569;
+  --v3-title-text-color: #1e293b;
+  --v3-form-label-color: #475569;
+  --v3-section-bg: #f8fafc;
+  
   /* Header */
   --v3-header-height: var(--v3-navigationbar-height);
-  --v3-header-bg-color: var(--el-bg-color);
-  --v3-header-box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
-  --v3-header-border-bottom: 1px solid var(--el-border-color-lighter);
+  --v3-header-bg-color: #ffffff;
+  --v3-header-box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --v3-header-border-bottom: 1px solid #e2e8f0;
+  
   /* NavigationBar */
-  --v3-navigationbar-height: 56px;
-  --v3-navigationbar-text-color: var(--el-text-color-regular);
+  --v3-navigationbar-height: 64px;
+  --v3-navigationbar-text-color: #475569;
+  
   /* Sidebar */
-  --v3-sidebar-width: 224px;
-  --v3-sidebar-hide-width: 64px;
-  --v3-sidebar-border-right: none;
-  --v3-sidebar-menu-item-height: 48px;
+  --v3-sidebar-width: 240px;
+  --v3-sidebar-hide-width: 72px;
+  --v3-sidebar-border-right: 1px solid #e2e8f0;
+  --v3-sidebar-menu-item-height: 44px;
   --v3-sidebar-menu-tip-line-bg-color: var(--el-color-primary);
-  --v3-sidebar-menu-bg-color: var(--el-bg-color);
-  --v3-sidebar-menu-hover-bg-color: var(--el-fill-color-light);
-  --v3-sidebar-menu-text-color: var(--el-text-color-regular);
+  --v3-sidebar-menu-bg-color: #ffffff;
+  --v3-sidebar-menu-hover-bg-color: #f1f5f9;
+  --v3-sidebar-menu-text-color: #64748b;
   --v3-sidebar-menu-active-text-color: var(--el-color-primary);
-  /* TagsView (unused but kept for compat) */
-  --v3-tagsview-height: 0px;
+  --v3-sidebar-menu-active-bg-color: #eff6ff;
+
   /* Hamburger */
-  --v3-hamburger-text-color: var(--el-text-color-primary);
-  /* RightPanel */
-  --v3-rightpanel-button-bg-color: var(--el-bg-color);
+  --v3-hamburger-text-color: #64748b;
+}
+
+/* Dark mode overrides (standard) */
+html.dark {
+  --v3-body-bg-color: #0f172a;
+  --v3-header-bg-color: #1e293b;
+  --v3-header-border-bottom: 1px solid #334155;
+  --v3-sidebar-menu-bg-color: #1e293b;
+  --v3-sidebar-border-right: 1px solid #334155;
+  --v3-sidebar-menu-hover-bg-color: #334155;
+  --v3-sidebar-menu-active-bg-color: rgba(59, 130, 246, 0.15);
+  --v3-navigationbar-text-color: #cbd5e1;
+  
+  --el-bg-color: #1e293b;
+  --el-bg-color-page: #0f172a;
+  --el-bg-color-overlay: #1e293b;
+  --el-text-color-primary: #f1f5f9;
+  --el-text-color-regular: #cbd5e1;
+  --el-border-color: #334155;
+  --el-border-color-light: #1e293b;
+  --el-fill-color-blank: #1e293b;
+  --el-table-tr-bg-color: transparent;
+  --el-table-striped-bg-color: #1e293b;
+  --el-table-row-hover-bg-color: #334155;
+
+  --v3-key-bg: #334155;
+  --v3-key-border: #475569;
+  --v3-key-text-color: #cbd5e1;
+  --v3-title-text-color: #f1f5f9;
+  --v3-form-label-color: #cbd5e1;
+  --v3-section-bg: #0f172a;
 }
 
 body.content-large {
