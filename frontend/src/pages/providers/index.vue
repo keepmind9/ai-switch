@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from "vue"
 import { ElMessage, ElMessageBox } from "element-plus"
-import { Plus, View, Delete, Edit, Close } from "@element-plus/icons-vue"
+import { Plus, View, Edit, Close } from "@element-plus/icons-vue"
 import { listProviders, createProvider, updateProvider, deleteProvider, revealAPIKey, type Provider } from "@/api/providers"
 import { listPresets, type Preset } from "@/api/stats"
 
@@ -12,10 +12,9 @@ const showForm = ref(false)
 const isEdit = ref(false)
 const selectedPreset = ref("")
 const form = ref<any>({})
-const mapEditorData = ref<{ key: string; value: string }[]>([])
 const revealedKeys = ref<Record<string, string>>({})
 
-const defaultForm = { key: "", name: "", base_url: "", path: "", api_key: "", model: "", format: "chat", model_map: {}, logo_url: "", sponsor: false }
+const defaultForm = { key: "", name: "", base_url: "", path: "", api_key: "", model: "", format: "chat", logo_url: "", sponsor: false }
 
 async function load() {
   loading.value = true
@@ -36,13 +35,12 @@ function applyPreset(key: string) {
 }
 
 function openCreate() {
-  isEdit.value = false; form.value = { ...defaultForm }; mapEditorData.value = []; selectedPreset.value = ""; showForm.value = true
+  isEdit.value = false; form.value = { ...defaultForm }; selectedPreset.value = ""; showForm.value = true
 }
 
 function openEdit(row: Provider) {
   isEdit.value = true
   form.value = { key: row.key, name: row.name, base_url: row.base_url, path: row.path, api_key: "", model: row.model, format: row.format, logo_url: row.logo_url, sponsor: row.sponsor }
-  mapEditorData.value = Object.entries(row.model_map || {}).map(([k, v]) => ({ key: k, value: v }))
   selectedPreset.value = ""; showForm.value = true
 }
 
@@ -54,16 +52,10 @@ async function handleDelete(key: string) {
 }
 
 async function handleSubmit() {
-  const mm: Record<string, string> = {}
-  for (const item of mapEditorData.value) { if (item.key) mm[item.key] = item.value }
-  form.value.model_map = mm
   if (isEdit.value) { const { key, ...data } = form.value; await updateProvider(key, data); ElMessage.success("Updated") }
   else { await createProvider(form.value); ElMessage.success("Created") }
   showForm.value = false; load()
 }
-
-function addMapEntry() { mapEditorData.value.push({ key: "", value: "" }) }
-function removeMapEntry(idx: number) { mapEditorData.value.splice(idx, 1) }
 
 async function handleReveal(row: Provider) {
   if (revealedKeys.value[row.key]) {
@@ -146,16 +138,6 @@ onMounted(load)
             <el-form-item label="Sponsor"><el-switch v-model="form.sponsor" /></el-form-item>
           </el-col>
         </el-row>
-        <el-form-item label="Model Map">
-          <div class="map-editor">
-            <div v-for="(item, idx) in mapEditorData" :key="idx" class="map-editor-row">
-              <el-input v-model="item.key" placeholder="Client model" class="map-input" />
-              <el-input v-model="item.value" placeholder="Upstream model" class="map-input" />
-              <el-button link type="danger" @click="removeMapEntry(idx)"><el-icon><Delete /></el-icon></el-button>
-            </div>
-            <el-button size="small" @click="addMapEntry">+ Add Mapping</el-button>
-          </div>
-        </el-form-item>
         <div class="form-actions">
           <el-button @click="cancelForm">Cancel</el-button>
           <el-button type="primary" @click="handleSubmit">{{ isEdit ? "Update" : "Create" }}</el-button>
@@ -207,21 +189,6 @@ onMounted(load)
     color: var(--el-text-color-secondary);
     margin-bottom: 10px;
   }
-}
-
-.map-editor {
-  width: 100%;
-}
-
-.map-editor-row {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 8px;
-  align-items: center;
-}
-
-.map-input {
-  flex: 1;
 }
 
 .w-full {

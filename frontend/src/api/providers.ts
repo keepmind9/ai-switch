@@ -8,7 +8,6 @@ export interface Provider {
   api_key: string
   model: string
   format: string
-  model_map: Record<string, string>
   logo_url: string
   sponsor: boolean
   is_default: boolean
