@@ -300,7 +300,11 @@ func (a *AdminHandler) createRoute(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusCreated, gin.H{"data": gin.H{"key": req.Key}})
+	resp := gin.H{"data": gin.H{"key": req.Key}}
+	if w := validateRouteModels(cfg, route); len(w) > 0 {
+		resp["warnings"] = w
+	}
+	c.JSON(http.StatusCreated, resp)
 }
 
 func (a *AdminHandler) updateRoute(c *gin.Context) {
@@ -356,7 +360,11 @@ func (a *AdminHandler) updateRoute(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"data": gin.H{"key": key}})
+	resp := gin.H{"data": gin.H{"key": key}}
+	if w := validateRouteModels(cfg, rule); len(w) > 0 {
+		resp["warnings"] = w
+	}
+	c.JSON(http.StatusOK, resp)
 }
 
 func (a *AdminHandler) deleteRoute(c *gin.Context) {
@@ -484,4 +492,48 @@ func copyConfig(cfg *config.Config) *config.Config {
 		}
 	}
 	return cp
+}
+
+// validateRouteModels checks if models referenced in a route exist in their
+// respective provider's model list. Returns warnings for unrecognized models.
+func validateRouteModels(cfg *config.Config, route config.RouteRule) []string {
+	var warnings []string
+	models := collectRouteModels(route)
+	for provKey, modelNames := range models {
+		p, ok := cfg.Providers[provKey]
+		if !ok || len(p.Models) == 0 {
+			continue
+		}
+		known := make(map[string]bool, len(p.Models))
+		for _, m := range p.Models {
+			known[m] = true
+		}
+		for _, m := range modelNames {
+			if !known[m] {
+				warnings = append(warnings, fmt.Sprintf("model %q not found in provider %q's model list", m, provKey))
+			}
+		}
+	}
+	return warnings
+}
+
+// collectRouteModels extracts all model references from a route rule,
+// resolving provider:model format, grouped by provider key.
+func collectRouteModels(route config.RouteRule) map[string][]string {
+	result := make(map[string][]string)
+	add := func(value string) {
+		if value == "" {
+			return
+		}
+		pk, model := config.SplitProviderModel(value, route.Provider)
+		result[pk] = append(result[pk], model)
+	}
+	add(route.DefaultModel)
+	for _, v := range route.SceneMap {
+		add(v)
+	}
+	for _, v := range route.ModelMap {
+		add(v)
+	}
+	return result
 }

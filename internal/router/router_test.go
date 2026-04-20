@@ -275,7 +275,7 @@ func TestParseProviderModel(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			prov, model := parseProviderModel(tt.input, tt.defaultProvider)
+			prov, model := config.SplitProviderModel(tt.input, tt.defaultProvider)
 			assert.Equal(t, tt.expectedProv, prov)
 			assert.Equal(t, tt.expectedModel, model)
 		})

@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -18,29 +17,44 @@ import (
 	"github.com/keepmind9/llm-gateway/internal/middleware"
 	"github.com/keepmind9/llm-gateway/internal/router"
 	"github.com/keepmind9/llm-gateway/internal/store"
+	"github.com/spf13/cobra"
 )
 
-var (
-	configPath string
-	showHelp   bool
-)
-
-func init() {
-	flag.StringVar(&configPath, "c", "config.yaml", "path to config file")
-	flag.StringVar(&configPath, "config", "config.yaml", "path to config file")
-	flag.BoolVar(&showHelp, "h", false, "show help")
-	flag.BoolVar(&showHelp, "help", false, "show help")
-}
+var configPath string
 
 func main() {
-	flag.Parse()
+	rootCmd := &cobra.Command{
+		Use:   "llm-gateway",
+		Short: "LLM API Gateway",
+	}
+	rootCmd.PersistentFlags().StringVarP(&configPath, "config", "c", "config.yaml", "path to config file")
 
-	if showHelp {
-		fmt.Fprintf(os.Stdout, "Usage: %s [options]\n\nOptions:\n", os.Args[0])
-		flag.PrintDefaults()
-		os.Exit(0)
+	serveCmd := &cobra.Command{
+		Use:   "serve",
+		Short: "Start the gateway server",
+		Run:   runServe,
 	}
 
+	checkCmd := &cobra.Command{
+		Use:   "check",
+		Short: "Validate config file without starting the server",
+		Run:   runCheck,
+	}
+
+	rootCmd.AddCommand(serveCmd, checkCmd)
+
+	// Default to serve when no subcommand is given
+	if len(os.Args) == 1 || (len(os.Args) > 1 && os.Args[1][0] == '-') {
+		args := append([]string{"serve"}, os.Args[1:]...)
+		rootCmd.SetArgs(args)
+	}
+
+	if err := rootCmd.Execute(); err != nil {
+		os.Exit(1)
+	}
+}
+
+func runServe(_ *cobra.Command, _ []string) {
 	dataDir, err := config.EnsureDataDir()
 	if err != nil {
 		slog.Warn("failed to create data directory", "error", err)
@@ -56,7 +70,6 @@ func main() {
 
 	provider := config.NewProvider(cfg, resolvedPath)
 
-	// Initialize usage store
 	dbPath := filepath.Join(dataDir, "usage.db")
 	usageStore, err := store.NewUsageStore(dbPath)
 	if err != nil {
@@ -68,7 +81,6 @@ func main() {
 	r.Use(gin.Logger())
 	r.Use(gin.Recovery())
 
-	// Usage tracking middleware
 	if usageStore != nil {
 		r.Use(middleware.UsageMiddleware(usageStore))
 	}
@@ -77,7 +89,6 @@ func main() {
 	h := handler.NewHandler(provider, usageStore, cfgRouter)
 	h.RegisterRoutes(r)
 
-	// Admin API (localhost only)
 	adminH := handler.NewAdminHandler(provider)
 	adminGroup := r.Group("/api", middleware.LocalhostOnly())
 	adminH.RegisterRoutes(adminGroup)
@@ -126,4 +137,50 @@ func main() {
 			}
 		}
 	}
+}
+
+func runCheck(_ *cobra.Command, _ []string) {
+	resolvedPath := config.DefaultConfigPath(configPath)
+
+	fmt.Printf("Checking %s ...\n\n", resolvedPath)
+
+	cfg, err := config.Load(resolvedPath)
+	if err != nil {
+		fmt.Printf("✗ Parse error: %s\n", err)
+		os.Exit(1)
+	}
+
+	result := config.Validate(cfg)
+
+	fmt.Printf("  Providers: %d\n", len(cfg.Providers))
+	fmt.Printf("  Routes:    %d\n", len(cfg.Routes))
+	if cfg.DefaultRoute != "" {
+		fmt.Printf("  Default:   %s\n", cfg.DefaultRoute)
+	}
+	fmt.Println()
+
+	if len(result.Warnings) > 0 {
+		fmt.Println("⚠ Warnings:")
+		for _, w := range result.Warnings {
+			fmt.Printf("  - %s\n", w.Message)
+		}
+		fmt.Println()
+	}
+
+	if len(result.Errors) > 0 {
+		fmt.Println("✗ Errors:")
+		for _, e := range result.Errors {
+			fmt.Printf("  - %s\n", e.Message)
+		}
+		fmt.Println()
+		fmt.Printf("%d error(s), %d warning(s) found.\n", len(result.Errors), len(result.Warnings))
+		os.Exit(1)
+	}
+
+	if len(result.Warnings) > 0 {
+		fmt.Printf("✓ No errors, %d warning(s).\n", len(result.Warnings))
+		os.Exit(2)
+	}
+
+	fmt.Println("✓ Config is valid.")
 }

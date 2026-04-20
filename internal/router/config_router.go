@@ -39,7 +39,7 @@ func (r *ConfigRouter) Route(clientProtocol, apiKey string, body []byte) (*Route
 
 func (r *ConfigRouter) resolveRoute(cfg *config.Config, rule config.RouteRule, clientProtocol string, body []byte) (*RouteResult, error) {
 	modelValue := resolveModel(rule, clientProtocol, body)
-	providerKey, modelName := parseProviderModel(modelValue, rule.Provider)
+	providerKey, modelName := config.SplitProviderModel(modelValue, rule.Provider)
 
 	prov, ok := cfg.Providers[providerKey]
 	if !ok {
@@ -55,15 +55,6 @@ func (r *ConfigRouter) resolveRoute(cfg *config.Config, rule config.RouteRule, c
 		Path:        prov.Path,
 		ThinkTag:    prov.ThinkTag,
 	}, nil
-}
-
-// parseProviderModel splits a "provider:model" value. Plain model names
-// use defaultProvider. Uses LastIndex for safety with edge cases.
-func parseProviderModel(value, defaultProvider string) (provider string, model string) {
-	if idx := strings.LastIndex(value, ":"); idx > 0 {
-		return value[:idx], value[idx+1:]
-	}
-	return defaultProvider, value
 }
 
 func resolveModel(rule config.RouteRule, clientProtocol string, body []byte) string {
