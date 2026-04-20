@@ -54,24 +54,29 @@ func providerToResult(prov config.ProviderConfig, model string) *RouteResult {
 }
 
 func resolveModel(rule config.RouteRule, clientProtocol string, body []byte) string {
-	if clientProtocol == "anthropic" && len(rule.SceneMap) > 0 {
-		scene := DetectScene(body)
-		if mapped, ok := rule.SceneMap[scene]; ok {
-			return mapped
-		}
-		return rule.DefaultModel
-	}
-
+	// Priority 1: ModelMap — exact model name match (all protocols, case-insensitive)
 	if len(rule.ModelMap) > 0 {
 		var req struct {
 			Model string `json:"model"`
 		}
 		if json.Unmarshal(body, &req) == nil && req.Model != "" {
-			if mapped, ok := rule.ModelMap[req.Model]; ok {
-				return mapped
+			lower := strings.ToLower(req.Model)
+			for k, v := range rule.ModelMap {
+				if strings.ToLower(k) == lower {
+					return v
+				}
 			}
 		}
 	}
 
+	// Priority 2: SceneMap — heuristic scene detection (anthropic protocol only)
+	if clientProtocol == "anthropic" && len(rule.SceneMap) > 0 {
+		scene := DetectScene(body)
+		if mapped, ok := rule.SceneMap[scene]; ok {
+			return mapped
+		}
+	}
+
+	// Priority 3: DefaultModel fallback
 	return rule.DefaultModel
 }

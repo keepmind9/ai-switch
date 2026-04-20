@@ -1,6 +1,7 @@
 package router
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/keepmind9/llm-gateway/internal/config"
@@ -181,4 +182,78 @@ func TestConfigRouter_RouteUnknownProvider(t *testing.T) {
 	_, err := r.Route("chat", "gw-test", []byte(`{}`))
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "unknown provider")
+}
+
+func TestConfigRouter_RouteModelMapPriorityOverSceneMap(t *testing.T) {
+	cfg := &config.Config{
+		Providers: map[string]config.ProviderConfig{
+			"zhipu": {
+				Name:    "Zhipu",
+				BaseURL: "https://open.bigmodel.cn/api/anthropic",
+				APIKey:  "zhipu-key",
+				Format:  "anthropic",
+			},
+		},
+		Routes: map[string]config.RouteRule{
+			"gw-test": {
+				Provider:     "zhipu",
+				DefaultModel: "glm-5.1",
+				SceneMap: map[string]string{
+					"default": "glm-5.1",
+					"think":   "glm-5.1-think",
+				},
+				ModelMap: map[string]string{
+					"claude-sonnet-4-5": "glm-4.7",
+				},
+			},
+		},
+	}
+	r := NewConfigRouter(config.NewProvider(cfg, ""))
+
+	// ModelMap should win over SceneMap
+	result, err := r.Route("anthropic", "gw-test", []byte(`{"model":"claude-sonnet-4-5","messages":[]}`))
+	require.NoError(t, err)
+	assert.Equal(t, "glm-4.7", result.Model)
+}
+
+func TestConfigRouter_RouteModelMapCaseInsensitive(t *testing.T) {
+	cfg := &config.Config{
+		Providers: map[string]config.ProviderConfig{
+			"test": {
+				Name:    "Test",
+				BaseURL: "https://api.test.com",
+				APIKey:  "key",
+				Format:  "chat",
+			},
+		},
+		Routes: map[string]config.RouteRule{
+			"gw-test": {
+				Provider:     "test",
+				DefaultModel: "fallback-model",
+				ModelMap: map[string]string{
+					"GPT-4o": "mapped-model",
+				},
+			},
+		},
+	}
+	r := NewConfigRouter(config.NewProvider(cfg, ""))
+
+	tests := []struct {
+		name     string
+		model    string
+		expected string
+	}{
+		{"exact case", "GPT-4o", "mapped-model"},
+		{"lowercase", "gpt-4o", "mapped-model"},
+		{"mixed case", "Gpt-4O", "mapped-model"},
+		{"no match", "claude-3", "fallback-model"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := r.Route("chat", "gw-test", []byte(fmt.Sprintf(`{"model":"%s"}`, tt.model)))
+			require.NoError(t, err)
+			assert.Equal(t, tt.expected, result.Model)
+		})
+	}
 }

@@ -22,6 +22,7 @@ HANDOFF.md
 # Config with secrets
 config.yaml
 docs/plans
+docs/superpowers
 
 # Frontend
 frontend/node_modules
