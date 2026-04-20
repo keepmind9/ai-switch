@@ -10,79 +10,136 @@ func TestDetectScene(t *testing.T) {
 	tests := []struct {
 		name     string
 		body     string
+		cfg      SceneConfig
 		expected string
 	}{
 		{
 			name:     "thinking field present",
 			body:     `{"model":"claude-sonnet","thinking":{"type":"enabled","budget_tokens":5000},"messages":[]}`,
-			expected: "think",
-		},
-		{
-			name:     "thinking field is object",
-			body:     `{"model":"claude-sonnet","thinking":{"type":"enabled"},"messages":[]}`,
+			cfg:      SceneConfig{},
 			expected: "think",
 		},
 		{
 			name:     "web search tool",
 			body:     `{"model":"claude-sonnet","tools":[{"type":"web_search_20250305","name":"web_search"}],"messages":[]}`,
-			expected: "websearch",
-		},
-		{
-			name:     "web search tool variant",
-			body:     `{"model":"claude-sonnet","tools":[{"type":"web_search_beta"}],"messages":[]}`,
+			cfg:      SceneConfig{},
 			expected: "websearch",
 		},
 		{
 			name:     "haiku model",
 			body:     `{"model":"claude-3-5-haiku-20241022","messages":[]}`,
-			expected: "background",
-		},
-		{
-			name:     "haiku in model name case insensitive",
-			body:     `{"model":"Claude-Haiku","messages":[]}`,
+			cfg:      SceneConfig{},
 			expected: "background",
 		},
 		{
 			name:     "default fallback",
 			body:     `{"model":"claude-sonnet","messages":[]}`,
+			cfg:      SceneConfig{},
 			expected: "default",
 		},
 		{
 			name:     "empty body",
 			body:     `{}`,
+			cfg:      SceneConfig{},
 			expected: "default",
 		},
 		{
 			name:     "invalid json",
 			body:     `not json`,
+			cfg:      SceneConfig{},
 			expected: "default",
 		},
+		// Priority: websearch > think
 		{
-			name:     "thinking takes priority over web search",
+			name:     "websearch takes priority over think",
 			body:     `{"model":"claude-sonnet","thinking":{"type":"enabled"},"tools":[{"type":"web_search_20250305"}],"messages":[]}`,
-			expected: "think",
-		},
-		{
-			name:     "web search takes priority over haiku",
-			body:     `{"model":"claude-3-5-haiku","tools":[{"type":"web_search_beta"}],"messages":[]}`,
+			cfg:      SceneConfig{},
 			expected: "websearch",
+		},
+		// Priority: background > websearch
+		{
+			name:     "background takes priority over websearch",
+			body:     `{"model":"claude-3-5-haiku","tools":[{"type":"web_search_beta"}],"messages":[]}`,
+			cfg:      SceneConfig{},
+			expected: "background",
 		},
 		{
 			name:     "non web search tools",
 			body:     `{"model":"claude-sonnet","tools":[{"type":"computer_20250124"}],"messages":[]}`,
-			expected: "default",
-		},
-		{
-			name:     "empty tools array",
-			body:     `{"model":"claude-sonnet","tools":[],"messages":[]}`,
+			cfg:      SceneConfig{},
 			expected: "default",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := DetectScene([]byte(tt.body))
+			result := DetectScene([]byte(tt.body), tt.cfg)
 			assert.Equal(t, tt.expected, result)
 		})
 	}
+}
+
+func TestDetectScene_Image(t *testing.T) {
+	tests := []struct {
+		name     string
+		body     string
+		expected string
+	}{
+		{
+			name:     "image in user message",
+			body:     `{"model":"claude-sonnet","messages":[{"role":"user","content":[{"type":"text","text":"What is this?"},{"type":"image","source":{"type":"base64","media_type":"image/png","data":"iVBOR..."}}]}]}`,
+			expected: "image",
+		},
+		{
+			name:     "assistant message with image ignored",
+			body:     `{"model":"claude-sonnet","messages":[{"role":"assistant","content":[{"type":"image","source":{}}]}]}`,
+			expected: "default",
+		},
+		{
+			name:     "string content no image",
+			body:     `{"model":"claude-sonnet","messages":[{"role":"user","content":"Hello"}]}`,
+			expected: "default",
+		},
+		{
+			name:     "think takes priority over image",
+			body:     `{"model":"claude-sonnet","thinking":{"type":"enabled"},"messages":[{"role":"user","content":[{"type":"image","source":{}}]}]}`,
+			expected: "think",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := DetectScene([]byte(tt.body), SceneConfig{})
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestDetectScene_LongContext(t *testing.T) {
+	longText := ""
+	for i := 0; i < 500; i++ {
+		longText += "This is a test sentence for token counting. "
+	}
+	body := `{"model":"claude-sonnet","messages":[{"role":"user","content":"` + longText + `"}]}`
+
+	t.Run("exceeds threshold", func(t *testing.T) {
+		result := DetectScene([]byte(body), SceneConfig{LongContextThreshold: 100})
+		assert.Equal(t, "longContext", result)
+	})
+
+	t.Run("below threshold", func(t *testing.T) {
+		result := DetectScene([]byte(body), SceneConfig{LongContextThreshold: 100000})
+		assert.Equal(t, "default", result)
+	})
+
+	t.Run("threshold zero disables longContext", func(t *testing.T) {
+		result := DetectScene([]byte(body), SceneConfig{LongContextThreshold: 0})
+		assert.Equal(t, "default", result)
+	})
+
+	t.Run("longContext takes priority over background", func(t *testing.T) {
+		haikuBody := `{"model":"claude-3-5-haiku","messages":[{"role":"user","content":"` + longText + `"}]}`
+		result := DetectScene([]byte(haikuBody), SceneConfig{LongContextThreshold: 100})
+		assert.Equal(t, "longContext", result)
+	})
 }

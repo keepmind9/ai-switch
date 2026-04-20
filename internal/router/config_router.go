@@ -71,7 +71,9 @@ func resolveModel(rule config.RouteRule, clientProtocol string, body []byte) str
 
 	// Priority 2: SceneMap — heuristic scene detection (anthropic protocol only)
 	if clientProtocol == "anthropic" && len(rule.SceneMap) > 0 {
-		scene := DetectScene(body)
+		scene := DetectScene(body, SceneConfig{
+			LongContextThreshold: rule.LongContextThreshold,
+		})
 		if mapped, ok := rule.SceneMap[scene]; ok {
 			return mapped
 		}
