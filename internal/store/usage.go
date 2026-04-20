@@ -14,15 +14,15 @@ import (
 
 // UsageRecord represents a single usage data point.
 type UsageRecord struct {
-	Provider            string
-	Model               string
-	Date                string
-	Requests            int64
-	InputTokens         int64
-	OutputTokens        int64
-	CacheCreationTokens int64
-	CacheReadTokens     int64
-	TotalTokens         int64
+	Provider            string `json:"provider"`
+	Model               string `json:"model"`
+	Date                string `json:"date"`
+	Requests            int64  `json:"requests"`
+	InputTokens         int64  `json:"input_tokens"`
+	OutputTokens        int64  `json:"output_tokens"`
+	CacheCreationTokens int64  `json:"cache_creation_tokens"`
+	CacheReadTokens     int64  `json:"cache_read_tokens"`
+	TotalTokens         int64  `json:"total_tokens"`
 }
 
 // UsageStore provides async SQLite storage for usage statistics.

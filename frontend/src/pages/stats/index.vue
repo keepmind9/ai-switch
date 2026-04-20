@@ -80,13 +80,13 @@ const chartOption = computed(() => {
     xAxis: {
       type: "category",
       data: dates,
-      axisLine: { lineStyle: { color: "var(--el-border-color)" } },
-      axisLabel: { color: "var(--el-text-color-secondary)", fontSize: 11 },
+      axisLine: { lineStyle: { color: "#dcdfe6" } },
+      axisLabel: { color: "#909399", fontSize: 11 },
     },
     yAxis: {
       type: "value",
-      splitLine: { lineStyle: { color: "var(--el-border-color-lighter)" } },
-      axisLabel: { color: "var(--el-text-color-secondary)", fontSize: 11 },
+      splitLine: { lineStyle: { color: "#e4e7ed" } },
+      axisLabel: { color: "#909399", fontSize: 11 },
     },
     series: [
       {
@@ -95,7 +95,7 @@ const chartOption = computed(() => {
         stack: "tokens",
         barMaxWidth: 24,
         itemStyle: { borderRadius: [0, 0, 0, 0] },
-        color: "var(--el-color-primary)",
+        color: "#409eff",
         data: dates.map(d => daily[d].input),
       },
       {
@@ -104,7 +104,7 @@ const chartOption = computed(() => {
         stack: "tokens",
         barMaxWidth: 24,
         itemStyle: { borderRadius: [4, 4, 0, 0] },
-        color: "var(--el-color-success)",
+        color: "#67c23a",
         data: dates.map(d => daily[d].output),
       },
     ],
@@ -223,20 +223,20 @@ onMounted(load)
       <template #header>
         <div class="card-header-label">Usage Records</div>
       </template>
-      <el-table :data="filtered" v-loading="loading" stripe max-height="400">
+      <el-table :data="filtered" v-loading="loading" stripe max-height="500">
         <el-table-column prop="date" label="Date" width="120" />
-        <el-table-column prop="provider" label="Provider" width="120" />
-        <el-table-column prop="model" label="Model" width="200" />
-        <el-table-column prop="requests" label="Requests" width="100">
+        <el-table-column prop="provider" label="Provider" min-width="160" />
+        <el-table-column prop="model" label="Model" min-width="180" />
+        <el-table-column prop="requests" label="Requests" width="110" align="right">
           <template #default="{ row }">{{ row.requests.toLocaleString() }}</template>
         </el-table-column>
-        <el-table-column prop="input_tokens" label="Input" width="120">
+        <el-table-column prop="input_tokens" label="Input Tokens" width="130" align="right">
           <template #default="{ row }">{{ row.input_tokens.toLocaleString() }}</template>
         </el-table-column>
-        <el-table-column prop="output_tokens" label="Output" width="120">
+        <el-table-column prop="output_tokens" label="Output Tokens" width="130" align="right">
           <template #default="{ row }">{{ row.output_tokens.toLocaleString() }}</template>
         </el-table-column>
-        <el-table-column prop="total_tokens" label="Total" width="120">
+        <el-table-column prop="total_tokens" label="Total Tokens" width="130" align="right">
           <template #default="{ row }">{{ row.total_tokens.toLocaleString() }}</template>
         </el-table-column>
       </el-table>
