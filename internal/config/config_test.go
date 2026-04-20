@@ -27,9 +27,6 @@ providers:
     api_key: "sk-test-key"
     model: "test-model"
     format: "chat"
-    model_map:
-      "gpt-4o": "test-model"
-      "claude-3": "test-model-v2"
 `
 	err := os.WriteFile(cfgPath, []byte(content), 0644)
 	require.NoError(t, err)
@@ -48,8 +45,6 @@ providers:
 	assert.Equal(t, "sk-test-key", p.APIKey)
 	assert.Equal(t, "test-model", p.Model)
 	assert.Equal(t, "chat", p.Format)
-	assert.Equal(t, "test-model", p.ModelMap["gpt-4o"])
-	assert.Equal(t, "test-model-v2", p.ModelMap["claude-3"])
 }
 
 func TestLoad_DefaultFormat(t *testing.T) {

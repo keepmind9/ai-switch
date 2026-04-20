@@ -40,18 +40,17 @@ func (a *AdminHandler) RegisterRoutes(r *gin.RouterGroup) {
 func (a *AdminHandler) listProviders(c *gin.Context) {
 	cfg := a.provider.Get()
 	type providerItem struct {
-		Key       string            `json:"key"`
-		Name      string            `json:"name"`
-		BaseURL   string            `json:"base_url"`
-		Path      string            `json:"path"`
-		APIKey    string            `json:"api_key"`
-		Model     string            `json:"model"`
-		Format    string            `json:"format"`
-		ModelMap  map[string]string `json:"model_map"`
-		LogoURL   string            `json:"logo_url"`
-		Sponsor   bool              `json:"sponsor"`
-		ThinkTag  string            `json:"think_tag"`
-		IsDefault bool              `json:"is_default"`
+		Key       string `json:"key"`
+		Name      string `json:"name"`
+		BaseURL   string `json:"base_url"`
+		Path      string `json:"path"`
+		APIKey    string `json:"api_key"`
+		Model     string `json:"model"`
+		Format    string `json:"format"`
+		LogoURL   string `json:"logo_url"`
+		Sponsor   bool   `json:"sponsor"`
+		ThinkTag  string `json:"think_tag"`
+		IsDefault bool   `json:"is_default"`
 	}
 
 	items := make([]providerItem, 0, len(cfg.Providers))
@@ -64,7 +63,6 @@ func (a *AdminHandler) listProviders(c *gin.Context) {
 			APIKey:    maskKey(p.APIKey),
 			Model:     p.Model,
 			Format:    p.Format,
-			ModelMap:  p.ModelMap,
 			LogoURL:   p.LogoURL,
 			Sponsor:   p.Sponsor,
 			ThinkTag:  p.ThinkTag,
@@ -76,17 +74,16 @@ func (a *AdminHandler) listProviders(c *gin.Context) {
 
 func (a *AdminHandler) createProvider(c *gin.Context) {
 	var req struct {
-		Key      string            `json:"key" binding:"required"`
-		Name     string            `json:"name" binding:"required"`
-		BaseURL  string            `json:"base_url" binding:"required"`
-		Path     string            `json:"path"`
-		APIKey   string            `json:"api_key" binding:"required"`
-		Model    string            `json:"model"`
-		Format   string            `json:"format"`
-		ModelMap map[string]string `json:"model_map"`
-		LogoURL  string            `json:"logo_url"`
-		Sponsor  bool              `json:"sponsor"`
-		ThinkTag string            `json:"think_tag"`
+		Key      string `json:"key" binding:"required"`
+		Name     string `json:"name" binding:"required"`
+		BaseURL  string `json:"base_url" binding:"required"`
+		Path     string `json:"path"`
+		APIKey   string `json:"api_key" binding:"required"`
+		Model    string `json:"model"`
+		Format   string `json:"format"`
+		LogoURL  string `json:"logo_url"`
+		Sponsor  bool   `json:"sponsor"`
+		ThinkTag string `json:"think_tag"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -111,15 +108,14 @@ func (a *AdminHandler) createProvider(c *gin.Context) {
 	}
 
 	cfg.Providers[req.Key] = config.ProviderConfig{
-		Name:     req.Name,
-		BaseURL:  req.BaseURL,
-		Path:     req.Path,
-		APIKey:   req.APIKey,
-		Model:    req.Model,
-		Format:   req.Format,
-		ModelMap: req.ModelMap,
-		LogoURL:  req.LogoURL,
-		Sponsor:  req.Sponsor,
+		Name:    req.Name,
+		BaseURL: req.BaseURL,
+		Path:    req.Path,
+		APIKey:  req.APIKey,
+		Model:   req.Model,
+		Format:  req.Format,
+		LogoURL: req.LogoURL,
+		Sponsor: req.Sponsor,
 	}
 
 	if err := a.writeAndReload(cfg); err != nil {
@@ -134,16 +130,15 @@ func (a *AdminHandler) updateProvider(c *gin.Context) {
 	key := c.Param("key")
 
 	var req struct {
-		Name     *string            `json:"name"`
-		BaseURL  *string            `json:"base_url"`
-		Path     *string            `json:"path"`
-		APIKey   *string            `json:"api_key"`
-		Model    *string            `json:"model"`
-		Format   *string            `json:"format"`
-		ModelMap *map[string]string `json:"model_map"`
-		LogoURL  *string            `json:"logo_url"`
-		Sponsor  *bool              `json:"sponsor"`
-		ThinkTag *string            `json:"think_tag"`
+		Name     *string `json:"name"`
+		BaseURL  *string `json:"base_url"`
+		Path     *string `json:"path"`
+		APIKey   *string `json:"api_key"`
+		Model    *string `json:"model"`
+		Format   *string `json:"format"`
+		LogoURL  *string `json:"logo_url"`
+		Sponsor  *bool   `json:"sponsor"`
+		ThinkTag *string `json:"think_tag"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -182,9 +177,6 @@ func (a *AdminHandler) updateProvider(c *gin.Context) {
 	}
 	if req.Format != nil {
 		p.Format = *req.Format
-	}
-	if req.ModelMap != nil {
-		p.ModelMap = *req.ModelMap
 	}
 	if req.LogoURL != nil {
 		p.LogoURL = *req.LogoURL
@@ -454,11 +446,6 @@ func copyConfig(cfg *config.Config) *config.Config {
 		Routes:          make(map[string]config.RouteRule, len(cfg.Routes)),
 	}
 	for k, v := range cfg.Providers {
-		pm := make(map[string]string, len(v.ModelMap))
-		for mk, mv := range v.ModelMap {
-			pm[mk] = mv
-		}
-		v.ModelMap = pm
 		cp.Providers[k] = v
 	}
 	for k, v := range cfg.Routes {

@@ -29,16 +29,15 @@ type ServerConfig struct {
 }
 
 type ProviderConfig struct {
-	Name     string            `mapstructure:"name" yaml:"name"`
-	BaseURL  string            `mapstructure:"base_url" yaml:"base_url"`
-	Path     string            `mapstructure:"path" yaml:"path"`
-	APIKey   string            `mapstructure:"api_key" yaml:"api_key"`
-	Model    string            `mapstructure:"model" yaml:"model"`
-	Format   string            `mapstructure:"format" yaml:"format"`
-	ModelMap map[string]string `mapstructure:"model_map" yaml:"model_map"`
-	LogoURL  string            `mapstructure:"logo_url" yaml:"logo_url"`
-	Sponsor  bool              `mapstructure:"sponsor" yaml:"sponsor"`
-	ThinkTag string            `mapstructure:"think_tag" yaml:"think_tag,omitempty"`
+	Name     string `mapstructure:"name" yaml:"name"`
+	BaseURL  string `mapstructure:"base_url" yaml:"base_url"`
+	Path     string `mapstructure:"path" yaml:"path"`
+	APIKey   string `mapstructure:"api_key" yaml:"api_key"`
+	Model    string `mapstructure:"model" yaml:"model"`
+	Format   string `mapstructure:"format" yaml:"format"`
+	LogoURL  string `mapstructure:"logo_url" yaml:"logo_url"`
+	Sponsor  bool   `mapstructure:"sponsor" yaml:"sponsor"`
+	ThinkTag string `mapstructure:"think_tag" yaml:"think_tag,omitempty"`
 }
 
 var validFormats = map[string]bool{
