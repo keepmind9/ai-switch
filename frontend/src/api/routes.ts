@@ -6,6 +6,7 @@ export interface Route {
   default_model: string
   scene_map: Record<string, string>
   model_map: Record<string, string>
+  long_context_threshold: number
 }
 
 export const listRoutes = () => client.get<{ data: Route[] }>('/admin/routes')

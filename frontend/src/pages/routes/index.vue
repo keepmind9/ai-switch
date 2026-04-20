@@ -14,7 +14,7 @@ const editKey = ref("")
 const form = ref<any>({})
 const sceneMapData = ref<{ key: string; value: string }[]>([])
 const modelMapData = ref<{ key: string; value: string }[]>([])
-const sceneOptions = ["default", "think", "background", "websearch"]
+const sceneOptions = ["default", "think", "background", "websearch", "longContext", "image"]
 
 async function load() {
   loading.value = true
@@ -24,13 +24,13 @@ async function load() {
 
 function openCreate() {
   isEdit.value = false; editKey.value = ""
-  form.value = { key: "", provider: "", default_model: "", scene_map: {}, model_map: {} }
+  form.value = { key: "", provider: "", default_model: "", scene_map: {}, model_map: {}, long_context_threshold: 0 }
   sceneMapData.value = []; modelMapData.value = []; showForm.value = true
 }
 
 function openEdit(row: Route) {
   isEdit.value = true; editKey.value = row.key
-  form.value = { key: row.key, provider: row.provider, default_model: row.default_model }
+  form.value = { key: row.key, provider: row.provider, default_model: row.default_model, long_context_threshold: row.long_context_threshold || 0 }
   sceneMapData.value = Object.entries(row.scene_map || {}).map(([k, v]) => ({ key: k, value: v }))
   modelMapData.value = Object.entries(row.model_map || {}).map(([k, v]) => ({ key: k, value: v }))
   showForm.value = true
@@ -92,6 +92,13 @@ onMounted(load)
           </el-col>
           <el-col :span="8">
             <el-form-item label="Default Model"><el-input v-model="form.default_model" /></el-form-item>
+          </el-col>
+        </el-row>
+        <el-row :gutter="16">
+          <el-col :span="8">
+            <el-form-item label="Long Context Threshold">
+              <el-input-number v-model="form.long_context_threshold" :min="0" :step="10000" controls-position="right" class="w-full" />
+            </el-form-item>
           </el-col>
         </el-row>
         <el-form-item label="Scene Map">
