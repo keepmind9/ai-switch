@@ -1,4 +1,4 @@
-.PHONY: fmt vet lint build run clean test ui-build ui-dev build-all
+.PHONY: fmt vet lint build run clean test build-ui ui-dev build-all
 
 fmt:
 	go fmt ./...
@@ -8,8 +8,9 @@ vet:
 
 lint: fmt vet
 
-ui-build:
+build-ui:
 	cd frontend && npm install --legacy-peer-deps --cache /tmp/npm-cache && npx vite build
+	touch internal/handler/static/.gitkeep
 
 ui-dev:
 	cd frontend && npx vite --host 0.0.0.0
@@ -17,7 +18,7 @@ ui-dev:
 build: lint
 	GOPROXY=https://goproxy.cn,direct go build -o bin/server ./cmd/server
 
-build-all: ui-build build
+build-all: build-ui build
 
 run: build
 	./bin/server -c config.yaml
@@ -26,7 +27,7 @@ dev:
 	GOPROXY=https://goproxy.cn,direct go run ./cmd/server -c config.yaml
 
 clean:
-	rm -rf bin/server
+	rm -f bin/server llm-gateway
 
 test:
 	go test ./...
@@ -38,7 +39,7 @@ help:
 	@echo "  fmt         Run go fmt"
 	@echo "  vet         Run go vet"
 	@echo "  lint        Run fmt + vet"
-	@echo "  ui-build    Build frontend (Vue/Vite)"
+	@echo "  build-ui    Build frontend (Vue/Vite)"
 	@echo "  ui-dev      Start frontend dev server with HMR"
 	@echo "  build       Lint and build Go binary"
 	@echo "  build-all   Build frontend + Go binary"

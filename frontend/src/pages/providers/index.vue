@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from "vue"
 import { ElMessage, ElMessageBox } from "element-plus"
-import { Plus, View, Edit, Close } from "@element-plus/icons-vue"
+import { Plus, View, Edit, Close, Hide, CopyDocument } from "@element-plus/icons-vue"
 import { listProviders, createProvider, updateProvider, deleteProvider, revealAPIKey, type Provider } from "@/api/providers"
 import { listPresets, type Preset } from "@/api/stats"
 
@@ -64,13 +64,17 @@ async function handleSubmit() {
   showForm.value = false; load()
 }
 
-async function handleReveal(row: Provider) {
-  if (revealedKeys.value[row.key]) {
-    try { await navigator.clipboard.writeText(revealedKeys.value[row.key]); ElMessage.success("Copied") } catch { ElMessage.info(revealedKeys.value[row.key]) }
-    return
-  }
-  const resp = await revealAPIKey(row.key); const key = resp.data.data.api_key; revealedKeys.value[row.key] = key
-  try { await navigator.clipboard.writeText(key); ElMessage.success("API key copied") } catch { ElMessage.info(key) }
+function handleToggleReveal(row: Provider) {
+  if (revealedKeys.value[row.key]) { delete revealedKeys.value[row.key] } else { revealKey(row) }
+}
+
+async function revealKey(row: Provider) {
+  const resp = await revealAPIKey(row.key); revealedKeys.value[row.key] = resp.data.data.api_key
+}
+
+async function handleCopyKey(row: Provider) {
+  const key = revealedKeys.value[row.key] || row.api_key
+  try { await navigator.clipboard.writeText(key); ElMessage.success("Copied") } catch { ElMessage.info(key) }
 }
 
 function presetTagStyle(p: Preset) {
@@ -145,7 +149,7 @@ onMounted(load)
         <el-form-item label="Models">
           <div class="models-editor">
             <div class="models-tags">
-              <el-tag v-for="(m, idx) in form.models" :key="idx" closable @close="removeModel(idx)" class="model-tag">{{ m }}</el-tag>
+              <el-tag v-for="(m, idx) in form.models" :key="idx" closable @close="removeModel(Number(idx))" class="model-tag">{{ m }}</el-tag>
             </div>
             <div class="models-input-row">
               <el-input v-model="modelInput" placeholder="Add model name" @keyup.enter="addModel" />
@@ -173,11 +177,12 @@ onMounted(load)
             <span v-if="!row.models?.length" class="text-muted">—</span>
           </template>
         </el-table-column>
-        <el-table-column label="API Key" width="160">
+        <el-table-column label="API Key" width="200">
           <template #default="{ row }">
             <div class="api-key-cell">
-              <span class="mono">{{ revealedKeys[row.key] || row.api_key }}</span>
-              <el-button link size="small" @click="handleReveal(row)"><el-icon><View /></el-icon></el-button>
+              <span class="mono api-key-text" :class="{ 'api-key-truncated': !revealedKeys[row.key] }">{{ revealedKeys[row.key] || row.api_key }}</span>
+              <el-button link size="small" @click="handleToggleReveal(row)"><el-icon><component :is="revealedKeys[row.key] ? Hide : View" /></el-icon></el-button>
+              <el-button v-if="revealedKeys[row.key]" link size="small" @click="handleCopyKey(row)"><el-icon><CopyDocument /></el-icon></el-button>
             </div>
           </template>
         </el-table-column>
@@ -214,6 +219,18 @@ onMounted(load)
   display: flex;
   align-items: center;
   gap: 4px;
+}
+
+.api-key-text {
+  min-width: 0;
+  word-break: break-all;
+}
+
+.api-key-truncated {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 120px;
 }
 
 .partner-star {
