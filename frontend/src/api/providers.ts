@@ -6,11 +6,11 @@ export interface Provider {
   base_url: string
   path: string
   api_key: string
-  model: string
   format: string
   logo_url: string
   sponsor: boolean
-  is_default: boolean
+  think_tag: string
+  models: string[]
 }
 
 export const listProviders = () => client.get<{ data: Provider[] }>('/admin/providers')

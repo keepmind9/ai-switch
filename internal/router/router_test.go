@@ -11,14 +11,13 @@ import (
 
 func newTestProvider() *config.Provider {
 	cfg := &config.Config{
-		DefaultProvider: "minimax",
+		DefaultRoute: "gw-default",
 		Providers: map[string]config.ProviderConfig{
 			"minimax": {
 				Name:    "MiniMax",
 				BaseURL: "https://api.default.com",
 				APIKey:  "default-key",
 				Format:  "chat",
-				Model:   "default-model",
 			},
 			"zhipu": {
 				Name:    "Zhipu",
@@ -34,6 +33,10 @@ func newTestProvider() *config.Provider {
 			},
 		},
 		Routes: map[string]config.RouteRule{
+			"gw-default": {
+				Provider:     "minimax",
+				DefaultModel: "default-model",
+			},
 			"gw-zhipu": {
 				Provider:     "zhipu",
 				DefaultModel: "glm-5.1",
@@ -136,13 +139,18 @@ func TestConfigRouter_RouteUnknownAPIKey(t *testing.T) {
 
 func TestConfigRouter_RouteNoRoutes(t *testing.T) {
 	cfg := &config.Config{
-		DefaultProvider: "minimax",
+		DefaultRoute: "gw-default",
 		Providers: map[string]config.ProviderConfig{
 			"minimax": {
 				BaseURL: "https://api.default.com",
 				APIKey:  "default-key",
 				Format:  "chat",
-				Model:   "default-model",
+			},
+		},
+		Routes: map[string]config.RouteRule{
+			"gw-default": {
+				Provider:     "minimax",
+				DefaultModel: "default-model",
 			},
 		},
 	}
@@ -162,7 +170,116 @@ func TestConfigRouter_RouteNoDefault(t *testing.T) {
 
 	_, err := r.Route("chat", "unknown-key", []byte(`{}`))
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "default_provider not configured")
+	assert.Contains(t, err.Error(), "default_route not configured")
+}
+
+func TestConfigRouter_CrossProviderRouting(t *testing.T) {
+	cfg := &config.Config{
+		Providers: map[string]config.ProviderConfig{
+			"minimax": {
+				Name:    "MiniMax",
+				BaseURL: "https://api.minimaxi.com",
+				APIKey:  "mm-key",
+				Format:  "chat",
+			},
+			"deepseek": {
+				Name:    "DeepSeek",
+				BaseURL: "https://api.deepseek.com",
+				APIKey:  "ds-key",
+				Format:  "chat",
+			},
+			"zhipu": {
+				Name:    "Zhipu",
+				BaseURL: "https://open.bigmodel.cn/api/anthropic",
+				APIKey:  "zhipu-key",
+				Format:  "anthropic",
+			},
+		},
+		Routes: map[string]config.RouteRule{
+			"gw-test": {
+				Provider:     "zhipu",
+				DefaultModel: "MiniMax-M2.5",
+				SceneMap: map[string]string{
+					"default":   "glm-5.1",
+					"think":     "deepseek:deepseek-chat",
+					"websearch": "glm-4.7",
+				},
+			},
+		},
+	}
+	r := NewConfigRouter(config.NewProvider(cfg, ""))
+
+	// think scene → "deepseek:deepseek-chat" → resolves to deepseek provider
+	result, err := r.Route("anthropic", "gw-test", []byte(`{"model":"claude-sonnet","thinking":{"type":"enabled"},"messages":[]}`))
+	require.NoError(t, err)
+	assert.Equal(t, "https://api.deepseek.com", result.BaseURL)
+	assert.Equal(t, "ds-key", result.APIKey)
+	assert.Equal(t, "chat", result.Format)
+	assert.Equal(t, "deepseek-chat", result.Model)
+
+	// default scene → "glm-5.1" → plain model, uses route provider (zhipu)
+	result, err = r.Route("anthropic", "gw-test", []byte(`{"model":"claude-sonnet","messages":[]}`))
+	require.NoError(t, err)
+	assert.Equal(t, "https://open.bigmodel.cn/api/anthropic", result.BaseURL)
+	assert.Equal(t, "zhipu-key", result.APIKey)
+	assert.Equal(t, "glm-5.1", result.Model)
+}
+
+func TestConfigRouter_CrossProviderModelMap(t *testing.T) {
+	cfg := &config.Config{
+		Providers: map[string]config.ProviderConfig{
+			"minimax": {
+				Name:    "MiniMax",
+				BaseURL: "https://api.minimaxi.com",
+				APIKey:  "mm-key",
+				Format:  "chat",
+			},
+			"deepseek": {
+				Name:    "DeepSeek",
+				BaseURL: "https://api.deepseek.com",
+				APIKey:  "ds-key",
+				Format:  "chat",
+			},
+		},
+		Routes: map[string]config.RouteRule{
+			"gw-test": {
+				Provider:     "minimax",
+				DefaultModel: "MiniMax-M2.5",
+				ModelMap: map[string]string{
+					"claude-sonnet-4-5": "deepseek:deepseek-chat",
+				},
+			},
+		},
+	}
+	r := NewConfigRouter(config.NewProvider(cfg, ""))
+
+	// ModelMap with provider:model format → resolves to deepseek
+	result, err := r.Route("chat", "gw-test", []byte(`{"model":"claude-sonnet-4-5"}`))
+	require.NoError(t, err)
+	assert.Equal(t, "https://api.deepseek.com", result.BaseURL)
+	assert.Equal(t, "ds-key", result.APIKey)
+	assert.Equal(t, "deepseek-chat", result.Model)
+}
+
+func TestParseProviderModel(t *testing.T) {
+	tests := []struct {
+		input           string
+		defaultProvider string
+		expectedProv    string
+		expectedModel   string
+	}{
+		{"deepseek:deepseek-chat", "minimax", "deepseek", "deepseek-chat"},
+		{"MiniMax-M2.5", "minimax", "minimax", "MiniMax-M2.5"},
+		{"zhipu:glm-4.7", "minimax", "zhipu", "glm-4.7"},
+		{"plain-model", "deepseek", "deepseek", "plain-model"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			prov, model := parseProviderModel(tt.input, tt.defaultProvider)
+			assert.Equal(t, tt.expectedProv, prov)
+			assert.Equal(t, tt.expectedModel, model)
+		})
+	}
 }
 
 func TestConfigRouter_RouteUnknownProvider(t *testing.T) {
@@ -181,7 +298,7 @@ func TestConfigRouter_RouteUnknownProvider(t *testing.T) {
 
 	_, err := r.Route("chat", "gw-test", []byte(`{}`))
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "unknown provider")
+	assert.Contains(t, err.Error(), "provider \"nonexistent\" not found")
 }
 
 func TestConfigRouter_RouteModelMapPriorityOverSceneMap(t *testing.T) {

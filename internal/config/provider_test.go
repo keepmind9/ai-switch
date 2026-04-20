@@ -19,13 +19,16 @@ func newTestProvider(t *testing.T) (*Provider, string) {
 server:
   host: "0.0.0.0"
   port: 12345
-default_provider: "default"
+default_route: "gw-default"
 providers:
   default:
     name: "Default"
     base_url: "https://api.example.com/v1"
     api_key: "initial-key"
-    model: "initial-model"
+routes:
+  "gw-default":
+    provider: "default"
+    default_model: "initial-model"
 `
 	err := os.WriteFile(cfgPath, []byte(content), 0644)
 	require.NoError(t, err)
@@ -41,12 +44,12 @@ func TestProvider_Get(t *testing.T) {
 
 	cfg := p.Get()
 	require.NotNil(t, cfg)
-	assert.Equal(t, "default", cfg.DefaultProvider)
+	assert.Equal(t, "gw-default", cfg.DefaultRoute)
 
-	dp := cfg.DefaultProviderConfig()
-	require.NotNil(t, dp)
-	assert.Equal(t, "initial-key", dp.APIKey)
-	assert.Equal(t, "initial-model", dp.Model)
+	dr := cfg.DefaultRouteConfig()
+	require.NotNil(t, dr)
+	assert.Equal(t, "default", dr.Provider)
+	assert.Equal(t, "initial-model", dr.DefaultModel)
 }
 
 func TestProvider_Reload(t *testing.T) {
@@ -57,13 +60,16 @@ func TestProvider_Reload(t *testing.T) {
 server:
   host: "0.0.0.0"
   port: 9999
-default_provider: "default"
+default_route: "gw-default"
 providers:
   default:
     name: "Default"
     base_url: "https://api.new.com/v1"
     api_key: "new-key"
-    model: "new-model"
+routes:
+  "gw-default":
+    provider: "default"
+    default_model: "new-model"
 `
 	err := os.WriteFile(cfgPath, []byte(newContent), 0644)
 	require.NoError(t, err)
@@ -74,10 +80,10 @@ providers:
 	cfg := p.Get()
 	assert.Equal(t, 9999, cfg.Server.Port)
 
-	dp := cfg.DefaultProviderConfig()
-	require.NotNil(t, dp)
-	assert.Equal(t, "new-key", dp.APIKey)
-	assert.Equal(t, "new-model", dp.Model)
+	dr := cfg.DefaultRouteConfig()
+	require.NotNil(t, dr)
+	assert.Equal(t, "default", dr.Provider)
+	assert.Equal(t, "new-model", dr.DefaultModel)
 }
 
 func TestProvider_Reload_InvalidFile(t *testing.T) {
@@ -92,9 +98,9 @@ func TestProvider_Reload_InvalidFile(t *testing.T) {
 
 	// Old config should still be accessible
 	cfg := p.Get()
-	dp := cfg.DefaultProviderConfig()
-	require.NotNil(t, dp)
-	assert.Equal(t, "initial-key", dp.APIKey)
+	dr := cfg.DefaultRouteConfig()
+	require.NotNil(t, dr)
+	assert.Equal(t, "default", dr.Provider)
 }
 
 func TestProvider_Reload_MissingFile(t *testing.T) {
@@ -106,9 +112,9 @@ func TestProvider_Reload_MissingFile(t *testing.T) {
 	assert.Error(t, err)
 
 	cfg := p.Get()
-	dp := cfg.DefaultProviderConfig()
-	require.NotNil(t, dp)
-	assert.Equal(t, "initial-key", dp.APIKey)
+	dr := cfg.DefaultRouteConfig()
+	require.NotNil(t, dr)
+	assert.Equal(t, "default", dr.Provider)
 }
 
 func TestProvider_ConcurrentAccess(t *testing.T) {
@@ -151,18 +157,15 @@ func TestProvider_Reload_UpdatesProviders(t *testing.T) {
 server:
   host: "0.0.0.0"
   port: 12345
-default_provider: "default"
 providers:
   default:
     name: "Default"
     base_url: "https://api.example.com/v1"
     api_key: "key"
-    model: "model"
   test:
     name: "Test"
     base_url: "https://test.com/v1"
     api_key: "key1"
-    model: "model1"
 `
 	err := os.WriteFile(cfgPath, []byte(initialContent), 0644)
 	require.NoError(t, err)
@@ -179,18 +182,15 @@ providers:
 server:
   host: "0.0.0.0"
   port: 12345
-default_provider: "default"
 providers:
   default:
     name: "Default"
     base_url: "https://api.example.com/v1"
     api_key: "key"
-    model: "model"
   test:
     name: "Test"
     base_url: "https://test.com/v1"
     api_key: "key2"
-    model: "model2"
 `
 	err = os.WriteFile(cfgPath, []byte(updatedContent), 0644)
 	require.NoError(t, err)
@@ -199,5 +199,4 @@ providers:
 	require.NoError(t, err)
 
 	assert.Equal(t, "key2", p.Get().Providers["test"].APIKey)
-	assert.Equal(t, "model2", p.Get().Providers["test"].Model)
 }

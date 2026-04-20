@@ -14,14 +14,13 @@ func TestWriteConfigRoundTrip(t *testing.T) {
 	path := filepath.Join(dir, "config.yaml")
 
 	original := &Config{
-		Server:          ServerConfig{Host: "0.0.0.0", Port: 12345},
-		DefaultProvider: "minimax",
+		Server:       ServerConfig{Host: "0.0.0.0", Port: 12345},
+		DefaultRoute: "gw-test",
 		Providers: map[string]ProviderConfig{
 			"minimax": {
 				Name:    "MiniMax",
 				BaseURL: "https://api.minimaxi.com",
 				APIKey:  "sk-test-key",
-				Model:   "MiniMax-M2.7",
 				Format:  "chat",
 				Sponsor: true,
 			},
@@ -49,7 +48,7 @@ func TestWriteConfigRoundTrip(t *testing.T) {
 
 	assert.Equal(t, original.Server.Host, loaded.Server.Host)
 	assert.Equal(t, original.Server.Port, loaded.Server.Port)
-	assert.Equal(t, original.DefaultProvider, loaded.DefaultProvider)
+	assert.Equal(t, original.DefaultRoute, loaded.DefaultRoute)
 	assert.Len(t, loaded.Providers, 1)
 	assert.Equal(t, "MiniMax", loaded.Providers["minimax"].Name)
 	assert.Len(t, loaded.Routes, 1)

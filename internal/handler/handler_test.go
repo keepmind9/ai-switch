@@ -26,13 +26,18 @@ func (r *staticRouter) Route(_, _ string, _ []byte) (*router.RouteResult, error)
 
 func newTestConfig(tsURL, format, model string) *config.Config {
 	return &config.Config{
-		DefaultProvider: "default",
+		DefaultRoute: "gw-default",
 		Providers: map[string]config.ProviderConfig{
 			"default": {
 				BaseURL: tsURL,
 				APIKey:  "test-key",
 				Format:  format,
-				Model:   model,
+			},
+		},
+		Routes: map[string]config.RouteRule{
+			"gw-default": {
+				Provider:     "default",
+				DefaultModel: model,
 			},
 		},
 	}
@@ -516,7 +521,7 @@ func TestHandleAPIStatus(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 	var resp map[string]any
 	json.Unmarshal(w.Body.Bytes(), &resp)
-	assert.Equal(t, "default", resp["default_provider"])
+	assert.Equal(t, "gw-default", resp["default_route"])
 }
 
 func TestExtractClientAPIKey(t *testing.T) {

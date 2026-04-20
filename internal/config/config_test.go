@@ -18,15 +18,18 @@ server:
   host: "127.0.0.1"
   port: 8080
 
-default_provider: "openai"
+default_route: "gw-openai"
 
 providers:
   openai:
     name: "OpenAI"
     base_url: "https://api.example.com/v1"
     api_key: "sk-test-key"
-    model: "test-model"
     format: "chat"
+routes:
+  "gw-openai":
+    provider: "openai"
+    default_model: "test-model"
 `
 	err := os.WriteFile(cfgPath, []byte(content), 0644)
 	require.NoError(t, err)
@@ -36,14 +39,13 @@ providers:
 
 	assert.Equal(t, "127.0.0.1", cfg.Server.Host)
 	assert.Equal(t, 8080, cfg.Server.Port)
-	assert.Equal(t, "openai", cfg.DefaultProvider)
+	assert.Equal(t, "gw-openai", cfg.DefaultRoute)
 
 	p, ok := cfg.Providers["openai"]
 	require.True(t, ok)
 	assert.Equal(t, "OpenAI", p.Name)
 	assert.Equal(t, "https://api.example.com", p.BaseURL)
 	assert.Equal(t, "sk-test-key", p.APIKey)
-	assert.Equal(t, "test-model", p.Model)
 	assert.Equal(t, "chat", p.Format)
 }
 
@@ -55,13 +57,11 @@ func TestLoad_DefaultFormat(t *testing.T) {
 server:
   host: "0.0.0.0"
   port: 12345
-default_provider: "test"
 providers:
   test:
     name: "Test"
     base_url: "https://api.example.com/v1"
     api_key: "key"
-    model: "model"
 `
 	err := os.WriteFile(cfgPath, []byte(content), 0644)
 	require.NoError(t, err)
@@ -84,7 +84,6 @@ providers:
     name: "Test"
     base_url: "https://api.example.com/v1"
     api_key: "key"
-    model: "model"
     format: "invalid"
 `
 	err := os.WriteFile(cfgPath, []byte(content), 0644)
@@ -118,7 +117,7 @@ func TestLoad_AllFormats(t *testing.T) {
 				formatLine = "    format: \"" + tt.format + "\"\n"
 			}
 
-			content := "server:\n  host: \"0.0.0.0\"\n  port: 12345\nproviders:\n  test:\n    name: \"Test\"\n    base_url: \"https://api.example.com/v1\"\n    api_key: \"key\"\n    model: \"model\"\n" + formatLine
+			content := "server:\n  host: \"0.0.0.0\"\n  port: 12345\nproviders:\n  test:\n    name: \"Test\"\n    base_url: \"https://api.example.com/v1\"\n    api_key: \"key\"\n" + formatLine
 			err := os.WriteFile(cfgPath, []byte(content), 0644)
 			require.NoError(t, err)
 
@@ -145,20 +144,17 @@ func TestLoad_Providers(t *testing.T) {
 server:
   host: "0.0.0.0"
   port: 12345
-default_provider: "deepseek"
 providers:
   deepseek:
     name: "DeepSeek"
     base_url: "https://api.deepseek.com/v1"
     api_key: "ds-key"
-    model: "deepseek-chat"
     format: "chat"
     sponsor: true
   minimax:
     name: "MiniMax"
     base_url: "https://api.minimaxi.com/v1"
     api_key: "mm-key"
-    model: "MiniMax-M2.5"
 `
 	err := os.WriteFile(cfgPath, []byte(content), 0644)
 	require.NoError(t, err)
@@ -166,7 +162,6 @@ providers:
 	cfg, err := Load(cfgPath)
 	require.NoError(t, err)
 
-	assert.Equal(t, "deepseek", cfg.DefaultProvider)
 	require.Len(t, cfg.Providers, 2)
 
 	ds, ok := cfg.Providers["deepseek"]
@@ -181,44 +176,50 @@ providers:
 	assert.Equal(t, "chat", mm.Format) // default
 }
 
-func TestLoad_DefaultProviderValidation(t *testing.T) {
+func TestLoad_DefaultRouteValidation(t *testing.T) {
 	tests := []struct {
-		name            string
-		defaultProvider string
-		providers       string
-		expectError     bool
-		errorContains   string
+		name          string
+		defaultRoute  string
+		providers     string
+		routes        string
+		expectError   bool
+		errorContains string
 	}{
 		{
-			name:            "valid default_provider",
-			defaultProvider: "test",
+			name:         "valid default_route",
+			defaultRoute: "gw-test",
 			providers: `  test:
     name: "Test"
     base_url: "https://test.com/v1"
-    api_key: "key"
-    model: "model"`,
+    api_key: "key"`,
+			routes: `  "gw-test":
+    provider: "test"
+    default_model: "model"`,
 			expectError: false,
 		},
 		{
-			name:            "default_provider not in providers",
-			defaultProvider: "missing",
+			name:         "default_route not in routes",
+			defaultRoute: "missing",
 			providers: `  test:
     name: "Test"
     base_url: "https://test.com/v1"
-    api_key: "key"
-    model: "model"`,
+    api_key: "key"`,
+			routes: `  "gw-test":
+    provider: "test"
+    default_model: "model"`,
 			expectError:   true,
-			errorContains: "default_provider",
+			errorContains: "default_route",
 		},
 		{
-			name:            "empty default_provider is valid",
-			defaultProvider: "",
+			name:         "empty default_route is valid",
+			defaultRoute: "",
 			providers: `  test:
     name: "Test"
     base_url: "https://test.com/v1"
-    api_key: "key"
-    model: "model"`,
-			expectError: false,
+    api_key: "key"`,
+			routes:        "",
+			expectError:   false,
+			errorContains: "",
 		},
 	}
 
@@ -227,12 +228,17 @@ func TestLoad_DefaultProviderValidation(t *testing.T) {
 			dir := t.TempDir()
 			cfgPath := filepath.Join(dir, "config.yaml")
 
-			dpLine := ""
-			if tt.defaultProvider != "" {
-				dpLine = "default_provider: \"" + tt.defaultProvider + "\"\n"
+			drLine := ""
+			if tt.defaultRoute != "" {
+				drLine = "default_route: \"" + tt.defaultRoute + "\"\n"
 			}
 
-			content := "server:\n  host: \"0.0.0.0\"\n  port: 12345\n" + dpLine + "providers:\n" + tt.providers + "\n"
+			routesSection := ""
+			if tt.routes != "" {
+				routesSection = "routes:\n" + tt.routes + "\n"
+			}
+
+			content := "server:\n  host: \"0.0.0.0\"\n  port: 12345\n" + drLine + "providers:\n" + tt.providers + "\n" + routesSection
 			err := os.WriteFile(cfgPath, []byte(content), 0644)
 			require.NoError(t, err)
 
@@ -261,18 +267,15 @@ func TestLoad_ExpandEnv(t *testing.T) {
 server:
   host: "0.0.0.0"
   port: 12345
-default_provider: "default"
 providers:
   default:
     name: "Default"
     base_url: "https://api.example.com/v1"
     api_key: "${TEST_API_KEY_123}"
-    model: "model"
   test:
     name: "Test"
     base_url: "https://test.com/v1"
     api_key: "${TEST_API_KEY_123}"
-    model: "test"
 `
 	err := os.WriteFile(cfgPath, []byte(content), 0644)
 	require.NoError(t, err)
@@ -340,13 +343,11 @@ func TestLoad_Routes(t *testing.T) {
 server:
   host: "0.0.0.0"
   port: 12345
-default_provider: "default"
 providers:
   default:
     name: "Default"
     base_url: "https://api.example.com/v1"
     api_key: "key"
-    model: "model"
   zhipu:
     name: "Zhipu"
     base_url: "https://open.bigmodel.cn/api/anthropic"
@@ -396,13 +397,11 @@ func TestLoad_RoutesWithLongContextThreshold(t *testing.T) {
 server:
   host: "0.0.0.0"
   port: 12345
-default_provider: "default"
 providers:
   default:
     name: "Default"
     base_url: "https://api.example.com/v1"
     api_key: "key"
-    model: "model"
 routes:
   "gw-test":
     provider: "default"
@@ -436,7 +435,6 @@ providers:
     name: "Default"
     base_url: "https://api.example.com/v1"
     api_key: "key"
-    model: "model"
 `
 	err := os.WriteFile(cfgPath, []byte(content), 0644)
 	require.NoError(t, err)
@@ -446,36 +444,36 @@ providers:
 	assert.Nil(t, cfg.Routes)
 }
 
-func TestDefaultProviderConfig(t *testing.T) {
+func TestDefaultRouteConfig(t *testing.T) {
 	tests := []struct {
-		name            string
-		defaultProvider string
-		providers       map[string]ProviderConfig
-		expectNil       bool
-		expectedName    string
+		name         string
+		defaultRoute string
+		routes       map[string]RouteRule
+		expectNil    bool
+		expectedProv string
 	}{
 		{
-			name:            "returns matching provider",
-			defaultProvider: "test",
-			providers: map[string]ProviderConfig{
-				"test": {Name: "Test", BaseURL: "https://test.com/v1", APIKey: "key"},
+			name:         "returns matching route",
+			defaultRoute: "gw-test",
+			routes: map[string]RouteRule{
+				"gw-test": {Provider: "openai", DefaultModel: "gpt-4"},
 			},
 			expectNil:    false,
-			expectedName: "Test",
+			expectedProv: "openai",
 		},
 		{
-			name:            "empty default_provider returns nil",
-			defaultProvider: "",
-			providers: map[string]ProviderConfig{
-				"test": {Name: "Test"},
+			name:         "empty default_route returns nil",
+			defaultRoute: "",
+			routes: map[string]RouteRule{
+				"gw-test": {Provider: "test"},
 			},
 			expectNil: true,
 		},
 		{
-			name:            "missing provider returns nil",
-			defaultProvider: "missing",
-			providers: map[string]ProviderConfig{
-				"test": {Name: "Test"},
+			name:         "missing route returns nil",
+			defaultRoute: "missing",
+			routes: map[string]RouteRule{
+				"gw-test": {Provider: "test"},
 			},
 			expectNil: true,
 		},
@@ -484,15 +482,15 @@ func TestDefaultProviderConfig(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := &Config{
-				DefaultProvider: tt.defaultProvider,
-				Providers:       tt.providers,
+				DefaultRoute: tt.defaultRoute,
+				Routes:       tt.routes,
 			}
-			result := cfg.DefaultProviderConfig()
+			result := cfg.DefaultRouteConfig()
 			if tt.expectNil {
 				assert.Nil(t, result)
 			} else {
 				require.NotNil(t, result)
-				assert.Equal(t, tt.expectedName, result.Name)
+				assert.Equal(t, tt.expectedProv, result.Provider)
 			}
 		})
 	}

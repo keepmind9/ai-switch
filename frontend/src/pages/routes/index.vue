@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from "vue"
+import { ref, computed, onMounted } from "vue"
 import { ElMessage, ElMessageBox } from "element-plus"
 import { Plus, Delete, Edit, Close } from "@element-plus/icons-vue"
 import { listRoutes, createRoute, updateRoute, deleteRoute, generateKey, type Route } from "@/api/routes"
@@ -15,6 +15,10 @@ const form = ref<any>({})
 const sceneMapData = ref<{ key: string; value: string }[]>([])
 const modelMapData = ref<{ key: string; value: string }[]>([])
 const sceneOptions = ["default", "think", "background", "websearch", "longContext", "image"]
+const providerModels = computed(() => {
+  const p = providers.value.find(x => x.key === form.value.provider)
+  return p?.models || []
+})
 
 async function load() {
   loading.value = true
@@ -91,7 +95,11 @@ onMounted(load)
             </el-form-item>
           </el-col>
           <el-col :span="8">
-            <el-form-item label="Default Model"><el-input v-model="form.default_model" /></el-form-item>
+            <el-form-item label="Default Model">
+              <el-select v-model="form.default_model" placeholder="model or provider:model" class="w-full" filterable allow-create clearable default-first-option>
+                <el-option v-for="m in providerModels" :key="m" :label="m" :value="m" />
+              </el-select>
+            </el-form-item>
           </el-col>
         </el-row>
         <el-row :gutter="16">
@@ -107,7 +115,9 @@ onMounted(load)
               <el-select v-model="item.key" placeholder="Scene" class="scene-select">
                 <el-option v-for="s in sceneOptions" :key="s" :label="s" :value="s" />
               </el-select>
-              <el-input v-model="item.value" placeholder="Model name" class="map-input" />
+              <el-select v-model="item.value" placeholder="model or provider:model" class="map-input" filterable allow-create default-first-option>
+                <el-option v-for="m in providerModels" :key="m" :label="m" :value="m" />
+              </el-select>
               <el-button link type="danger" @click="removeSceneEntry(idx)"><el-icon><Delete /></el-icon></el-button>
             </div>
             <el-button size="small" @click="addSceneEntry">+ Add Scene</el-button>
@@ -117,7 +127,9 @@ onMounted(load)
           <div class="map-editor">
             <div v-for="(item, idx) in modelMapData" :key="idx" class="map-editor-row">
               <el-input v-model="item.key" placeholder="Client model" class="map-input" />
-              <el-input v-model="item.value" placeholder="Upstream model" class="map-input" />
+              <el-select v-model="item.value" placeholder="Upstream model (or provider:model)" class="map-input" filterable allow-create default-first-option>
+                <el-option v-for="m in providerModels" :key="m" :label="m" :value="m" />
+              </el-select>
               <el-button link type="danger" @click="removeModelEntry(idx)"><el-icon><Delete /></el-icon></el-button>
             </div>
             <el-button size="small" @click="addModelEntry">+ Add Model Mapping</el-button>

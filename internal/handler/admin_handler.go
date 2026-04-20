@@ -40,33 +40,31 @@ func (a *AdminHandler) RegisterRoutes(r *gin.RouterGroup) {
 func (a *AdminHandler) listProviders(c *gin.Context) {
 	cfg := a.provider.Get()
 	type providerItem struct {
-		Key       string `json:"key"`
-		Name      string `json:"name"`
-		BaseURL   string `json:"base_url"`
-		Path      string `json:"path"`
-		APIKey    string `json:"api_key"`
-		Model     string `json:"model"`
-		Format    string `json:"format"`
-		LogoURL   string `json:"logo_url"`
-		Sponsor   bool   `json:"sponsor"`
-		ThinkTag  string `json:"think_tag"`
-		IsDefault bool   `json:"is_default"`
+		Key      string   `json:"key"`
+		Name     string   `json:"name"`
+		BaseURL  string   `json:"base_url"`
+		Path     string   `json:"path"`
+		APIKey   string   `json:"api_key"`
+		Format   string   `json:"format"`
+		LogoURL  string   `json:"logo_url"`
+		Sponsor  bool     `json:"sponsor"`
+		ThinkTag string   `json:"think_tag"`
+		Models   []string `json:"models"`
 	}
 
 	items := make([]providerItem, 0, len(cfg.Providers))
 	for k, p := range cfg.Providers {
 		items = append(items, providerItem{
-			Key:       k,
-			Name:      p.Name,
-			BaseURL:   p.BaseURL,
-			Path:      p.Path,
-			APIKey:    maskKey(p.APIKey),
-			Model:     p.Model,
-			Format:    p.Format,
-			LogoURL:   p.LogoURL,
-			Sponsor:   p.Sponsor,
-			ThinkTag:  p.ThinkTag,
-			IsDefault: k == cfg.DefaultProvider,
+			Key:      k,
+			Name:     p.Name,
+			BaseURL:  p.BaseURL,
+			Path:     p.Path,
+			APIKey:   maskKey(p.APIKey),
+			Format:   p.Format,
+			LogoURL:  p.LogoURL,
+			Sponsor:  p.Sponsor,
+			ThinkTag: p.ThinkTag,
+			Models:   p.Models,
 		})
 	}
 	c.JSON(http.StatusOK, gin.H{"data": items})
@@ -74,16 +72,16 @@ func (a *AdminHandler) listProviders(c *gin.Context) {
 
 func (a *AdminHandler) createProvider(c *gin.Context) {
 	var req struct {
-		Key      string `json:"key" binding:"required"`
-		Name     string `json:"name" binding:"required"`
-		BaseURL  string `json:"base_url" binding:"required"`
-		Path     string `json:"path"`
-		APIKey   string `json:"api_key" binding:"required"`
-		Model    string `json:"model"`
-		Format   string `json:"format"`
-		LogoURL  string `json:"logo_url"`
-		Sponsor  bool   `json:"sponsor"`
-		ThinkTag string `json:"think_tag"`
+		Key      string   `json:"key" binding:"required"`
+		Name     string   `json:"name" binding:"required"`
+		BaseURL  string   `json:"base_url" binding:"required"`
+		Path     string   `json:"path"`
+		APIKey   string   `json:"api_key" binding:"required"`
+		Format   string   `json:"format"`
+		LogoURL  string   `json:"logo_url"`
+		Sponsor  bool     `json:"sponsor"`
+		ThinkTag string   `json:"think_tag"`
+		Models   []string `json:"models"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -108,14 +106,15 @@ func (a *AdminHandler) createProvider(c *gin.Context) {
 	}
 
 	cfg.Providers[req.Key] = config.ProviderConfig{
-		Name:    req.Name,
-		BaseURL: req.BaseURL,
-		Path:    req.Path,
-		APIKey:  req.APIKey,
-		Model:   req.Model,
-		Format:  req.Format,
-		LogoURL: req.LogoURL,
-		Sponsor: req.Sponsor,
+		Name:     req.Name,
+		BaseURL:  req.BaseURL,
+		Path:     req.Path,
+		APIKey:   req.APIKey,
+		Format:   req.Format,
+		LogoURL:  req.LogoURL,
+		Sponsor:  req.Sponsor,
+		ThinkTag: req.ThinkTag,
+		Models:   req.Models,
 	}
 
 	if err := a.writeAndReload(cfg); err != nil {
@@ -130,15 +129,15 @@ func (a *AdminHandler) updateProvider(c *gin.Context) {
 	key := c.Param("key")
 
 	var req struct {
-		Name     *string `json:"name"`
-		BaseURL  *string `json:"base_url"`
-		Path     *string `json:"path"`
-		APIKey   *string `json:"api_key"`
-		Model    *string `json:"model"`
-		Format   *string `json:"format"`
-		LogoURL  *string `json:"logo_url"`
-		Sponsor  *bool   `json:"sponsor"`
-		ThinkTag *string `json:"think_tag"`
+		Name     *string  `json:"name"`
+		BaseURL  *string  `json:"base_url"`
+		Path     *string  `json:"path"`
+		APIKey   *string  `json:"api_key"`
+		Format   *string  `json:"format"`
+		LogoURL  *string  `json:"logo_url"`
+		Sponsor  *bool    `json:"sponsor"`
+		ThinkTag *string  `json:"think_tag"`
+		Models   []string `json:"models"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -172,9 +171,6 @@ func (a *AdminHandler) updateProvider(c *gin.Context) {
 	if req.APIKey != nil {
 		p.APIKey = *req.APIKey
 	}
-	if req.Model != nil {
-		p.Model = *req.Model
-	}
 	if req.Format != nil {
 		p.Format = *req.Format
 	}
@@ -186,6 +182,9 @@ func (a *AdminHandler) updateProvider(c *gin.Context) {
 	}
 	if req.ThinkTag != nil {
 		p.ThinkTag = *req.ThinkTag
+	}
+	if req.Models != nil {
+		p.Models = req.Models
 	}
 
 	cfg.Providers[key] = p
@@ -212,8 +211,11 @@ func (a *AdminHandler) deleteProvider(c *gin.Context) {
 
 	delete(cfg.Providers, key)
 
-	if cfg.DefaultProvider == key {
-		cfg.DefaultProvider = ""
+	// Clear default_route if it references a route whose provider was deleted
+	if cfg.DefaultRoute != "" {
+		if dr, ok := cfg.Routes[cfg.DefaultRoute]; ok && dr.Provider == key {
+			cfg.DefaultRoute = ""
+		}
 	}
 
 	if err := a.writeAndReload(cfg); err != nil {
@@ -372,6 +374,10 @@ func (a *AdminHandler) deleteRoute(c *gin.Context) {
 
 	delete(cfg.Routes, key)
 
+	if cfg.DefaultRoute == key {
+		cfg.DefaultRoute = ""
+	}
+
 	if err := a.writeAndReload(cfg); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -397,10 +403,10 @@ func (a *AdminHandler) listPresets(c *gin.Context) {
 func (a *AdminHandler) adminStatus(c *gin.Context) {
 	cfg := a.provider.Get()
 	c.JSON(http.StatusOK, gin.H{
-		"server":           cfg.Server,
-		"default_provider": cfg.DefaultProvider,
-		"provider_count":   len(cfg.Providers),
-		"route_count":      len(cfg.Routes),
+		"server":         cfg.Server,
+		"default_route":  cfg.DefaultRoute,
+		"provider_count": len(cfg.Providers),
+		"route_count":    len(cfg.Routes),
 	})
 }
 
@@ -452,10 +458,10 @@ func maskKey(s string) string {
 
 func copyConfig(cfg *config.Config) *config.Config {
 	cp := &config.Config{
-		Server:          cfg.Server,
-		DefaultProvider: cfg.DefaultProvider,
-		Providers:       make(map[string]config.ProviderConfig, len(cfg.Providers)),
-		Routes:          make(map[string]config.RouteRule, len(cfg.Routes)),
+		Server:       cfg.Server,
+		DefaultRoute: cfg.DefaultRoute,
+		Providers:    make(map[string]config.ProviderConfig, len(cfg.Providers)),
+		Routes:       make(map[string]config.RouteRule, len(cfg.Routes)),
 	}
 	for k, v := range cfg.Providers {
 		cp.Providers[k] = v

@@ -10,10 +10,10 @@ import (
 )
 
 type Config struct {
-	Server          ServerConfig              `mapstructure:"server" yaml:"server"`
-	DefaultProvider string                    `mapstructure:"default_provider" yaml:"default_provider"`
-	Providers       map[string]ProviderConfig `mapstructure:"providers" yaml:"providers"`
-	Routes          map[string]RouteRule      `mapstructure:"routes" yaml:"routes"`
+	Server       ServerConfig              `mapstructure:"server" yaml:"server"`
+	DefaultRoute string                    `mapstructure:"default_route" yaml:"default_route"`
+	Providers    map[string]ProviderConfig `mapstructure:"providers" yaml:"providers"`
+	Routes       map[string]RouteRule      `mapstructure:"routes" yaml:"routes"`
 }
 
 type RouteRule struct {
@@ -30,15 +30,15 @@ type ServerConfig struct {
 }
 
 type ProviderConfig struct {
-	Name     string `mapstructure:"name" yaml:"name"`
-	BaseURL  string `mapstructure:"base_url" yaml:"base_url"`
-	Path     string `mapstructure:"path" yaml:"path"`
-	APIKey   string `mapstructure:"api_key" yaml:"api_key"`
-	Model    string `mapstructure:"model" yaml:"model"`
-	Format   string `mapstructure:"format" yaml:"format"`
-	LogoURL  string `mapstructure:"logo_url" yaml:"logo_url"`
-	Sponsor  bool   `mapstructure:"sponsor" yaml:"sponsor"`
-	ThinkTag string `mapstructure:"think_tag" yaml:"think_tag,omitempty"`
+	Name     string   `mapstructure:"name" yaml:"name"`
+	BaseURL  string   `mapstructure:"base_url" yaml:"base_url"`
+	Path     string   `mapstructure:"path" yaml:"path"`
+	APIKey   string   `mapstructure:"api_key" yaml:"api_key"`
+	Format   string   `mapstructure:"format" yaml:"format"`
+	LogoURL  string   `mapstructure:"logo_url" yaml:"logo_url"`
+	Sponsor  bool     `mapstructure:"sponsor" yaml:"sponsor"`
+	ThinkTag string   `mapstructure:"think_tag" yaml:"think_tag,omitempty"`
+	Models   []string `mapstructure:"models" yaml:"models,omitempty"`
 }
 
 var validFormats = map[string]bool{
@@ -67,10 +67,10 @@ func Load(path string) (*Config, error) {
 		return nil, err
 	}
 
-	// Validate default_provider references an existing provider
-	if cfg.DefaultProvider != "" {
-		if _, ok := cfg.Providers[cfg.DefaultProvider]; !ok {
-			return nil, fmt.Errorf("default_provider %q not found in providers", cfg.DefaultProvider)
+	// Validate default_route references an existing route
+	if cfg.DefaultRoute != "" {
+		if _, ok := cfg.Routes[cfg.DefaultRoute]; !ok {
+			return nil, fmt.Errorf("default_route %q not found in routes", cfg.DefaultRoute)
 		}
 	}
 
@@ -92,16 +92,16 @@ func Load(path string) (*Config, error) {
 	return &cfg, nil
 }
 
-// DefaultProviderConfig returns the default provider config, or nil if not set.
-func (c *Config) DefaultProviderConfig() *ProviderConfig {
-	if c.DefaultProvider == "" {
+// DefaultRouteConfig returns the default route rule, or nil if not set.
+func (c *Config) DefaultRouteConfig() *RouteRule {
+	if c.DefaultRoute == "" {
 		return nil
 	}
-	p, ok := c.Providers[c.DefaultProvider]
+	r, ok := c.Routes[c.DefaultRoute]
 	if !ok {
 		return nil
 	}
-	return &p
+	return &r
 }
 
 // DataDir returns the path to the data directory (~/.llm-gateway/).

@@ -22,35 +22,47 @@ func NewConfigRouter(provider *config.Provider) *ConfigRouter {
 func (r *ConfigRouter) Route(clientProtocol, apiKey string, body []byte) (*RouteResult, error) {
 	cfg := r.provider.Get()
 
+	// 1. Try to find route by API key
 	if len(cfg.Routes) > 0 {
-		// Map key is the gateway API key; viper lowercases map keys, so match lowercase.
 		if rule, ok := cfg.Routes[strings.ToLower(apiKey)]; ok {
-			prov, ok := cfg.Providers[rule.Provider]
-			if !ok {
-				return nil, fmt.Errorf("route references unknown provider %q", rule.Provider)
-			}
-			model := resolveModel(rule, clientProtocol, body)
-			return providerToResult(prov, model), nil
+			return r.resolveRoute(cfg, rule, clientProtocol, body)
 		}
 	}
 
-	// Fallback to default_provider
-	dp := cfg.DefaultProviderConfig()
-	if dp == nil {
-		return nil, fmt.Errorf("no matching route and default_provider not configured")
+	// 2. Fallback to default_route
+	dr := cfg.DefaultRouteConfig()
+	if dr == nil {
+		return nil, fmt.Errorf("no matching route and default_route not configured")
 	}
-	return providerToResult(*dp, dp.Model), nil
+	return r.resolveRoute(cfg, *dr, clientProtocol, body)
 }
 
-func providerToResult(prov config.ProviderConfig, model string) *RouteResult {
+func (r *ConfigRouter) resolveRoute(cfg *config.Config, rule config.RouteRule, clientProtocol string, body []byte) (*RouteResult, error) {
+	modelValue := resolveModel(rule, clientProtocol, body)
+	providerKey, modelName := parseProviderModel(modelValue, rule.Provider)
+
+	prov, ok := cfg.Providers[providerKey]
+	if !ok {
+		return nil, fmt.Errorf("provider %q not found", providerKey)
+	}
+
 	return &RouteResult{
 		BaseURL:  prov.BaseURL,
 		APIKey:   prov.APIKey,
 		Format:   prov.Format,
-		Model:    model,
+		Model:    modelName,
 		Path:     prov.Path,
 		ThinkTag: prov.ThinkTag,
+	}, nil
+}
+
+// parseProviderModel splits a "provider:model" value. Plain model names
+// use defaultProvider. Uses LastIndex for safety with edge cases.
+func parseProviderModel(value, defaultProvider string) (provider string, model string) {
+	if idx := strings.LastIndex(value, ":"); idx > 0 {
+		return value[:idx], value[idx+1:]
 	}
+	return defaultProvider, value
 }
 
 func resolveModel(rule config.RouteRule, clientProtocol string, body []byte) string {

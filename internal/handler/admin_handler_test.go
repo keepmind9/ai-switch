@@ -21,14 +21,13 @@ func setupAdminTest(t *testing.T) (*gin.Engine, string) {
 	cfgPath := filepath.Join(dir, "config.yaml")
 
 	cfg := &config.Config{
-		Server:          config.ServerConfig{Host: "0.0.0.0", Port: 12345},
-		DefaultProvider: "minimax",
+		Server:       config.ServerConfig{Host: "0.0.0.0", Port: 12345},
+		DefaultRoute: "gw-test",
 		Providers: map[string]config.ProviderConfig{
 			"minimax": {
 				Name:    "MiniMax",
 				BaseURL: "https://api.minimaxi.com",
 				APIKey:  "sk-test-key-12345678",
-				Model:   "MiniMax-M2.7",
 				Format:  "chat",
 				Sponsor: true,
 			},
@@ -74,7 +73,6 @@ func TestListProviders(t *testing.T) {
 	assert.Equal(t, "minimax", p["key"])
 	assert.Equal(t, "sk-t****5678", p["api_key"])
 	assert.Equal(t, "MiniMax", p["name"])
-	assert.True(t, p["is_default"].(bool))
 }
 
 func TestCreateProvider(t *testing.T) {
@@ -140,7 +138,7 @@ func TestUpdateProvider(t *testing.T) {
 func TestDeleteProvider(t *testing.T) {
 	r, cfgPath := setupAdminTest(t)
 
-	// Create a second provider so default_provider can be cleared
+	// Create a second provider so default_route can be cleared
 	body, _ := json.Marshal(map[string]any{
 		"key":      "other",
 		"name":     "Other",

@@ -664,7 +664,7 @@ func (h *Handler) handleAPIStatus(c *gin.Context) {
 			"host": cfg.Server.Host,
 			"port": cfg.Server.Port,
 		},
-		"default_provider": cfg.DefaultProvider,
+		"default_route": cfg.DefaultRoute,
 	}
 
 	providers := make([]gin.H, 0)
@@ -673,7 +673,6 @@ func (h *Handler) handleAPIStatus(c *gin.Context) {
 			"key":      key,
 			"name":     p.Name,
 			"base_url": p.BaseURL,
-			"model":    p.Model,
 			"format":   p.Format,
 			"sponsor":  p.Sponsor,
 			"logo_url": p.LogoURL,

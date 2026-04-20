@@ -14,7 +14,8 @@ const selectedPreset = ref("")
 const form = ref<any>({})
 const revealedKeys = ref<Record<string, string>>({})
 
-const defaultForm = { key: "", name: "", base_url: "", path: "", api_key: "", model: "", format: "chat", logo_url: "", sponsor: false }
+const defaultForm = { key: "", name: "", base_url: "", path: "", api_key: "", format: "chat", logo_url: "", sponsor: false, models: [] as string[] }
+const modelInput = ref("")
 
 async function load() {
   loading.value = true
@@ -40,11 +41,17 @@ function openCreate() {
 
 function openEdit(row: Provider) {
   isEdit.value = true
-  form.value = { key: row.key, name: row.name, base_url: row.base_url, path: row.path, api_key: "", model: row.model, format: row.format, logo_url: row.logo_url, sponsor: row.sponsor }
+  form.value = { key: row.key, name: row.name, base_url: row.base_url, path: row.path, api_key: "", format: row.format, logo_url: row.logo_url, sponsor: row.sponsor, models: [...(row.models || [])] }
   selectedPreset.value = ""; showForm.value = true
 }
 
 function cancelForm() { showForm.value = false }
+
+function addModel() {
+  const m = modelInput.value.trim()
+  if (m && !form.value.models.includes(m)) { form.value.models.push(m); modelInput.value = "" }
+}
+function removeModel(idx: number) { form.value.models.splice(idx, 1) }
 
 async function handleDelete(key: string) {
   await ElMessageBox.confirm(`Delete provider "${key}"?`, "Confirm", { type: "warning" })
@@ -120,9 +127,6 @@ onMounted(load)
         </el-row>
         <el-row :gutter="16">
           <el-col :span="6">
-            <el-form-item label="Default Model"><el-input v-model="form.model" /></el-form-item>
-          </el-col>
-          <el-col :span="6">
             <el-form-item label="Format">
               <el-select v-model="form.format" class="w-full">
                 <el-option label="Chat" value="chat" />
@@ -138,6 +142,17 @@ onMounted(load)
             <el-form-item label="Sponsor"><el-switch v-model="form.sponsor" /></el-form-item>
           </el-col>
         </el-row>
+        <el-form-item label="Models">
+          <div class="models-editor">
+            <div class="models-tags">
+              <el-tag v-for="(m, idx) in form.models" :key="idx" closable @close="removeModel(idx)" class="model-tag">{{ m }}</el-tag>
+            </div>
+            <div class="models-input-row">
+              <el-input v-model="modelInput" placeholder="Add model name" @keyup.enter="addModel" />
+              <el-button @click="addModel">Add</el-button>
+            </div>
+          </div>
+        </el-form-item>
         <div class="form-actions">
           <el-button @click="cancelForm">Cancel</el-button>
           <el-button type="primary" @click="handleSubmit">{{ isEdit ? "Update" : "Create" }}</el-button>
@@ -152,18 +167,18 @@ onMounted(load)
         <el-table-column prop="key" label="Key" width="120" />
         <el-table-column prop="base_url" label="Base URL" />
         <el-table-column prop="format" label="Format" width="100" />
-        <el-table-column prop="model" label="Model" width="150" />
+        <el-table-column label="Models" min-width="200">
+          <template #default="{ row }">
+            <el-tag v-for="m in (row.models || [])" :key="m" size="small" class="tag-spacing">{{ m }}</el-tag>
+            <span v-if="!row.models?.length" class="text-muted">—</span>
+          </template>
+        </el-table-column>
         <el-table-column label="API Key" width="160">
           <template #default="{ row }">
             <div class="api-key-cell">
               <span class="mono">{{ revealedKeys[row.key] || row.api_key }}</span>
               <el-button link size="small" @click="handleReveal(row)"><el-icon><View /></el-icon></el-button>
             </div>
-          </template>
-        </el-table-column>
-        <el-table-column label="Default" width="80">
-          <template #default="{ row }">
-            <el-tag v-if="row.is_default" type="success" size="small">Default</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="Actions" width="150" fixed="right">
@@ -204,5 +219,35 @@ onMounted(load)
 .partner-star {
   color: #f59e0b;
   margin-right: 2px;
+}
+
+.models-editor {
+  width: 100%;
+}
+
+.models-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.models-input-row {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+
+.model-tag {
+  margin-right: 0;
+}
+
+.tag-spacing {
+  margin-right: 4px;
+  margin-bottom: 2px;
+}
+
+.text-muted {
+  color: var(--el-text-color-placeholder);
 }
 </style>

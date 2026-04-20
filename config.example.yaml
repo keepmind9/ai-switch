@@ -2,7 +2,7 @@ server:
   host: "0.0.0.0"
   port: 12345
 
-default_provider: "minimax"
+default_route: "gw-default"
 
 providers:
   minimax:
@@ -10,28 +10,43 @@ providers:
     # /v1 suffix is auto-stripped — you can use either format
     base_url: "https://api.minimaxi.com"
     api_key: "${MINIMAX_API_KEY}"
-    model: "MiniMax-M2.5"
     format: "chat"
     # Strip think tags from responses (optional, for reasoning models)
     # think_tag: "think"
     logo_url: ""
     sponsor: true
+    models:
+      - "MiniMax-M2.5"
   deepseek:
     name: "DeepSeek"
     base_url: "https://api.deepseek.com"
     api_key: "${DEEPSEEK_API_KEY}"
-    model: "deepseek-chat"
     format: "chat"
     logo_url: ""
     sponsor: true
+    models:
+      - "deepseek-chat"
+      - "deepseek-reasoner"
   zhipu:
     name: "Zhipu"
     base_url: "https://open.bigmodel.cn/api/anthropic"
     api_key: "${ZHIPU_API_KEY}"
     format: "anthropic"
+    models:
+      - "glm-5.1"
+      - "glm-4.7"
+      - "glm-4.5-air"
 
 # Routes: map key is the gateway API key used by clients for authentication
 routes:
+  "gw-default":
+    provider: "minimax"
+    default_model: "MiniMax-M2.5"
+    scene_map:
+      default: "MiniMax-M2.5"
+      think: "deepseek:deepseek-chat"
+      websearch: "MiniMax-M2.5"
+      background: "MiniMax-M2.5"
   "gw-zhipu":
     provider: "zhipu"
     default_model: "glm-5.1"

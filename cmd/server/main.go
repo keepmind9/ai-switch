@@ -131,10 +131,15 @@ func main() {
 }
 
 func extractProviderName(cfg *config.Config) string {
-	if dp := cfg.DefaultProviderConfig(); dp != nil && dp.BaseURL != "" {
-		return extractHost(dp.BaseURL)
+	dr := cfg.DefaultRouteConfig()
+	if dr == nil {
+		return "unknown"
 	}
-	return "unknown"
+	p, ok := cfg.Providers[dr.Provider]
+	if !ok || p.BaseURL == "" {
+		return "unknown"
+	}
+	return extractHost(p.BaseURL)
 }
 
 func extractHost(url string) string {
