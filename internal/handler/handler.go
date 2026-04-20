@@ -242,6 +242,33 @@ func (h *Handler) streamToChatSSE(c *gin.Context, resp *http.Response, convertFn
 	}
 }
 
+// streamAnthropicToResponsesSSE reads Anthropic SSE from resp and writes Responses API SSE to client.
+func (h *Handler) streamAnthropicToResponsesSSE(c *gin.Context, resp *http.Response, state *converter.AnthropicToResponsesState) {
+	c.Header("Content-Type", "text/event-stream")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Connection", "keep-alive")
+	c.Header("X-Accel-Buffering", "no")
+	c.Writer.WriteHeader(http.StatusOK)
+
+	w := &ginSSEWriter{c: c}
+	flusher, canFlush := c.Writer.(http.Flusher)
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		if converter.ConvertAnthropicLineToResponses(w, state, line) {
+			if canFlush {
+				flusher.Flush()
+			}
+			return
+		}
+		if canFlush {
+			flusher.Flush()
+		}
+	}
+}
+
 // handleResponses handles /v1/responses endpoint (Codex CLI, OpenAI Responses API).
 func (h *Handler) handleResponses(c *gin.Context) {
 	body, err := io.ReadAll(c.Request.Body)
@@ -569,7 +596,7 @@ func (h *Handler) chatViaResponses(c *gin.Context, result *router.RouteResult, c
 	c.Data(http.StatusOK, "application/json", respData)
 }
 
-// responsesViaChatToAnthropic chains Responses→Chat→Anthropic.
+// responsesViaChatToAnthropic converts Responses→Anthropic, forwards, converts stream back.
 func (h *Handler) responsesViaChatToAnthropic(c *gin.Context, result *router.RouteResult, req *types.ResponsesRequest, model string, isStreaming bool) {
 	chatReq, err := h.converter.ResponsesToChat(req)
 	if err != nil {
@@ -577,8 +604,51 @@ func (h *Handler) responsesViaChatToAnthropic(c *gin.Context, result *router.Rou
 		return
 	}
 	chatReq.Model = model
-	chatReq.Stream = isStreaming
-	h.chatViaAnthropic(c, result, chatReq, isStreaming)
+
+	anthReq, err := h.converter.ChatRequestToAnthropic(chatReq)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": "conversion_error", "message": err.Error()}})
+		return
+	}
+	anthReq.Stream = isStreaming
+	anthBody, _ := json.Marshal(anthReq)
+
+	resp, err := h.forwardRequest(result, PathMessages, anthBody)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": gin.H{"code": "upstream_error", "message": err.Error()}})
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		h.writeUpstreamError(c, resp)
+		return
+	}
+
+	if isStreaming {
+		state := &converter.AnthropicToResponsesState{ThinkTag: result.ThinkTag}
+		h.streamAnthropicToResponsesSSE(c, resp, state)
+		return
+	}
+
+	// Non-streaming: convert Anthropic response → Chat response → Responses response
+	respBody, _ := io.ReadAll(resp.Body)
+	var anthResp converter.AnthropicResponse
+	if err := json.Unmarshal(respBody, &anthResp); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": "conversion_error", "message": "failed to parse anthropic response"}})
+		return
+	}
+	chatResp, err := h.converter.AnthropicResponseToChat(&anthResp)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": "conversion_error", "message": err.Error()}})
+		return
+	}
+	responsesResp, err := h.converter.ChatToResponses(chatResp, model, result.ThinkTag)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": "conversion_error", "message": err.Error()}})
+		return
+	}
+	c.JSON(http.StatusOK, responsesResp)
 }
 
 // anthropicViaChatToResponses chains Anthropic→Chat→Responses.
