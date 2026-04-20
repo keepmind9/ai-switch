@@ -27,7 +27,7 @@ func (w *responseCapture) WriteString(s string) (int, error) {
 }
 
 // UsageMiddleware records API usage statistics via a Gin middleware.
-func UsageMiddleware(usageStore *store.UsageStore, provider string) gin.HandlerFunc {
+func UsageMiddleware(usageStore *store.UsageStore) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Only track API endpoints
 		path := c.Request.URL.Path
@@ -52,7 +52,13 @@ func UsageMiddleware(usageStore *store.UsageStore, provider string) gin.HandlerF
 			return
 		}
 
-		usage := extractUsage(wrap.body.Bytes(), provider)
+		provider, _ := c.Get("provider_key")
+		providerStr, _ := provider.(string)
+		if providerStr == "" {
+			providerStr = "unknown"
+		}
+
+		usage := extractUsage(wrap.body.Bytes(), providerStr)
 		if usage != nil {
 			usageStore.AsyncRecord(*usage)
 		}

@@ -24,6 +24,8 @@ import (
 //go:embed all:static
 var staticFS embed.FS
 
+const ctxProviderKey = "provider_key"
+
 type Handler struct {
 	provider   *config.Provider
 	converter  *converter.Converter
@@ -290,6 +292,7 @@ func (h *Handler) handleResponses(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": "route_error", "message": routeErr.Error()}})
 		return
 	}
+	c.Set(ctxProviderKey, result.ProviderKey)
 
 	slog.Info("responses request", "model", responsesReq.Model, "stream", responsesReq.Stream, "upstream_format", result.Format, "upstream_url", buildUpstreamURL(result), "resolved_model", result.Model)
 
@@ -331,6 +334,7 @@ func (h *Handler) handleAnthropic(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": "route_error", "message": routeErr.Error()}})
 		return
 	}
+	c.Set(ctxProviderKey, result.ProviderKey)
 
 	slog.Info("anthropic request", "model", anthReq.Model, "stream", anthReq.Stream, "upstream_format", result.Format, "upstream_url", buildUpstreamURL(result), "resolved_model", result.Model)
 
@@ -373,6 +377,7 @@ func (h *Handler) handleChat(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": "route_error", "message": routeErr.Error()}})
 		return
 	}
+	c.Set(ctxProviderKey, result.ProviderKey)
 
 	slog.Info("chat request", "model", chatReq.Model, "stream", chatReq.Stream, "upstream_format", result.Format, "upstream_url", buildUpstreamURL(result), "resolved_model", result.Model)
 

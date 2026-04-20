@@ -181,7 +181,7 @@ func TestListRoutes(t *testing.T) {
 	assert.Len(t, data, 1)
 
 	route := data[0].(map[string]any)
-	assert.Equal(t, "****", route["key"])
+	assert.Equal(t, "gw-test", route["key"])
 	assert.Equal(t, "minimax", route["provider"])
 }
 

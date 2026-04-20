@@ -167,8 +167,8 @@ onMounted(load)
     <!-- Table -->
     <el-card shadow="never">
       <el-table :data="providers" v-loading="loading" stripe>
-        <el-table-column prop="name" label="Name" width="150" />
         <el-table-column prop="key" label="Key" width="120" />
+        <el-table-column prop="name" label="Name" width="150" />
         <el-table-column prop="base_url" label="Base URL" />
         <el-table-column prop="format" label="Format" width="100" />
         <el-table-column label="Models" min-width="200">

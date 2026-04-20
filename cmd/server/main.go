@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"strings"
 	"syscall"
 	"time"
 
@@ -71,8 +70,7 @@ func main() {
 
 	// Usage tracking middleware
 	if usageStore != nil {
-		upstreamName := extractProviderName(cfg)
-		r.Use(middleware.UsageMiddleware(usageStore, upstreamName))
+		r.Use(middleware.UsageMiddleware(usageStore))
 	}
 
 	cfgRouter := router.NewConfigRouter(provider)
@@ -128,26 +126,4 @@ func main() {
 			}
 		}
 	}
-}
-
-func extractProviderName(cfg *config.Config) string {
-	dr := cfg.DefaultRouteConfig()
-	if dr == nil {
-		return "unknown"
-	}
-	p, ok := cfg.Providers[dr.Provider]
-	if !ok || p.BaseURL == "" {
-		return "unknown"
-	}
-	return extractHost(p.BaseURL)
-}
-
-func extractHost(url string) string {
-	// Simple extraction: remove scheme and path
-	url = strings.TrimPrefix(url, "https://")
-	url = strings.TrimPrefix(url, "http://")
-	if idx := strings.Index(url, "/"); idx > 0 {
-		url = url[:idx]
-	}
-	return url
 }
