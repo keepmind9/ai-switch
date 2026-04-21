@@ -241,7 +241,16 @@ onMounted(load)
 
           <el-row :gutter="16">
             <el-col :span="12">
-              <el-form-item label="URL Path Override">
+              <el-form-item>
+                <template #label>
+                  <div class="flex items-center gap-1">
+                    <span>URL Path Override</span>
+                    <span class="text-[10px] text-slate-400 font-normal">(Optional)</span>
+                    <el-tooltip content="Custom endpoint path. If empty, the gateway uses the default path based on the protocol format." placement="top">
+                      <el-icon :size="12" class="text-slate-400 cursor-help"><QuestionFilled /></el-icon>
+                    </el-tooltip>
+                  </div>
+                </template>
                 <el-input v-model="form.path" placeholder="/v1/chat/completions" />
               </el-form-item>
             </el-col>

@@ -126,8 +126,17 @@ html.dark {
   box-shadow: 0 0 0 1px var(--el-border-color) inset;
   background-color: var(--el-fill-color-blank) !important;
   border-radius: var(--v3-border-radius-small);
+  transition: all 0.2s;
+
   &:hover {
     box-shadow: 0 0 0 1px var(--el-color-primary) inset;
+  }
+
+  // Hide placeholder on focus
+  &.is-focus input::placeholder,
+  &:focus input::placeholder,
+  input:focus::placeholder {
+    color: transparent !important;
   }
 }
 
