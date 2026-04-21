@@ -122,7 +122,7 @@ func buildUpstreamURL(result *router.RouteResult) string {
 	if result.Path != "" {
 		path = result.Path
 	}
-	return strings.TrimSuffix(result.BaseURL, "/") + path
+	return router.BuildUpstreamURL(result.BaseURL, path)
 }
 
 // forwardRequest sends a request to the upstream API and returns the response.
@@ -130,7 +130,7 @@ func (h *Handler) forwardRequest(result *router.RouteResult, path string, body [
 	if result.Path != "" {
 		path = result.Path
 	}
-	upstreamURL := strings.TrimSuffix(result.BaseURL, "/") + path
+	upstreamURL := router.BuildUpstreamURL(result.BaseURL, path)
 	req, err := http.NewRequest("POST", upstreamURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
@@ -691,8 +691,8 @@ func (h *Handler) anthropicViaChatToResponses(c *gin.Context, result *router.Rou
 	c.Data(http.StatusOK, "application/json", respBody)
 }
 
-// Upstream API paths. Convention: all paths include /v1 prefix.
-// base_url should NOT include /v1 — the gateway appends these paths.
+// Upstream API paths. BuildUpstreamURL handles /v1 deduplication
+// so base_url can be configured with or without /v1.
 const (
 	PathChat      = "/v1/chat/completions"
 	PathMessages  = "/v1/messages"

@@ -374,3 +374,23 @@ func TestConfigRouter_RouteModelMapCaseInsensitive(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildUpstreamURL(t *testing.T) {
+	tests := []struct {
+		name     string
+		baseURL  string
+		apiPath  string
+		expected string
+	}{
+		{"base without /v1", "https://api.example.com", "/v1/chat/completions", "https://api.example.com/v1/chat/completions"},
+		{"base with /v1", "https://api.example.com/v1", "/v1/chat/completions", "https://api.example.com/v1/chat/completions"},
+		{"base with trailing slash", "https://api.example.com/", "/v1/messages", "https://api.example.com/v1/messages"},
+		{"custom path", "https://api.example.com/v1", "/custom/path", "https://api.example.com/v1/custom/path"},
+		{"anthropic with /v1", "https://api.anthropic.com/v1", "/v1/messages", "https://api.anthropic.com/v1/messages"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, BuildUpstreamURL(tt.baseURL, tt.apiPath))
+		})
+	}
+}

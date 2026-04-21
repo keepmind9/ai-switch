@@ -2,7 +2,7 @@
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/keepmind9/ai-switch)](https://goreportcard.com/report/github.com/keepmind9/ai-switch) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A lightweight local AI proxy that lets any AI CLI tool use third-party LLM APIs through a unified local endpoint.
+A lightweight local proxy that lets any AI CLI tool (Claude Code, Codex CLI, etc.) use third-party LLM APIs through a unified local endpoint.
 
 **One binary, one config, any AI CLI → any LLM API.**
 
@@ -10,38 +10,32 @@ A lightweight local AI proxy that lets any AI CLI tool use third-party LLM APIs 
 
 - **Multi-protocol**: Auto-detects client protocol (Responses API, Anthropic Messages, Chat Completions) and converts transparently
 - **Zero-intrusion**: No changes to your CLI config files, just point `base_url` to the local proxy
-- **Lightweight**: Pure Go, no external dependencies, single binary
-- **Hot reload**: Update config without restart (`POST /api/reload` or `kill -HUP`)
-- **Cross-platform**: macOS, Linux, Windows (pure Go SQLite, no CGO)
 - **Scene routing**: Route Claude Code requests to different models based on request type (thinking, web search, background tasks)
 - **Model mapping**: Map client model names to upstream model names at the route level
-- **Multiple providers**: Pre-configure providers for quick switching
+- **Cross-provider routing**: Route different scenes to different providers (e.g. thinking → DeepSeek, web search → Zhipu)
+- **Hot reload**: Update config without restart (`POST /api/reload` or `kill -HUP`)
+- **Admin UI**: Built-in web dashboard for managing providers and routes
+- **Lightweight**: Pure Go, single binary, no CGO
 
-## Supported Protocols
+## Installation
 
-| Endpoint | Protocol | Client Example |
-|----------|----------|----------------|
-| `/v1/responses` | OpenAI Responses API | Codex CLI |
-| `/v1/messages` | Anthropic Messages | Claude Code |
-| `/v1/chat/completions` | Chat Completions | Generic |
+```bash
+git clone https://github.com/keepmind9/ai-switch.git
+cd ai-switch
+make build-all   # build frontend + Go binary (includes Admin UI)
+```
 
-The gateway uses a hub-and-spoke architecture centered on Chat Completions. All protocol conversions route through the hub, supporting indirect paths like Responses → Anthropic or Anthropic → Responses.
+> If you don't need the Admin UI, use `make build` instead (Go only, faster).
 
 ## Quick Start
 
+### 1. Create config
+
 ```bash
-# Copy and edit config
 cp config.example.yaml config.yaml
-
-# Build and run
-make build
-./bin/server -c config.yaml
-
-# Or run in dev mode
-make dev
 ```
 
-## Configuration
+Edit `config.yaml` with your provider credentials:
 
 ```yaml
 server:
@@ -51,95 +45,103 @@ server:
 default_route: "gw-default"
 
 providers:
-  minimax:
-    name: "MiniMax"
-    base_url: "https://api.minimaxi.com"
-    api_key: "${MINIMAX_API_KEY}"
+  deepseek:
+    name: "DeepSeek"
+    base_url: "https://api.deepseek.com/v1"
+    api_key: "${DEEPSEEK_API_KEY}"
     format: "chat"
 
 routes:
   "gw-default":
-    provider: "minimax"
-    default_model: "MiniMax-M2.5"
-    model_map:
-      "claude-sonnet-4-5": "MiniMax-M2.5"
-      "gpt-4o": "MiniMax-M2.5"
-    scene_map:
-      default: "MiniMax-M2.5"
-      think: "MiniMax-M2.5"
-      websearch: "MiniMax-M2.5"
-      background: "MiniMax-M2.5"
+    provider: "deepseek"
+    default_model: "deepseek-chat"
 ```
 
-Config loading priority: `-c` flag > `./config.yaml` > `~/.ai-switch/config.yaml`
+> **Note:** `base_url` can include `/v1` or not — just copy it from your provider's documentation.
 
-> **Note:** `base_url` with `/v1` suffix is auto-stripped on load to prevent double path issues.
+### 2. Start the server
+
+```bash
+./bin/server -c config.yaml
+```
+
+### 3. Point your CLI tool
+
+**Claude Code:**
+
+```bash
+export ANTHROPIC_BASE_URL=http://localhost:12345
+export ANTHROPIC_API_KEY=gw-default
+```
+
+**Codex CLI:**
+
+```toml
+[model_providers.proxy]
+name = "ai-switch"
+base_url = "http://localhost:12345/v1"
+api_key = "gw-default"
+wire_api = "responses"
+```
+
+**Any OpenAI-compatible tool:**
+
+```bash
+export OPENAI_BASE_URL=http://localhost:12345/v1
+export OPENAI_API_KEY=gw-default
+```
+
+That's it — your CLI tool will now route requests through ai-switch to your configured provider.
+
+## How It Works
+
+```
+Claude Code ──→ ai-switch ──→ DeepSeek (chat)
+Codex CLI  ──→          ──→ Zhipu    (anthropic)
+Any tool   ──→          ──→ MiniMax  (chat)
+```
+
+ai-switch sits between your CLI tool and upstream LLM providers. It:
+- Detects the client protocol automatically (Anthropic / Responses / Chat)
+- Routes requests to the correct provider based on the API key (route key)
+- Converts between protocols when needed (e.g. Anthropic → Chat Completions)
+- Detects request scenes (thinking, web search, etc.) for smart routing
+
+The route key (`gw-default` in the example above) serves as both the API key for authentication and the routing identifier.
+
+## Configuration
 
 ### Providers
 
-Providers define upstream LLM vendor connection info:
+Define your upstream LLM vendor connections:
 
 ```yaml
 providers:
-  minimax:
-    name: "MiniMax"
-    base_url: "https://api.minimaxi.com"
-    api_key: "${MINIMAX_API_KEY}"
-    format: "chat"          # chat (default) | responses | anthropic
-    think_tag: "think"      # optional: strip reasoning tags from responses
-    models:                 # optional: available models for this provider
-      - "MiniMax-M2.5"
+  deepseek:
+    name: "DeepSeek"
+    base_url: "https://api.deepseek.com/v1"
+    api_key: "${DEEPSEEK_API_KEY}"    # supports ${ENV_VAR} expansion
+    format: "chat"                     # chat (default) | responses | anthropic
+    think_tag: "think"                 # optional: strip reasoning tags from responses
+    models:                            # optional: for validation warnings
+      - "deepseek-chat"
+      - "deepseek-reasoner"
 ```
 
 ### Routes
 
-Routes map gateway API keys to providers and models. The map key is the gateway API key that clients send for authentication.
+Routes map API keys to providers and models:
 
 ```yaml
 routes:
-  "gw-my-key":
-    provider: "minimax"
-    default_model: "MiniMax-M2.5"
+  "gw-default":
+    provider: "deepseek"
+    default_model: "deepseek-chat"
 ```
 
-#### Model Resolution Priority
+### Scene Map
 
-When a request arrives, the gateway resolves the upstream model in this order:
-
-1. **ModelMap** — exact model name match (all protocols, case-insensitive)
-2. **SceneMap** — heuristic scene detection (Anthropic protocol only)
-3. **DefaultModel** — fallback
-
-#### Model Map
-
-Map client model names to upstream models. Works for all protocols, case-insensitive:
-
-```yaml
-routes:
-  "gw-my-key":
-    provider: "minimax"
-    default_model: "MiniMax-M2.5"
-    model_map:
-      "claude-sonnet-4-5": "MiniMax-M2.5"
-      "gpt-4o": "MiniMax-M2.5"
-```
-
-#### Scene Map (Claude Code)
-
-When the gateway receives an Anthropic Messages request (from Claude Code), it can detect the request scene and route to different models. This is useful for optimizing cost and performance across different Claude Code usage patterns.
-
-**Detected scenes:**
-
-| Scene | Key | Detection | Claude Code Usage |
-|-------|-----|-----------|-------------------|
-| Long Context | `longContext` | Token count exceeds `long_context_threshold` (disabled by default) | Requests with very large context windows |
-| Background | `background` | Model name contains "haiku" | Lightweight background tasks (Claude Code uses Haiku internally) |
-| Web Search | `websearch` | Tools array contains `web_search_*` type | Web search tool invocations |
-| Thinking | `think` | `thinking` field present in request | Plan mode, Think/UltraThink modes, extended reasoning |
-| Image | `image` | User messages contain image content blocks | Image analysis tasks |
-| Default | `default` | Fallback when no other scene matches | General coding, editing, and conversation |
-
-**Detection priority:** `longContext` > `background` > `websearch` > `think` > `image` > `default`
+Route Claude Code requests to different models based on what it's doing:
 
 ```yaml
 routes:
@@ -153,12 +155,36 @@ routes:
       websearch: "glm-4.7"
       background: "glm-4.5-air"
       longContext: "glm-5.1"
-      image: "glm-4.7"
 ```
 
-#### Cross-Provider Routing
+| Scene | Key | Detection |
+|-------|-----|-----------|
+| Long Context | `longContext` | Token count exceeds `long_context_threshold` |
+| Background | `background` | Model name contains "haiku" |
+| Web Search | `websearch` | Tools contain `web_search_*` type |
+| Thinking | `think` | `thinking` field present |
+| Image | `image` | User messages contain image blocks |
+| Default | `default` | Fallback |
 
-Use the `provider:model` format in scene_map, model_map, or default_model to route requests to a different provider within the same route:
+Priority: `longContext` > `background` > `websearch` > `think` > `image` > `default`
+
+### Model Map
+
+Map client model names to upstream models:
+
+```yaml
+routes:
+  "gw-default":
+    provider: "deepseek"
+    default_model: "deepseek-chat"
+    model_map:
+      "claude-sonnet-4-5": "deepseek-chat"
+      "gpt-4o": "deepseek-chat"
+```
+
+### Cross-Provider Routing
+
+Use `provider:model` to route to a different provider within the same route:
 
 ```yaml
 routes:
@@ -167,96 +193,58 @@ routes:
     default_model: "MiniMax-M2.5"
     scene_map:
       default: "MiniMax-M2.5"
-      think: "deepseek:deepseek-chat"    # route think to DeepSeek
-      websearch: "zhipu:glm-4.7"         # route websearch to Zhipu
+      think: "deepseek:deepseek-chat"
+      websearch: "zhipu:glm-4.7"
 ```
 
-Plain model names (without `:`) use the route's default `provider`.
+### Model Resolution Priority
 
-### Upstream Format
+1. **ModelMap** — exact model name match (case-insensitive)
+2. **SceneMap** — scene detection (Anthropic protocol only)
+3. **DefaultModel** — fallback
 
-The `format` field tells the gateway what protocol the upstream API speaks:
-
-- `chat` (default) — Standard OpenAI Chat Completions compatible
-- `responses` — OpenAI Responses API
-- `anthropic` — Anthropic Messages API
-
-## Client Setup
-
-> **Note:** Different tools handle URL paths differently. Claude Code and Codex CLI append their own paths (`/v1/messages`, `/v1/responses`) to the base URL, so only set the host:port part. For generic Chat Completions tools, point to `http://localhost:12345/v1`.
-
-### Claude Code
-
-Claude Code automatically appends `/v1/messages` to the base URL:
+## CLI
 
 ```bash
-export ANTHROPIC_BASE_URL=http://localhost:12345
-export ANTHROPIC_API_KEY=gw-your-route-key
+ai-switch serve -c config.yaml    # Start the server
+ai-switch check -c config.yaml    # Validate config without starting
 ```
 
-### Codex CLI
+Running without a subcommand defaults to `serve`:
 
-```toml
-[model_providers.proxy]
-name = "ai-switch"
-base_url = "http://localhost:12345/v1"
-api_key = "gw-your-route-key"
-wire_api = "responses"
+```bash
+ai-switch -c config.yaml          # Same as: ai-switch serve -c config.yaml
 ```
 
-### Generic Chat Completions
+### Config validation
 
-Point any tool's `base_url` to `http://localhost:12345/v1`.
+```bash
+$ ai-switch check -c config.yaml
 
-## Admin API
+Checking config.yaml ...
 
-| Endpoint | Description |
-|----------|-------------|
-| `GET /admin/providers` | List providers |
-| `POST /admin/providers` | Create provider |
-| `PUT /admin/providers/:key` | Update provider |
-| `DELETE /admin/providers/:key` | Delete provider |
-| `GET /admin/routes` | List routes |
-| `POST /admin/routes` | Create route |
-| `PUT /admin/routes/:key` | Update route |
-| `DELETE /admin/routes/:key` | Delete route |
-| `POST /admin/routes/generate-key` | Generate a gateway API key |
-| `GET /admin/presets` | List provider presets |
-| `GET /admin/status` | Gateway status |
+  Providers: 3
+  Routes:    3
+  Default:   gw-default
 
-## Core API Endpoints
+✓ Config is valid.
+```
 
-| Endpoint | Description |
-|----------|-------------|
-| `POST /v1/responses` | Responses API (Codex CLI) |
-| `POST /v1/messages` | Anthropic Messages (Claude Code) |
-| `POST /v1/chat/completions` | Chat Completions (generic) |
-| `POST /api/reload` | Hot-reload configuration |
-| `GET /health` | Health check |
+Exit codes: `0` = valid, `1` = has errors, `2` = warnings only.
+
+## Admin UI
+
+Open `http://localhost:12345` in your browser for a built-in dashboard to manage providers, routes, and view usage statistics.
 
 ## Build
 
 ```bash
-make build   # fmt + vet + compile
-make lint    # fmt + vet only
-make dev     # go run dev mode
-make test    # run tests
-make clean   # remove binary
+make build      # fmt + vet + compile
+make build-all  # build frontend + Go binary
+make dev        # run in dev mode
+make test       # run tests
+make clean      # remove binary
 ```
-
-## Architecture
-
-```
-Client (Responses/Anthropic/Chat)
-    ↓
-ai-switch (protocol detection + conversion)
-    ↓
-Upstream API (any format)
-```
-
-Hub-and-Spoke conversion:
-- Responses ↔ Chat Completions ↔ Anthropic Messages
-- Indirect paths chain through the Chat hub
 
 ## License
 

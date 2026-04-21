@@ -7,7 +7,7 @@ default_route: "gw-default"
 providers:
   minimax:
     name: "MiniMax"
-    # /v1 suffix is auto-stripped — you can use either format
+    # /v1 suffix is handled automatically — use whichever format your provider documents
     base_url: "https://api.minimaxi.com"
     api_key: "${MINIMAX_API_KEY}"
     format: "chat"
