@@ -21,6 +21,16 @@ HANDOFF.md
 
 # Config with secrets
 config.yaml
+.env
+
+# Data
+*.db
+*.sqlite
+
+# Go test/coverage
+coverage.out
+*.prof
+
 docs/plans
 docs/superpowers
 

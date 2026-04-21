@@ -1,6 +1,8 @@
 # ai-switch
 
-A lightweight local AI Switch proxy that lets any AI CLI tool use third-party LLM APIs through a unified local endpoint.
+[![Go Report Card](https://goreportcard.com/badge/github.com/keepmind9/ai-switch)](https://goreportcard.com/report/github.com/keepmind9/ai-switch) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+A lightweight local AI proxy that lets any AI CLI tool use third-party LLM APIs through a unified local endpoint.
 
 **One binary, one config, any AI CLI → any LLM API.**
 
@@ -258,4 +260,4 @@ Hub-and-Spoke conversion:
 
 ## License
 
-MIT
+[MIT](LICENSE)

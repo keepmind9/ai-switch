@@ -16,7 +16,7 @@ ui-dev:
 	cd frontend && npx vite --host 0.0.0.0
 
 build: lint
-	GOPROXY=https://goproxy.cn,direct go build -o bin/server ./cmd/server
+	go build -o bin/server ./cmd/server
 
 build-all: build-ui build
 
@@ -24,7 +24,7 @@ run: build
 	./bin/server -c config.yaml
 
 dev:
-	GOPROXY=https://goproxy.cn,direct go run ./cmd/server -c config.yaml
+	go run ./cmd/server -c config.yaml
 
 clean:
 	rm -f bin/server ai-switch
