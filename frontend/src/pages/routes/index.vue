@@ -136,7 +136,7 @@ onMounted(load)
 
     <el-card shadow="never" class="border-none!">
       <el-table :data="filteredRoutes" v-loading="loading" stripe size="large">
-        <el-table-column label="Gateway Key" min-width="240">
+        <el-table-column label="Route Key" min-width="240">
           <template #default="{ row }">
             <div class="flex items-center gap-2">
               <span class="mono text-xs px-2 py-1 rounded truncate max-w-180px border" :style="{ backgroundColor: 'var(--v3-key-bg)', borderColor: 'var(--v3-key-border)', color: 'var(--v3-key-text-color)' }">
@@ -196,7 +196,7 @@ onMounted(load)
     >
       <div class="px-2 pb-10">
         <el-form :model="form" label-position="top" class="custom-form">
-          <el-form-item label="Gateway API Key" required>
+          <el-form-item label="Route Key" required>
             <div class="flex gap-2 w-full">
               <el-input v-model="form.key" :disabled="isEdit" placeholder="Client will use this key" class="mono-input" />
               <el-button v-if="!isEdit" @click="handleGenerateKey" :icon="MagicStick">Auto-Gen</el-button>
