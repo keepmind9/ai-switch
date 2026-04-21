@@ -45,21 +45,32 @@ mkdir -p "${DIST_DIR}"
 for target in "${TARGETS[@]}"; do
     IFS="/" read -r GOOS GOARCH <<< "$target"
 
-    BINARY="${PROJECT}-${GOOS}-${GOARCH}"
+    BINARY="${PROJECT}"
     if [ "$GOOS" = "windows" ]; then
         BINARY="${BINARY}.exe"
     fi
 
-    echo "    -> ${BINARY}"
+    PKG_NAME="${PROJECT}-${VERSION#v}-${GOOS}-${GOARCH}"
+
+    echo "    -> ${PKG_NAME}"
+    mkdir -p "${DIST_DIR}/${PKG_NAME}"
     CGO_ENABLED=0 GOOS="$GOOS" GOARCH="$GOARCH" \
         go build ${BUILD_OPTS} -ldflags "${LDFLAGS}" \
-        -o "${DIST_DIR}/${BINARY}" ${CMD}
+        -o "${DIST_DIR}/${PKG_NAME}/${BINARY}" ${CMD}
+
+    cp README.md "${DIST_DIR}/${PKG_NAME}/"
+    cp LICENSE "${DIST_DIR}/${PKG_NAME}/"
+
+    if [ "$GOOS" = "windows" ]; then
+        (cd "${DIST_DIR}" && zip -r "${PKG_NAME}.zip" "${PKG_NAME}")
+    else
+        tar -czf "${DIST_DIR}/${PKG_NAME}.tar.gz" -C "${DIST_DIR}" "${PKG_NAME}"
+    fi
+    rm -rf "${DIST_DIR}/${PKG_NAME}"
 done
 
 echo "==> Generating checksums..."
-cd "${DIST_DIR}"
-sha256sum "${PROJECT}"-* > checksums-sha256.txt
-cd ..
+(cd "${DIST_DIR}" && sha256sum *.tar.gz *.zip > checksums-sha256.txt)
 
 echo "==> Done! Artifacts in ${DIST_DIR}/:"
 ls -lh "${DIST_DIR}/"
