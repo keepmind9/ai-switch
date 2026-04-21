@@ -143,3 +143,82 @@ func toFloat(v any) float64 {
 	}
 	return 0
 }
+
+// StreamUsageAccumulator accumulates token usage from SSE data lines.
+type StreamUsageAccumulator struct {
+	Model        string
+	InputTokens  int64
+	OutputTokens int64
+}
+
+// Sniff parses a single SSE data line and accumulates usage fields.
+func (a *StreamUsageAccumulator) Sniff(data string, format string) {
+	if data == "" || data == "[DONE]" {
+		return
+	}
+
+	var raw map[string]any
+	if json.Unmarshal([]byte(data), &raw) != nil {
+		return
+	}
+
+	switch format {
+	case "anthropic":
+		sniffAnthropicUsage(a, raw)
+	case "responses":
+		sniffResponsesUsage(a, raw)
+	default:
+		sniffChatUsage(a, raw)
+	}
+}
+
+func sniffAnthropicUsage(a *StreamUsageAccumulator, raw map[string]any) {
+	eventType, _ := raw["type"].(string)
+	switch eventType {
+	case "message_start":
+		if msg, ok := raw["message"].(map[string]any); ok {
+			if m, ok := msg["model"].(string); ok {
+				a.Model = m
+			}
+			if usage, ok := msg["usage"].(map[string]any); ok {
+				a.InputTokens = int64(toFloat(usage["input_tokens"]))
+			}
+		}
+	case "message_delta":
+		if usage, ok := raw["usage"].(map[string]any); ok {
+			a.OutputTokens = int64(toFloat(usage["output_tokens"]))
+		}
+	}
+}
+
+func sniffResponsesUsage(a *StreamUsageAccumulator, raw map[string]any) {
+	eventType, _ := raw["type"].(string)
+	if eventType != "response.completed" {
+		return
+	}
+	if resp, ok := raw["response"].(map[string]any); ok {
+		if m, ok := resp["model"].(string); ok {
+			a.Model = m
+		}
+		if usage, ok := resp["usage"].(map[string]any); ok {
+			a.InputTokens = int64(toFloat(usage["input_tokens"]))
+			a.OutputTokens = int64(toFloat(usage["output_tokens"]))
+		}
+	}
+}
+
+func sniffChatUsage(a *StreamUsageAccumulator, raw map[string]any) {
+	if usage, ok := raw["usage"].(map[string]any); ok {
+		if m, ok := raw["model"].(string); ok {
+			a.Model = m
+		}
+		in := int64(toFloat(usage["prompt_tokens"]))
+		out := int64(toFloat(usage["completion_tokens"]))
+		if in > 0 {
+			a.InputTokens = in
+		}
+		if out > 0 {
+			a.OutputTokens = out
+		}
+	}
+}

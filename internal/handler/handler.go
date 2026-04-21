@@ -16,6 +16,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/keepmind9/ai-switch/internal/config"
 	"github.com/keepmind9/ai-switch/internal/converter"
+	"github.com/keepmind9/ai-switch/internal/middleware"
 	"github.com/keepmind9/ai-switch/internal/router"
 	"github.com/keepmind9/ai-switch/internal/store"
 	"github.com/keepmind9/ai-switch/internal/types"
@@ -186,13 +187,46 @@ func (h *Handler) streamChatToClient(c *gin.Context, resp *http.Response, conver
 	}
 }
 
+// recordStreamUsage records token usage for a streaming response.
+func (h *Handler) recordStreamUsage(model, provider string, inputTokens, outputTokens int) {
+	if h.usageStore == nil {
+		return
+	}
+	if inputTokens == 0 && outputTokens == 0 {
+		slog.Debug("stream usage skipped: zero tokens", "provider", provider, "model", model)
+		return
+	}
+	slog.Debug("recorded stream usage", "provider", provider, "model", model,
+		"input", inputTokens, "output", outputTokens)
+	h.usageStore.AsyncRecord(store.UsageRecord{
+		Provider:     provider,
+		Model:        model,
+		Date:         store.Today(),
+		Requests:     1,
+		InputTokens:  int64(inputTokens),
+		OutputTokens: int64(outputTokens),
+		TotalTokens:  int64(inputTokens + outputTokens),
+	})
+}
+
+// recordStreamUsageFromState extracts provider from context and records usage.
+func (h *Handler) recordStreamUsageFromState(c *gin.Context, model string, inputTokens, outputTokens int) {
+	provider, _ := c.Get(ctxProviderKey)
+	providerStr, _ := provider.(string)
+	h.recordStreamUsage(model, providerStr, inputTokens, outputTokens)
+}
+
 // streamPassthrough forwards upstream SSE directly to the client.
-func (h *Handler) streamPassthrough(c *gin.Context, resp *http.Response) {
+func (h *Handler) streamPassthrough(c *gin.Context, resp *http.Response, format string) {
 	c.Header("Content-Type", "text/event-stream")
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Connection", "keep-alive")
 	c.Header("X-Accel-Buffering", "no")
 	c.Writer.WriteHeader(http.StatusOK)
+
+	var acc middleware.StreamUsageAccumulator
+	provider, _ := c.Get(ctxProviderKey)
+	providerStr, _ := provider.(string)
 
 	flusher, canFlush := c.Writer.(http.Flusher)
 	scanner := bufio.NewScanner(resp.Body)
@@ -201,10 +235,16 @@ func (h *Handler) streamPassthrough(c *gin.Context, resp *http.Response) {
 	for scanner.Scan() {
 		line := scanner.Text()
 		c.Writer.WriteString(line + "\n")
+
+		data := converter.ParseSSEDataLine(line)
+		acc.Sniff(data, format)
+
 		if canFlush {
 			flusher.Flush()
 		}
 	}
+
+	h.recordStreamUsage(acc.Model, providerStr, int(acc.InputTokens), int(acc.OutputTokens))
 }
 
 // streamToChatSSE reads upstream SSE (any format) and converts to Chat SSE output.
@@ -420,7 +460,7 @@ func (h *Handler) passthroughRequest(c *gin.Context, result *router.RouteResult,
 	}
 
 	if isStreaming {
-		h.streamPassthrough(c, resp)
+		h.streamPassthrough(c, resp, result.Format)
 		return
 	}
 
@@ -438,6 +478,9 @@ func (h *Handler) responsesViaChat(c *gin.Context, result *router.RouteResult, r
 
 	chatReq.Model = result.Model
 	chatReq.Stream = isStreaming
+	if isStreaming {
+		chatReq.StreamOptions = &types.StreamOptions{IncludeUsage: true}
+	}
 
 	chatBody, _ := json.Marshal(chatReq)
 	resp, err := h.forwardRequest(result, PathChat, chatBody)
@@ -457,6 +500,7 @@ func (h *Handler) responsesViaChat(c *gin.Context, result *router.RouteResult, r
 		h.streamChatToClient(c, resp, func(w converter.SSEWriter, data string) bool {
 			return converter.ConvertChatChunkToResponsesSSE(w, state, data)
 		})
+		h.recordStreamUsageFromState(c, state.Model, state.InputTokens, state.OutputTokens)
 		return
 	}
 
@@ -486,6 +530,9 @@ func (h *Handler) anthropicViaChat(c *gin.Context, result *router.RouteResult, r
 
 	chatReq.Model = result.Model
 	chatReq.Stream = isStreaming
+	if isStreaming {
+		chatReq.StreamOptions = &types.StreamOptions{IncludeUsage: true}
+	}
 
 	chatBody, _ := json.Marshal(chatReq)
 	resp, err := h.forwardRequest(result, PathChat, chatBody)
@@ -505,6 +552,7 @@ func (h *Handler) anthropicViaChat(c *gin.Context, result *router.RouteResult, r
 		h.streamChatToClient(c, resp, func(w converter.SSEWriter, data string) bool {
 			return converter.ConvertChatChunkToAnthropicSSE(w, state, data)
 		})
+		h.recordStreamUsageFromState(c, state.Model, state.InputTokens, state.OutputTokens)
 		return
 	}
 
@@ -552,6 +600,7 @@ func (h *Handler) chatViaAnthropic(c *gin.Context, result *router.RouteResult, c
 		h.streamToChatSSE(c, resp, func(s any, line string) any {
 			return converter.ConvertAnthropicLineToChat(s.(*converter.AnthropicToChatState), line)
 		}, state)
+		h.recordStreamUsageFromState(c, state.Model, state.InputTokens, state.OutputTokens)
 		return
 	}
 
@@ -594,6 +643,7 @@ func (h *Handler) chatViaResponses(c *gin.Context, result *router.RouteResult, c
 		h.streamToChatSSE(c, resp, func(s any, line string) any {
 			return converter.ConvertResponsesLineToChat(s.(*converter.ResponsesToChatState), line)
 		}, state)
+		h.recordStreamUsageFromState(c, state.Model, state.InputTokens, state.OutputTokens)
 		return
 	}
 
@@ -633,6 +683,7 @@ func (h *Handler) responsesViaChatToAnthropic(c *gin.Context, result *router.Rou
 	if isStreaming {
 		state := &converter.AnthropicToResponsesState{ThinkTag: result.ThinkTag}
 		h.streamAnthropicToResponsesSSE(c, resp, state)
+		h.recordStreamUsageFromState(c, state.Model, state.InputTokens, state.OutputTokens)
 		return
 	}
 
@@ -684,6 +735,7 @@ func (h *Handler) anthropicViaChatToResponses(c *gin.Context, result *router.Rou
 		h.streamToChatSSE(c, resp, func(s any, line string) any {
 			return converter.ConvertResponsesLineToChat(s.(*converter.ResponsesToChatState), line)
 		}, state)
+		h.recordStreamUsageFromState(c, state.Model, state.InputTokens, state.OutputTokens)
 		return
 	}
 

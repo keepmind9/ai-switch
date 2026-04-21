@@ -92,6 +92,13 @@ func ConvertChatChunkToResponsesSSE(w SSEWriter, state *ResponsesStreamState, da
 		if choice.FinishReason != "" && choice.FinishReason != "null" {
 			emitTextDone(w, state)
 		}
+
+	}
+
+	// Capture usage from final chunk (when upstream sends stream_options.include_usage)
+	if chunk.Usage != nil {
+		state.InputTokens = chunk.Usage.PromptTokens
+		state.OutputTokens = chunk.Usage.CompletionTokens
 	}
 
 	return false
@@ -157,9 +164,9 @@ func emitResponseCompleted(w SSEWriter, state *ResponsesStreamState) {
 				},
 			},
 			"usage": map[string]any{
-				"input_tokens":  0,
-				"output_tokens": 0,
-				"total_tokens":  0,
+				"input_tokens":  state.InputTokens,
+				"output_tokens": state.OutputTokens,
+				"total_tokens":  state.InputTokens + state.OutputTokens,
 			},
 		},
 	})

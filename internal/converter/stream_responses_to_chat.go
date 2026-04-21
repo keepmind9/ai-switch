@@ -9,11 +9,13 @@ import (
 
 // ResponsesToChatState tracks state when converting Responses SSE to Chat SSE.
 type ResponsesToChatState struct {
-	ID      string
-	Model   string
-	Created int64
-	AccText string
-	Started bool
+	ID           string
+	Model        string
+	Created      int64
+	AccText      string
+	Started      bool
+	InputTokens  int
+	OutputTokens int
 }
 
 // ConvertResponsesLineToChat processes a raw Responses SSE line and returns
@@ -74,6 +76,12 @@ func ConvertResponsesLineToChat(state *ResponsesToChatState, line string) any {
 		}
 
 	case "response.completed":
+		if resp, ok := raw["response"].(map[string]any); ok {
+			if usage, ok := resp["usage"].(map[string]any); ok {
+				state.InputTokens = int(toFloat64(usage["input_tokens"]))
+				state.OutputTokens = int(toFloat64(usage["output_tokens"]))
+			}
+		}
 		return &types.ChatStreamResponse{
 			ID:      state.ID,
 			Object:  "chat.completion.chunk",

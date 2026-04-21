@@ -5,7 +5,7 @@ type SSEWriter interface {
 	WriteEvent(eventType string, data any)
 }
 
-// StreamState tracks state across SSE chunks for Responses API conversion.
+// ResponsesStreamState tracks state across SSE chunks for Responses API conversion.
 type ResponsesStreamState struct {
 	ResponseID   string
 	Created      int64
@@ -16,6 +16,8 @@ type ResponsesStreamState struct {
 	AccText      string
 	SeqNum       int
 	Model        string
+	InputTokens  int
+	OutputTokens int
 	ThinkTag     string
 	TagState     ThinkTagState
 }
