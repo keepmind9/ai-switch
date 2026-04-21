@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"syscall"
 	"time"
 
@@ -20,7 +21,19 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var configPath string
+var (
+	configPath string
+	version    = "dev"
+	gitCommit  = "none"
+	buildTime  = "unknown"
+)
+
+var versionTmpl = `Version:    %s
+Git commit: %s
+Built:      %s
+Go version: %s
+OS/Arch:    %s/%s
+`
 
 func main() {
 	rootCmd := &cobra.Command{
@@ -41,7 +54,15 @@ func main() {
 		Run:   runCheck,
 	}
 
-	rootCmd.AddCommand(serveCmd, checkCmd)
+	versionCmd := &cobra.Command{
+		Use:   "version",
+		Short: "Print version information",
+		Run: func(_ *cobra.Command, _ []string) {
+			fmt.Printf(versionTmpl, version, gitCommit, buildTime, runtime.Version(), runtime.GOOS, runtime.GOARCH)
+		},
+	}
+
+	rootCmd.AddCommand(serveCmd, checkCmd, versionCmd)
 
 	// Default to serve when no subcommand is given
 	if len(os.Args) == 1 || (len(os.Args) > 1 && os.Args[1][0] == '-') {

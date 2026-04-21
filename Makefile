@@ -15,13 +15,18 @@ build-ui:
 ui-dev:
 	cd frontend && npx vite --host 0.0.0.0
 
+VERSION ?= $(shell git describe --tags --exact-match 2>/dev/null || echo "dev")
+GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+BUILD_TIME := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
+LDFLAGS := -s -w -X main.version=$(VERSION) -X main.gitCommit=$(GIT_COMMIT) -X main.buildTime=$(BUILD_TIME)
+
 build: lint
-	go build -o bin/server ./cmd/server
+	go build -trimpath -ldflags "$(LDFLAGS)" -o bin/server ./cmd/server
 
 build-all: build-ui build
 
 run: build
-	./bin/server -c config.yaml
+	./bin/server serve -c config.yaml
 
 dev:
 	go run ./cmd/server -c config.yaml
