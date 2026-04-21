@@ -21,6 +21,20 @@
 
 ## 安装
 
+### 一键安装（推荐）
+
+```bash
+# Linux / macOS
+curl -sL https://raw.githubusercontent.com/keepmind9/ai-switch/main/scripts/install.sh | bash
+
+# Windows (PowerShell)
+irm https://raw.githubusercontent.com/keepmind9/ai-switch/main/scripts/install.ps1 | iex
+```
+
+自动下载最新版本，安装到 `~/.local/bin`，并添加到 PATH。
+
+### 从源码构建
+
 ```bash
 git clone https://github.com/keepmind9/ai-switch.git
 cd ai-switch
@@ -31,41 +45,17 @@ make build-all   # 构建前端 + Go 二进制（包含管理面板）
 
 ## 快速开始
 
-### 1. 创建配置
+### 1. 启动服务
 
 ```bash
-cp config.example.yaml config.yaml
+ai-switch serve
 ```
 
-编辑 `config.yaml`，填入你的 Provider 凭证：
+无需配置文件——首次运行自动创建 `~/.ai-switch/config.yaml`。
 
-```yaml
-server:
-  host: "0.0.0.0"
-  port: 12345
+### 2. 通过管理面板配置
 
-default_route: "gw-default"
-
-providers:
-  deepseek:
-    name: "DeepSeek"
-    base_url: "https://api.deepseek.com/v1"
-    api_key: "${DEEPSEEK_API_KEY}"
-    format: "chat"
-
-routes:
-  "gw-default":
-    provider: "deepseek"
-    default_model: "deepseek-chat"
-```
-
-> **提示：** `base_url` 可以包含 `/v1` 也可以不包含，直接从 Provider 文档复制即可。
-
-### 2. 启动服务
-
-```bash
-./bin/server -c config.yaml
-```
+在浏览器打开 `http://localhost:12345`，添加 Provider 和 Route。
 
 ### 3. 配置你的 CLI 工具
 
@@ -73,7 +63,7 @@ routes:
 
 ```bash
 export ANTHROPIC_BASE_URL=http://localhost:12345
-export ANTHROPIC_API_KEY=gw-default
+export ANTHROPIC_API_KEY=<route-key>
 ```
 
 **Codex CLI：**
@@ -90,7 +80,7 @@ wire_api = "responses"
 
 ```bash
 export OPENAI_BASE_URL=http://localhost:12345/v1
-export OPENAI_API_KEY=gw-default
+export OPENAI_API_KEY=<route-key>
 ```
 
 完成！你的 CLI 工具将通过 ai-switch 路由到你配置的 Provider。
@@ -110,7 +100,7 @@ ai-switch 位于你的 CLI 工具和上游 LLM Provider 之间，它会：
 - 在需要时进行协议转换（如 Anthropic → Chat Completions）
 - 检测请求场景（思考、联网搜索等）实现智能路由
 
-路由 Key（上例中的 `gw-default`）同时用作认证的 API Key 和路由标识。
+路由 Key（上例中的 `<route-key>`）同时用作认证的 API Key 和路由标识。
 
 ## 配置说明
 

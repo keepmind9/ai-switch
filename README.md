@@ -21,6 +21,20 @@ A lightweight local proxy that lets any AI CLI tool (Claude Code, Codex CLI, etc
 
 ## Installation
 
+### One-line install (recommended)
+
+```bash
+# Linux / macOS
+curl -sL https://raw.githubusercontent.com/keepmind9/ai-switch/main/scripts/install.sh | bash
+
+# Windows (PowerShell)
+irm https://raw.githubusercontent.com/keepmind9/ai-switch/main/scripts/install.ps1 | iex
+```
+
+This downloads the latest release for your platform, installs to `~/.local/bin`, and adds it to PATH.
+
+### Build from source
+
 ```bash
 git clone https://github.com/keepmind9/ai-switch.git
 cd ai-switch
@@ -31,41 +45,17 @@ make build-all   # build frontend + Go binary (includes Admin UI)
 
 ## Quick Start
 
-### 1. Create config
+### 1. Start the server
 
 ```bash
-cp config.example.yaml config.yaml
+ai-switch serve
 ```
 
-Edit `config.yaml` with your provider credentials:
+No config file needed — it auto-creates `~/.ai-switch/config.yaml` with defaults on first run.
 
-```yaml
-server:
-  host: "0.0.0.0"
-  port: 12345
+### 2. Configure via Admin UI
 
-default_route: "gw-default"
-
-providers:
-  deepseek:
-    name: "DeepSeek"
-    base_url: "https://api.deepseek.com/v1"
-    api_key: "${DEEPSEEK_API_KEY}"
-    format: "chat"
-
-routes:
-  "gw-default":
-    provider: "deepseek"
-    default_model: "deepseek-chat"
-```
-
-> **Note:** `base_url` can include `/v1` or not — just copy it from your provider's documentation.
-
-### 2. Start the server
-
-```bash
-./bin/server -c config.yaml
-```
+Open `http://localhost:12345` in your browser to add providers and routes.
 
 ### 3. Point your CLI tool
 
@@ -73,7 +63,7 @@ routes:
 
 ```bash
 export ANTHROPIC_BASE_URL=http://localhost:12345
-export ANTHROPIC_API_KEY=gw-default
+export ANTHROPIC_API_KEY=<route-key>
 ```
 
 **Codex CLI:**
@@ -90,7 +80,7 @@ wire_api = "responses"
 
 ```bash
 export OPENAI_BASE_URL=http://localhost:12345/v1
-export OPENAI_API_KEY=gw-default
+export OPENAI_API_KEY=<route-key>
 ```
 
 That's it — your CLI tool will now route requests through ai-switch to your configured provider.
@@ -109,7 +99,7 @@ ai-switch sits between your CLI tool and upstream LLM providers. It:
 - Converts between protocols when needed (e.g. Anthropic → Chat Completions)
 - Detects request scenes (thinking, web search, etc.) for smart routing
 
-The route key (`gw-default` in the example above) serves as both the API key for authentication and the routing identifier.
+The route key (`<route-key>` in the example above) serves as both the API key for authentication and the routing identifier.
 
 ## Configuration
 
