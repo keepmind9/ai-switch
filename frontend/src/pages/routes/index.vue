@@ -158,7 +158,7 @@ onMounted(load)
         
         <el-table-column prop="default_model" label="Default Model" min-width="180">
           <template #default="{ row }">
-            <span class="text-sm font-semibold text-slate-700">{{ row.default_model }}</span>
+            <span class="text-sm text-slate-600">{{ row.default_model }}</span>
           </template>
         </el-table-column>
         

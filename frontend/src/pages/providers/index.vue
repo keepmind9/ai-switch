@@ -168,7 +168,28 @@ onMounted(load)
           </template>
         </el-table-column>
 
-        <el-table-column label="API Key" width="220">
+        <el-table-column label="Models" min-width="240">
+          <template #default="{ row }">
+            <div class="flex flex-wrap gap-1 max-w-300px">
+              <el-tag v-for="m in (row.models || []).slice(0, 5)" :key="m" size="small" type="info" effect="plain" class="rounded-md! border-slate-200! text-slate-500!">
+                {{ m }}
+              </el-tag>
+              <el-tooltip v-if="(row.models || []).length > 5" placement="top">
+                <template #content>
+                  <div class="flex flex-col gap-1 p-1">
+                    <div v-for="m in row.models.slice(5)" :key="m">{{ m }}</div>
+                  </div>
+                </template>
+                <el-tag size="small" type="info" effect="plain" class="rounded-md! border-slate-200! text-slate-400! cursor-help">
+                  +{{ row.models.length - 5 }}
+                </el-tag>
+              </el-tooltip>
+              <span v-if="!(row.models || []).length" class="text-xs text-slate-300 italic">No models</span>
+            </div>
+          </template>
+        </el-table-column>
+
+        <el-table-column label="API Key" width="180">
           <template #default="{ row }">
             <div class="flex items-center gap-2">
               <span class="mono text-xs px-2 py-1 rounded truncate max-w-120px" :style="{ backgroundColor: 'var(--v3-key-bg)', color: revealedKeys[row.key] ? 'var(--v3-key-text-color)' : 'var(--el-text-color-placeholder)' }">
@@ -350,24 +371,6 @@ onMounted(load)
     font-weight: 600;
     color: var(--v3-form-label-color);
     padding-bottom: 4px;
-  }
-}
-
-html.dark {
-  .preset-card {
-    background: #1e293b;
-    border-color: #334155;
-    color: #f1f5f9;
-    
-    &:hover, &.active { 
-      background: #334155; 
-      border-color: #3b82f6; 
-      color: #3b82f6;
-    }
-
-    :deep(.bg-slate-100) {
-      background-color: #0f172a;
-    }
   }
 }
 </style>

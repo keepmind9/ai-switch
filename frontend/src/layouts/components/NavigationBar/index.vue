@@ -1,6 +1,5 @@
 <script lang="ts" setup>
 import Screenfull from "@@/components/Screenfull/index.vue"
-import ThemeSwitch from "@@/components/ThemeSwitch/index.vue"
 import { useDevice } from "@@/composables/useDevice"
 import { useLayoutMode } from "@@/composables/useLayoutMode"
 import { useAppStore } from "@/pinia/stores/app"
@@ -11,7 +10,7 @@ const { isMobile } = useDevice()
 const { isTop } = useLayoutMode()
 const appStore = useAppStore()
 const settingsStore = useSettingsStore()
-const { showThemeSwitch, showScreenfull } = storeToRefs(settingsStore)
+const { showScreenfull } = storeToRefs(settingsStore)
 
 function toggleSidebar() {
   appStore.toggleSidebar(false)
@@ -31,7 +30,6 @@ function toggleSidebar() {
     <div class="right-menu">
       <div class="right-menu-container">
         <Screenfull v-if="showScreenfull" class="right-menu-item" />
-        <ThemeSwitch v-if="showThemeSwitch" class="right-menu-item" />
       </div>
     </div>
   </div>

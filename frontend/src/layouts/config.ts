@@ -7,7 +7,6 @@ export interface LayoutsConfig {
   showLogo: boolean
   fixedHeader: boolean
   showFooter: boolean
-  showThemeSwitch: boolean
   showScreenfull: boolean
 }
 
@@ -17,7 +16,6 @@ const DEFAULT_CONFIG: LayoutsConfig = {
   fixedHeader: true,
   showFooter: false,
   showLogo: true,
-  showThemeSwitch: true,
   showScreenfull: true
 }
 
