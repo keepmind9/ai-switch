@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from "vue"
 import { ElMessage, ElMessageBox } from "element-plus"
-import { Plus, Delete, Edit, Close, Search, Refresh, CopyDocument, MagicStick, Warning } from "@element-plus/icons-vue"
+import { Plus, Delete, Edit, Close, Search, Refresh, CopyDocument, MagicStick, Warning, Right } from "@element-plus/icons-vue"
 import { listRoutes, createRoute, updateRoute, deleteRoute, generateKey, type Route } from "@/api/routes"
 import { listProviders, type Provider } from "@/api/providers"
+import { useConfirm } from "@@/composables/useConfirm"
 
 const routes = ref<Route[]>([])
 const providers = ref<Provider[]>([])
@@ -13,6 +14,7 @@ const isEdit = ref(false)
 const editKey = ref("")
 const form = ref<any>({})
 const searchQuery = ref("")
+const { confirmState, toggle: toggleDelete, reset: resetDelete } = useConfirm()
 
 const sceneMapData = ref<{ key: string; value: string }[]>([])
 const modelMapData = ref<{ key: string; value: string }[]>([])
@@ -35,6 +37,7 @@ async function load() {
     const [r, p] = await Promise.all([listRoutes(), listProviders()])
     routes.value = r.data.data
     providers.value = p.data.data 
+    routes.value.forEach(r => resetDelete(r.key))
   } finally { 
     loading.value = false 
   }
@@ -65,15 +68,10 @@ async function handleGenerateKey() {
 }
 
 async function handleDelete(key: string) {
-  try {
-    await ElMessageBox.confirm(`Delete route "${key}"? This will immediately stop access for clients using this key.`, "Delete Route", { 
-      type: "warning",
-      confirmButtonClass: 'el-button--danger'
-    })
-    await deleteRoute(key)
-    ElMessage.success("Route deleted")
-    load()
-  } catch (e) {}
+  await deleteRoute(key)
+  resetDelete(key)
+  ElMessage.success("Route deleted")
+  load()
 }
 
 async function handleSubmit() {
@@ -101,7 +99,7 @@ async function handleSubmit() {
     if (Array.isArray(warnings) && warnings.length > 0) {
       warnings.forEach(w => ElMessage.warning({ message: w, duration: 5000, showClose: true }))
     }
-
+    
     showDrawer.value = false
     load()
   } catch (e) {
@@ -136,7 +134,6 @@ onMounted(load)
       </div>
     </div>
 
-    <!-- Table -->
     <el-card shadow="never" class="border-none!">
       <el-table :data="filteredRoutes" v-loading="loading" stripe size="large">
         <el-table-column label="Gateway Key" min-width="240">
@@ -176,18 +173,21 @@ onMounted(load)
           </template>
         </el-table-column>
         
-        <el-table-column label="Actions" width="100" fixed="right" align="right">
+        <el-table-column label="Actions" width="160" fixed="right" align="right">
           <template #default="{ row }">
             <div class="flex justify-end gap-1">
               <el-button link type="primary" :icon="Edit" @click="openEdit(row)" />
-              <el-button link type="danger" :icon="Delete" @click="handleDelete(row.key)" />
+              <div v-if="confirmState[row.key]" class="flex items-center gap-1">
+                <el-button link type="danger" size="small" class="font-medium" @click="handleDelete(row.key)">Confirm?</el-button>
+                <el-button link type="info" size="small" class="font-medium" @click="resetDelete(row.key)">Cancel</el-button>
+              </div>
+              <el-button v-else link type="primary" :icon="Delete" @click="toggleDelete(row.key)" />
             </div>
           </template>
         </el-table-column>
       </el-table>
     </el-card>
 
-    <!-- Form Drawer -->
     <el-drawer
       v-model="showDrawer"
       :title="isEdit ? 'Edit Routing Configuration' : 'Create New Route'"
@@ -200,9 +200,6 @@ onMounted(load)
             <div class="flex gap-2 w-full">
               <el-input v-model="form.key" :disabled="isEdit" placeholder="Client will use this key" class="mono-input" />
               <el-button v-if="!isEdit" @click="handleGenerateKey" :icon="MagicStick">Auto-Gen</el-button>
-            </div>
-            <div class="text-[11px] text-slate-400 mt-1 flex items-center gap-1">
-              <el-icon><Warning /></el-icon> This key is what clients will put in their `Authorization` header.
             </div>
           </el-form-item>
 
@@ -225,15 +222,13 @@ onMounted(load)
 
           <el-form-item label="Long Context Threshold">
             <el-input-number v-model="form.long_context_threshold" :min="0" :step="10000" controls-position="right" class="w-full!" />
-            <div class="text-[11px] text-slate-400 mt-1">Switch to 'longContext' scene if total tokens exceed this value. 0 to disable.</div>
           </el-form-item>
 
           <div class="divider my-6 border-t border-slate-100 border-dashed"></div>
 
-          <!-- Scene Map Editor -->
           <div class="mb-6">
             <div class="flex items-center justify-between mb-3">
-              <span class="text-sm font-bold text-slate-700 dark:text-slate-200">Scene Mappings</span>
+              <span class="text-sm font-bold text-slate-700">Scene Mappings</span>
               <el-button size="small" link type="primary" @click="addSceneEntry">+ Add Scene</el-button>
             </div>
             <div class="p-3 rounded-xl border min-h-40px" style="background-color: var(--v3-section-bg); border-color: var(--el-border-color-light)">
@@ -251,10 +246,9 @@ onMounted(load)
             </div>
           </div>
 
-          <!-- Model Map Editor -->
           <div>
             <div class="flex items-center justify-between mb-3">
-              <span class="text-sm font-bold text-slate-700 dark:text-slate-200">Model Aliases</span>
+              <span class="text-sm font-bold text-slate-700">Model Aliases</span>
               <el-button size="small" link type="primary" @click="addModelEntry">+ Add Mapping</el-button>
             </div>
             <div class="p-3 rounded-xl border min-h-40px" style="background-color: var(--v3-section-bg); border-color: var(--el-border-color-light)">
@@ -299,23 +293,7 @@ onMounted(load)
   font-size: 12px;
 }
 
-:deep(.el-table__header) th {
-  background-color: #f8fafc;
-  color: #64748b;
-  font-weight: 600;
-  text-transform: uppercase;
-  font-size: 11px;
-  letter-spacing: 0.05em;
-}
-
 .w-full\! {
   width: 100% !important;
-}
-
-html.dark {
-  .bg-slate-50\/50 {
-    background-color: #1e293b;
-    border-color: #334155;
-  }
 }
 </style>

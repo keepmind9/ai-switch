@@ -17,112 +17,100 @@
 }
 
 .el-message-box {
-  --el-messagebox-width: 420px;
+  --el-messagebox-width: 360px;
   border-radius: var(--v3-border-radius-base);
-  border: 1px solid var(--el-border-color-light);
-  box-shadow: var(--v3-box-shadow-hover);
-  background-color: var(--el-bg-color-overlay) !important;
-  padding: 8px;
+  border: 1px solid var(--el-border-color);
+  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.1);
+  background-color: #ffffff !important;
+  padding: 16px;
   overflow: hidden;
   
   .el-message-box__header {
-    padding: 16px 16px 8px;
+    padding: 0 0 16px;
     display: flex;
     align-items: center;
     justify-content: space-between;
 
     .el-message-box__title {
-      font-weight: 700;
-      font-size: 16px;
-      color: var(--el-text-color-primary);
+      font-weight: 800;
+      font-size: 15px;
+      color: #1d1c16;
+      letter-spacing: -0.02em;
     }
 
     .el-message-box__headerbtn {
-      top: 16px;
-      right: 16px;
-      width: 24px;
-      height: 24px;
+      position: static;
       padding: 0;
-      background: transparent;
-      border: none;
-      outline: none;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: all 0.2s;
-      border-radius: 6px;
-
-      &:hover {
-        background-color: var(--v3-sidebar-menu-hover-bg-color);
-        .el-message-box__close {
-          color: var(--el-color-primary);
-        }
-      }
-
-      .el-message-box__close {
-        font-size: 14px;
-        color: var(--el-text-color-placeholder);
-      }
+      width: 20px;
+      height: 20px;
+      color: #a39e93;
+      &:hover { color: var(--el-color-primary); }
     }
   }
   
   .el-message-box__content {
-    padding: 12px 16px 20px;
-    color: var(--el-text-color-regular);
+    padding: 0 0 24px;
+    color: #66635c;
     font-size: 14px;
     line-height: 1.6;
   }
   
   .el-message-box__btns {
-    padding: 12px 16px 16px;
+    padding: 0;
     display: flex;
     justify-content: flex-end;
-    gap: 8px;
+    gap: 12px;
+    
+    .el-button {
+      font-weight: 600;
+      padding: 8px 16px;
+      height: auto;
+    }
   }
 }
 
 .el-card {
   --el-card-border-radius: var(--v3-border-radius-base);
-  --el-card-padding: 20px;
-  border: 1px solid var(--el-border-color);
-  transition: all 0.3s ease;
+  --el-card-padding: 24px;
+  border: 1px solid var(--el-border-color-light);
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
   background-color: #ffffff;
-  
-  &.is-always-shadow {
-    box-shadow: var(--v3-card-shadow);
-  }
+  box-shadow: none;
   
   &.is-hover-shadow:hover {
-    box-shadow: var(--v3-box-shadow-hover);
-    border-color: var(--el-color-primary-light-5);
+    border-color: var(--el-border-color);
+    box-shadow: 0 8px 24px -6px rgba(0, 0, 0, 0.04);
   }
 
   .el-card__header {
-    padding: 16px 20px;
+    padding: 20px 24px;
     border-bottom: 1px solid var(--el-border-color-lighter);
-    font-weight: 600;
+    font-weight: 700;
+    color: var(--v3-title-text-color);
   }
 }
 
 // Table Styles Refinement
 .el-table {
   --el-table-border-color: var(--el-border-color-light);
-  --el-table-header-bg-color: var(--v3-section-bg);
+  --el-table-header-bg-color: #fbfaf8;
   --el-table-tr-bg-color: transparent;
-  --el-table-striped-bg-color: rgba(0, 0, 0, 0.015);
-  --el-table-row-hover-bg-color: rgba(0, 0, 0, 0.03);
+  --el-table-striped-bg-color: rgba(0, 0, 0, 0.01);
+  --el-table-row-hover-bg-color: #fbfaf8;
   
   border-radius: var(--v3-border-radius-small);
   
   .el-table__cell {
-    padding: 14px 0;
+    padding: 16px 0;
   }
 
   th.el-table__cell {
     background-color: var(--el-table-header-bg-color) !important;
-    font-weight: 600;
-    color: var(--el-text-color-regular);
+    font-weight: 700;
+    color: #a3a3a3;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
   }
 
   &.el-table--striped .el-table__row--striped td.el-table__cell {
@@ -149,23 +137,18 @@
 }
 
 .el-input__wrapper, .el-select__wrapper, .el-textarea__inner {
-  box-shadow: 0 0 0 1px var(--el-border-color) inset;
+  box-shadow: 0 0 0 1px var(--el-border-color-light) inset;
   background-color: var(--el-fill-color-blank) !important;
   border-radius: var(--v3-border-radius-small);
-  transition: all 0.2s ease;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  padding: 8px 12px;
 
   &:hover {
-    box-shadow: 0 0 0 1px var(--el-color-primary-light-3) inset;
+    box-shadow: 0 0 0 1px var(--el-border-color) inset;
   }
 
   &.is-focus, &:focus-within {
-    box-shadow: 0 0 0 1px var(--el-color-primary) inset, 0 0 0 3px var(--el-color-primary-light-8) !important;
-  }
-
-  &.is-focus input::placeholder,
-  &:focus input::placeholder,
-  input:focus::placeholder {
-    color: transparent !important;
+    box-shadow: 0 0 0 1px var(--el-color-primary) inset, 0 0 0 2px var(--el-color-primary-light-8) !important;
   }
 }
 
@@ -252,16 +235,4 @@ a {
   border: 1px solid var(--v3-key-border);
 }
 
-// Transitions
-.fade-transform-enter-active,
-.fade-transform-leave-active {
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-.fade-transform-enter-from {
-  opacity: 0;
-  transform: translateX(-15px);
-}
-.fade-transform-leave-to {
-  opacity: 0;
-  transform: translateX(15px);
-}
+/* Frameless Minimalist Popconfirm (Removed) */

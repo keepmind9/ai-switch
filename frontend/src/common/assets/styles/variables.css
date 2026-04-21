@@ -66,13 +66,13 @@
   --v3-navigationbar-text-color: #66635c;
   
   /* Layout: Sidebar */
-  --v3-sidebar-width: 240px;
-  --v3-sidebar-hide-width: 72px;
-  --v3-sidebar-border-right: 1px solid #e5e2da;
-  --v3-sidebar-menu-item-height: 48px;
+  --v3-sidebar-width: 256px;
+  --v3-sidebar-hide-width: 80px;
+  --v3-sidebar-border-right: 1px solid var(--el-border-color-light);
+  --v3-sidebar-menu-item-height: 44px;
   --v3-sidebar-menu-tip-line-bg-color: var(--el-color-primary);
-  --v3-sidebar-menu-bg-color: #ece8e1; 
-  --v3-sidebar-menu-hover-bg-color: #e5e2da;
+  --v3-sidebar-menu-bg-color: #fbfaf8; 
+  --v3-sidebar-menu-hover-bg-color: #f5f2ed;
   --v3-sidebar-menu-text-color: #66635c;
   --v3-sidebar-menu-active-text-color: #1d1c16;
   --v3-sidebar-menu-active-bg-color: #ffffff;

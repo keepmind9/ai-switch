@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from "vue"
-import { ElMessage, ElMessageBox } from "element-plus"
-import { Plus, View, Edit, Close, Hide, CopyDocument, Search, Refresh, Link, Delete } from "@element-plus/icons-vue"
+import { ElMessage } from "element-plus"
+import { Plus, View, Edit, Hide, CopyDocument, Search, Refresh, Link, Delete, QuestionFilled } from "@element-plus/icons-vue"
 import { listProviders, createProvider, updateProvider, deleteProvider, revealAPIKey, type Provider } from "@/api/providers"
 import { listPresets, type Preset } from "@/api/stats"
+import { useConfirm } from "@@/composables/useConfirm"
 
 const providers = ref<Provider[]>([])
 const presets = ref<Preset[]>([])
@@ -14,6 +15,7 @@ const selectedPreset = ref("")
 const form = ref<any>({})
 const revealedKeys = ref<Record<string, string>>({})
 const searchQuery = ref("")
+const { confirmState, toggle: toggleDelete, reset: resetDelete } = useConfirm()
 
 const defaultForm = { key: "", name: "", base_url: "", path: "", api_key: "", format: "chat", logo_url: "", sponsor: false, models: [] as string[] }
 const modelInput = ref("")
@@ -24,6 +26,7 @@ async function load() {
     const [p, pr] = await Promise.all([listProviders(), listPresets()])
     providers.value = p.data.data
     presets.value = pr.data.data
+    providers.value.forEach(p => resetDelete(p.key))
   } finally {
     loading.value = false
   }
@@ -74,17 +77,10 @@ function addModel() {
 function removeModel(idx: number) { form.value.models.splice(idx, 1) }
 
 async function handleDelete(key: string) {
-  try {
-    await ElMessageBox.confirm(`Are you sure you want to delete provider "${key}"? This action cannot be undone.`, "Delete Provider", { 
-      confirmButtonText: 'Delete',
-      cancelButtonText: 'Cancel',
-      confirmButtonClass: 'el-button--danger',
-      type: "warning" 
-    })
-    await deleteProvider(key)
-    ElMessage.success("Provider deleted successfully")
-    load()
-  } catch (e) {}
+  await deleteProvider(key)
+  resetDelete(key)
+  ElMessage.success("Provider deleted successfully")
+  load()
 }
 
 async function handleSubmit() {
@@ -201,22 +197,25 @@ onMounted(load)
           </template>
         </el-table-column>
 
-        <el-table-column label="Actions" width="120" fixed="right" align="right">
+        <el-table-column label="Actions" width="140" fixed="right" align="right">
           <template #default="{ row }">
             <div class="flex justify-end gap-1">
               <el-tooltip content="Edit Settings" placement="top">
                 <el-button link type="primary" :icon="Edit" @click="openEdit(row)" />
               </el-tooltip>
-              <el-tooltip content="Delete Provider" placement="top">
-                <el-button link type="danger" :icon="Delete" @click="handleDelete(row.key)" />
-              </el-tooltip>
+              <div class="flex items-center gap-1">
+                <template v-if="confirmState[row.key]">
+                  <el-button link type="danger" size="small" class="font-medium" @click="handleDelete(row.key)">Confirm?</el-button>
+                  <el-button link type="info" size="small" class="font-medium" @click="resetDelete(row.key)">Cancel</el-button>
+                </template>
+                <el-button v-else link type="primary" :icon="Delete" @click="toggleDelete(row.key)" />
+              </div>
             </div>
           </template>
         </el-table-column>
       </el-table>
     </el-card>
 
-    <!-- Create/Edit Drawer -->
     <el-drawer
       v-model="showDrawer"
       :title="isEdit ? 'Edit AI Provider' : 'Add New Provider'"
