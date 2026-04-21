@@ -60,20 +60,21 @@ func ValidFormat(f string) bool {
 }
 
 func Load(path string) (*Config, error) {
-	viper.SetConfigFile(path)
-	viper.SetConfigType("yaml")
+	v := viper.New()
+	v.SetConfigFile(path)
+	v.SetConfigType("yaml")
 
-	viper.SetDefault("server.host", DefaultHost)
-	viper.SetDefault("server.port", DefaultPort)
+	v.SetDefault("server.host", DefaultHost)
+	v.SetDefault("server.port", DefaultPort)
 
-	if err := viper.ReadInConfig(); err != nil {
+	if err := v.ReadInConfig(); err != nil {
 		if os.IsNotExist(err) {
 			if writeErr := WriteConfig(path, &Config{
 				Server: ServerConfig{Host: DefaultHost, Port: DefaultPort},
 			}); writeErr != nil {
 				return nil, fmt.Errorf("failed to create default config: %w", writeErr)
 			}
-			if readErr := viper.ReadInConfig(); readErr != nil {
+			if readErr := v.ReadInConfig(); readErr != nil {
 				return nil, readErr
 			}
 		} else {
@@ -82,7 +83,7 @@ func Load(path string) (*Config, error) {
 	}
 
 	var cfg Config
-	if err := viper.Unmarshal(&cfg); err != nil {
+	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, err
 	}
 
