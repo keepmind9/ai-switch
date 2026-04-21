@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"syscall"
 	"time"
 
@@ -127,9 +128,16 @@ func runServe(_ *cobra.Command, _ []string) {
 	}
 
 	go func() {
-		slog.Info("starting server", "addr", addr, "data_dir", dataDir)
+		slog.Info("starting server", "addr", addr, "config", resolvedPath, "data_dir", dataDir)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			slog.Error("server error", "error", err)
+			if isAddrInUse(err) {
+				slog.Error("port already in use",
+					"port", cfg.Server.Port,
+					"hint", fmt.Sprintf("edit %s to change the port", resolvedPath),
+				)
+			} else {
+				slog.Error("server error", "error", err)
+			}
 			os.Exit(1)
 		}
 	}()
@@ -214,4 +222,8 @@ func runCheck(_ *cobra.Command, _ []string) {
 	}
 
 	fmt.Println("✓ Config is valid.")
+}
+
+func isAddrInUse(err error) bool {
+	return strings.Contains(err.Error(), "address already in use")
 }
