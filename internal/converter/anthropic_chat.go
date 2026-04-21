@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/keepmind9/llm-gateway/internal/types"
+	"github.com/keepmind9/ai-switch/internal/types"
 )
 
 // Anthropic → Chat conversions (for clients sending Anthropic format)

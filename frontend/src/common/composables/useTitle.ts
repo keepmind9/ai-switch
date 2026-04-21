@@ -1,5 +1,5 @@
 /** App title */
-const VITE_APP_TITLE = import.meta.env.VITE_APP_TITLE ?? "LLM Gateway"
+const VITE_APP_TITLE = import.meta.env.VITE_APP_TITLE ?? "AI Switch"
 
 /** Dynamic title */
 const dynamicTitle = ref<string>("")

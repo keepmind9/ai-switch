@@ -23,7 +23,7 @@ onMounted(async () => {
     <div class="page-header">
       <div>
         <h3>System Overview</h3>
-        <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">Monitor your LLM Gateway status and configured providers.</p>
+        <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">Monitor your AI Switch status and configured providers.</p>
       </div>
     </div>
 

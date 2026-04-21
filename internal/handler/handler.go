@@ -14,11 +14,11 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/keepmind9/llm-gateway/internal/config"
-	"github.com/keepmind9/llm-gateway/internal/converter"
-	"github.com/keepmind9/llm-gateway/internal/router"
-	"github.com/keepmind9/llm-gateway/internal/store"
-	"github.com/keepmind9/llm-gateway/internal/types"
+	"github.com/keepmind9/ai-switch/internal/config"
+	"github.com/keepmind9/ai-switch/internal/converter"
+	"github.com/keepmind9/ai-switch/internal/router"
+	"github.com/keepmind9/ai-switch/internal/store"
+	"github.com/keepmind9/ai-switch/internal/types"
 )
 
 //go:embed all:static

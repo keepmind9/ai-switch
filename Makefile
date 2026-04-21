@@ -27,7 +27,7 @@ dev:
 	GOPROXY=https://goproxy.cn,direct go run ./cmd/server -c config.yaml
 
 clean:
-	rm -f bin/server llm-gateway
+	rm -f bin/server ai-switch
 
 test:
 	go test ./...

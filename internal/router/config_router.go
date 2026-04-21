@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/keepmind9/llm-gateway/internal/config"
+	"github.com/keepmind9/ai-switch/internal/config"
 )
 
 // ConfigRouter implements Router using config-based routing rules.

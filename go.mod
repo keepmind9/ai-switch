@@ -1,4 +1,4 @@
-module github.com/keepmind9/llm-gateway
+module github.com/keepmind9/ai-switch
 
 go 1.25.0
 

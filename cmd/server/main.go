@@ -12,11 +12,11 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/keepmind9/llm-gateway/internal/config"
-	"github.com/keepmind9/llm-gateway/internal/handler"
-	"github.com/keepmind9/llm-gateway/internal/middleware"
-	"github.com/keepmind9/llm-gateway/internal/router"
-	"github.com/keepmind9/llm-gateway/internal/store"
+	"github.com/keepmind9/ai-switch/internal/config"
+	"github.com/keepmind9/ai-switch/internal/handler"
+	"github.com/keepmind9/ai-switch/internal/middleware"
+	"github.com/keepmind9/ai-switch/internal/router"
+	"github.com/keepmind9/ai-switch/internal/store"
 	"github.com/spf13/cobra"
 )
 
@@ -24,8 +24,8 @@ var configPath string
 
 func main() {
 	rootCmd := &cobra.Command{
-		Use:   "llm-gateway",
-		Short: "LLM API Gateway",
+		Use:   "ai-switch",
+		Short: "AI provider switching proxy",
 	}
 	rootCmd.PersistentFlags().StringVarP(&configPath, "config", "c", "config.yaml", "path to config file")
 

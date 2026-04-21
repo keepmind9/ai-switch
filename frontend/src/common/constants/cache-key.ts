@@ -1,4 +1,4 @@
-const SYSTEM_NAME = "llm-gateway"
+const SYSTEM_NAME = "ai-switch"
 
 export class CacheKey {
   static readonly CONFIG_LAYOUT = `${SYSTEM_NAME}-config-layout-key`

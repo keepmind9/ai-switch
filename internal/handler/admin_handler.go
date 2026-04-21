@@ -8,7 +8,7 @@ import (
 	"sync"
 
 	"github.com/gin-gonic/gin"
-	"github.com/keepmind9/llm-gateway/internal/config"
+	"github.com/keepmind9/ai-switch/internal/config"
 )
 
 type AdminHandler struct {

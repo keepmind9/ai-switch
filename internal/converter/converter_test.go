@@ -3,7 +3,7 @@ package converter
 import (
 	"testing"
 
-	"github.com/keepmind9/llm-gateway/internal/types"
+	"github.com/keepmind9/ai-switch/internal/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

@@ -1,6 +1,6 @@
-# llm-gateway
+# ai-switch
 
-A lightweight local LLM gateway proxy that lets any AI CLI tool use third-party LLM APIs through a unified local endpoint.
+A lightweight local AI Switch proxy that lets any AI CLI tool use third-party LLM APIs through a unified local endpoint.
 
 **One binary, one config, any AI CLI → any LLM API.**
 
@@ -69,7 +69,7 @@ routes:
       background: "MiniMax-M2.5"
 ```
 
-Config loading priority: `-c` flag > `./config.yaml` > `~/.llm-gateway/config.yaml`
+Config loading priority: `-c` flag > `./config.yaml` > `~/.ai-switch/config.yaml`
 
 > **Note:** `base_url` with `/v1` suffix is auto-stripped on load to prevent double path issues.
 
@@ -196,7 +196,7 @@ export ANTHROPIC_API_KEY=gw-your-route-key
 
 ```toml
 [model_providers.proxy]
-name = "llm-gateway"
+name = "ai-switch"
 base_url = "http://localhost:12345/v1"
 api_key = "gw-your-route-key"
 wire_api = "responses"
@@ -247,7 +247,7 @@ make clean   # remove binary
 ```
 Client (Responses/Anthropic/Chat)
     ↓
-llm-gateway (protocol detection + conversion)
+ai-switch (protocol detection + conversion)
     ↓
 Upstream API (any format)
 ```

@@ -3,7 +3,7 @@ package converter
 import (
 	"encoding/json"
 
-	"github.com/keepmind9/llm-gateway/internal/types"
+	"github.com/keepmind9/ai-switch/internal/types"
 )
 
 // ConvertChatChunkToAnthropicSSE processes a single Chat SSE data line and emits

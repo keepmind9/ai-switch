@@ -295,7 +295,7 @@ func TestDataDir(t *testing.T) {
 	dir, err := DataDir()
 	require.NoError(t, err)
 	home, _ := os.UserHomeDir()
-	assert.Equal(t, filepath.Join(home, ".llm-gateway"), dir)
+	assert.Equal(t, filepath.Join(home, ".ai-switch"), dir)
 }
 
 func TestEnsureDataDir(t *testing.T) {

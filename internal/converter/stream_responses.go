@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/keepmind9/llm-gateway/internal/types"
+	"github.com/keepmind9/ai-switch/internal/types"
 )
 
 // ConvertChatChunkToResponsesSSE processes a single Chat SSE data line and emits

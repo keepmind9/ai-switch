@@ -7,7 +7,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/keepmind9/llm-gateway/internal/store"
+	"github.com/keepmind9/ai-switch/internal/store"
 )
 
 // responseCapture wraps gin.ResponseWriter to capture the response body.

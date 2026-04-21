@@ -169,7 +169,7 @@ func DefaultDBPath() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".llm-gateway", "usage.db"), nil
+	return filepath.Join(home, ".ai-switch", "usage.db"), nil
 }
 
 func migrate(db *sql.DB) error {

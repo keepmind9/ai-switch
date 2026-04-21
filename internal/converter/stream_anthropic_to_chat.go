@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/keepmind9/llm-gateway/internal/types"
+	"github.com/keepmind9/ai-switch/internal/types"
 )
 
 // AnthropicToChatState tracks state when converting Anthropic SSE to Chat SSE.

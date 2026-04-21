@@ -26,7 +26,7 @@ const { isTop } = useLayoutMode()
             <rect width="32" height="32" rx="9" fill="var(--el-color-primary)" />
             <text x="16" y="22" font-family="Inter,Arial,sans-serif" font-size="18" font-weight="800" fill="white" text-anchor="middle">G</text>
           </svg>
-          <span class="logo-text">LLM Gateway</span>
+          <span class="logo-text">AI Switch</span>
         </div>
       </router-link>
     </transition>

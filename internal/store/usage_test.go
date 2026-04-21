@@ -141,5 +141,5 @@ func TestDefaultDBPath(t *testing.T) {
 	path, err := DefaultDBPath()
 	require.NoError(t, err)
 	home, _ := os.UserHomeDir()
-	assert.Equal(t, filepath.Join(home, ".llm-gateway", "usage.db"), path)
+	assert.Equal(t, filepath.Join(home, ".ai-switch", "usage.db"), path)
 }

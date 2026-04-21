@@ -5,7 +5,7 @@ bin/
 # Runtime
 *.log
 /server
-/llm-gateway
+/ai-switch
 
 # IDE
 .idea/

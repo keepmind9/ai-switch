@@ -104,13 +104,13 @@ func (c *Config) DefaultRouteConfig() *RouteRule {
 	return &r
 }
 
-// DataDir returns the path to the data directory (~/.llm-gateway/).
+// DataDir returns the path to the data directory (~/.ai-switch/).
 func DataDir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("failed to get home directory: %w", err)
 	}
-	return filepath.Join(home, ".llm-gateway"), nil
+	return filepath.Join(home, ".ai-switch"), nil
 }
 
 // EnsureDataDir creates the data directory if it does not exist.
@@ -128,7 +128,7 @@ func EnsureDataDir() (string, error) {
 // DefaultConfigPath returns the config file path following the priority:
 // 1. provided path (from -c flag)
 // 2. ./config.yaml in current directory
-// 3. ~/.llm-gateway/config.yaml
+// 3. ~/.ai-switch/config.yaml
 func DefaultConfigPath(flagPath string) string {
 	if flagPath != "" && flagPath != "config.yaml" {
 		return flagPath
