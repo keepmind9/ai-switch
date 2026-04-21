@@ -2,6 +2,8 @@
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/keepmind9/ai-switch)](https://goreportcard.com/report/github.com/keepmind9/ai-switch) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
+**English** | [中文](README_zh.md)
+
 A lightweight local proxy that lets any AI CLI tool (Claude Code, Codex CLI, etc.) use third-party LLM APIs through a unified local endpoint.
 
 **One binary, one config, any AI CLI → any LLM API.**
