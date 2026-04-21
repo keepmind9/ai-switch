@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/keepmind9/ai-switch/internal/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -141,5 +142,5 @@ func TestDefaultDBPath(t *testing.T) {
 	path, err := DefaultDBPath()
 	require.NoError(t, err)
 	home, _ := os.UserHomeDir()
-	assert.Equal(t, filepath.Join(home, ".ai-switch", "usage.db"), path)
+	assert.Equal(t, filepath.Join(home, config.DataDirName, config.UsageDBName), path)
 }

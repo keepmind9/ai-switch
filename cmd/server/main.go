@@ -40,7 +40,7 @@ func main() {
 		Use:   "ai-switch",
 		Short: "AI provider switching proxy",
 	}
-	rootCmd.PersistentFlags().StringVarP(&configPath, "config", "c", "config.yaml", "path to config file")
+	rootCmd.PersistentFlags().StringVarP(&configPath, "config", "c", "", "path to config file")
 
 	serveCmd := &cobra.Command{
 		Use:   "serve",
@@ -81,7 +81,13 @@ func runServe(_ *cobra.Command, _ []string) {
 		slog.Warn("failed to create data directory", "error", err)
 	}
 
-	resolvedPath := config.DefaultConfigPath(configPath)
+	resolvedPath, err := config.DefaultConfigPath(configPath)
+	if err != nil {
+		slog.Error("failed to resolve config path", "error", err)
+		os.Exit(1)
+	}
+
+	slog.Info("loading config", "path", resolvedPath)
 
 	cfg, err := config.Load(resolvedPath)
 	if err != nil {
@@ -91,7 +97,7 @@ func runServe(_ *cobra.Command, _ []string) {
 
 	provider := config.NewProvider(cfg, resolvedPath)
 
-	dbPath := filepath.Join(dataDir, "usage.db")
+	dbPath := filepath.Join(dataDir, config.UsageDBName)
 	usageStore, err := store.NewUsageStore(dbPath)
 	if err != nil {
 		slog.Warn("failed to open usage database, stats disabled", "error", err)
@@ -161,7 +167,11 @@ func runServe(_ *cobra.Command, _ []string) {
 }
 
 func runCheck(_ *cobra.Command, _ []string) {
-	resolvedPath := config.DefaultConfigPath(configPath)
+	resolvedPath, err := config.DefaultConfigPath(configPath)
+	if err != nil {
+		fmt.Printf("✗ %s\n", err)
+		os.Exit(1)
+	}
 
 	fmt.Printf("Checking %s ...\n\n", resolvedPath)
 

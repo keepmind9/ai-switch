@@ -108,13 +108,13 @@ func TestProvider_Reload_MissingFile(t *testing.T) {
 
 	os.Remove(cfgPath)
 
+	// Reload auto-creates a default config when file is missing
 	err := p.Reload()
-	assert.Error(t, err)
+	require.NoError(t, err)
 
+	// Previous in-memory config is lost; defaults have no routes
 	cfg := p.Get()
-	dr := cfg.DefaultRouteConfig()
-	require.NotNil(t, dr)
-	assert.Equal(t, "default", dr.Provider)
+	assert.Empty(t, cfg.Routes)
 }
 
 func TestProvider_ConcurrentAccess(t *testing.T) {

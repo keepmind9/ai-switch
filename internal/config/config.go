@@ -9,6 +9,14 @@ import (
 	"github.com/spf13/viper"
 )
 
+const (
+	DefaultHost = "127.0.0.1"
+	DefaultPort = 12345
+	DataDirName = ".ai-switch"
+	UsageDBName = "usage.db"
+	ConfigFile  = "config.yaml"
+)
+
 type Config struct {
 	Server       ServerConfig              `mapstructure:"server" yaml:"server"`
 	DefaultRoute string                    `mapstructure:"default_route" yaml:"default_route"`
@@ -55,11 +63,22 @@ func Load(path string) (*Config, error) {
 	viper.SetConfigFile(path)
 	viper.SetConfigType("yaml")
 
-	viper.SetDefault("server.host", "0.0.0.0")
-	viper.SetDefault("server.port", 12345)
+	viper.SetDefault("server.host", DefaultHost)
+	viper.SetDefault("server.port", DefaultPort)
 
 	if err := viper.ReadInConfig(); err != nil {
-		return nil, err
+		if os.IsNotExist(err) {
+			if writeErr := WriteConfig(path, &Config{
+				Server: ServerConfig{Host: DefaultHost, Port: DefaultPort},
+			}); writeErr != nil {
+				return nil, fmt.Errorf("failed to create default config: %w", writeErr)
+			}
+			if readErr := viper.ReadInConfig(); readErr != nil {
+				return nil, readErr
+			}
+		} else {
+			return nil, err
+		}
 	}
 
 	var cfg Config
@@ -109,7 +128,7 @@ func DataDir() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to get home directory: %w", err)
 	}
-	return filepath.Join(home, ".ai-switch"), nil
+	return filepath.Join(home, DataDirName), nil
 }
 
 // EnsureDataDir creates the data directory if it does not exist.
@@ -126,20 +145,16 @@ func EnsureDataDir() (string, error) {
 
 // DefaultConfigPath returns the config file path following the priority:
 // 1. provided path (from -c flag)
-// 2. ./config.yaml in current directory
-// 3. ~/.ai-switch/config.yaml
-func DefaultConfigPath(flagPath string) string {
-	if flagPath != "" && flagPath != "config.yaml" {
-		return flagPath
-	}
-	if _, err := os.Stat("config.yaml"); err == nil {
-		return "config.yaml"
+// 2. ~/.ai-switch/config.yaml
+func DefaultConfigPath(flagPath string) (string, error) {
+	if flagPath != "" {
+		return flagPath, nil
 	}
 	dir, err := DataDir()
 	if err != nil {
-		return "config.yaml"
+		return "", fmt.Errorf("failed to determine config path: %w", err)
 	}
-	return filepath.Join(dir, "config.yaml")
+	return filepath.Join(dir, ConfigFile), nil
 }
 
 func expandEnv(s string) string {

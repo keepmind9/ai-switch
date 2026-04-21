@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/keepmind9/ai-switch/internal/config"
+
 	_ "modernc.org/sqlite"
 )
 
@@ -169,7 +171,7 @@ func DefaultDBPath() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".ai-switch", "usage.db"), nil
+	return filepath.Join(home, config.DataDirName, config.UsageDBName), nil
 }
 
 func migrate(db *sql.DB) error {

@@ -295,7 +295,7 @@ func TestDataDir(t *testing.T) {
 	dir, err := DataDir()
 	require.NoError(t, err)
 	home, _ := os.UserHomeDir()
-	assert.Equal(t, filepath.Join(home, ".ai-switch"), dir)
+	assert.Equal(t, filepath.Join(home, DataDirName), dir)
 }
 
 func TestEnsureDataDir(t *testing.T) {
@@ -308,11 +308,12 @@ func TestEnsureDataDir(t *testing.T) {
 }
 
 func TestDefaultConfigPath(t *testing.T) {
+	home, err := os.UserHomeDir()
+	require.NoError(t, err)
+
 	tests := []struct {
 		name     string
 		flagPath string
-		setup    func() // prepare local config.yaml
-		cleanup  func()
 		expected string
 	}{
 		{
@@ -321,15 +322,21 @@ func TestDefaultConfigPath(t *testing.T) {
 			expected: "/custom/path.yaml",
 		},
 		{
-			name:     "flag path not config.yaml",
-			flagPath: "my-config.yaml",
-			expected: "my-config.yaml",
+			name:     "empty flag defaults to data dir",
+			flagPath: "",
+			expected: filepath.Join(home, DataDirName, ConfigFile),
+		},
+		{
+			name:     "flag path config.yaml",
+			flagPath: "config.yaml",
+			expected: "config.yaml",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := DefaultConfigPath(tt.flagPath)
+			result, err := DefaultConfigPath(tt.flagPath)
+			require.NoError(t, err)
 			assert.Equal(t, tt.expected, result)
 		})
 	}
