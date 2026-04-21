@@ -86,15 +86,22 @@ async function handleSubmit() {
   form.value.model_map = mm
 
   try {
+    let res
     if (isEdit.value) { 
       const data = { ...form.value }
       delete data.key
-      await updateRoute(editKey.value, data)
+      res = await updateRoute(editKey.value, data)
       ElMessage.success("Route updated") 
     } else { 
-      await createRoute(form.value)
+      res = await createRoute(form.value)
       ElMessage.success("Route created") 
     }
+
+    const warnings = res.data?.warnings
+    if (Array.isArray(warnings) && warnings.length > 0) {
+      warnings.forEach(w => ElMessage.warning({ message: w, duration: 5000, showClose: true }))
+    }
+
     showDrawer.value = false
     load()
   } catch (e) {
