@@ -82,12 +82,14 @@ function resolvePath(routePath: string) {
   min-width: 1em;
   margin-right: 12px;
   font-size: 18px;
+  color: inherit;
 }
 
 .el-icon {
   width: 1em !important;
   margin-right: 12px !important;
   font-size: 18px;
+  color: inherit;
 }
 
 .title {

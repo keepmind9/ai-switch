@@ -23,49 +23,49 @@ onMounted(async () => {
     <div class="page-header">
       <div>
         <h3>System Overview</h3>
-        <p class="text-sm text-slate-500 mt-1">Monitor your LLM Gateway status and configured providers.</p>
+        <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">Monitor your LLM Gateway status and configured providers.</p>
       </div>
     </div>
 
     <!-- Stats Grid -->
     <el-skeleton :loading="loading" animated :rows="3">
       <template #default>
-        <el-row :gutter="20" class="mb-6">
+        <el-row :gutter="20" class="mb-8">
           <el-col :xs="24" :sm="8">
             <el-card shadow="hover" class="stat-card border-none!">
-              <div class="flex items-center gap-4">
-                <div class="stat-icon bg-blue-50! text-blue-600!">
+              <div class="flex items-center gap-5">
+                <div class="stat-icon-circle bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400">
                   <el-icon :size="24"><Monitor /></el-icon>
                 </div>
                 <div class="stat-info">
-                  <div class="stat-label">Server Address</div>
-                  <div class="stat-value text-lg!">{{ status.server?.host || '—' }}:{{ status.server?.port || '—' }}</div>
+                  <div class="stat-label uppercase tracking-wider text-[11px] font-bold opacity-70">Status</div>
+                  <div class="stat-value text-lg! text-slate-900 dark:text-slate-100">{{ status.server?.host || '—' }}:{{ status.server?.port || '—' }}</div>
                 </div>
               </div>
             </el-card>
           </el-col>
           <el-col :xs="24" :sm="8">
             <el-card shadow="hover" class="stat-card border-none!">
-              <div class="flex items-center gap-4">
-                <div class="stat-icon bg-indigo-50! text-indigo-600!">
+              <div class="flex items-center gap-5">
+                <div class="stat-icon-circle bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400">
                   <el-icon :size="24"><Connection /></el-icon>
                 </div>
                 <div class="stat-info">
-                  <div class="stat-label">Total Providers</div>
-                  <div class="stat-value text-indigo-600!">{{ status.provider_count || 0 }}</div>
+                  <div class="stat-label uppercase tracking-wider text-[11px] font-bold opacity-70">Providers</div>
+                  <div class="stat-value text-blue-600! dark:text-blue-400!">{{ status.provider_count || 0 }}</div>
                 </div>
               </div>
             </el-card>
           </el-col>
           <el-col :xs="24" :sm="8">
             <el-card shadow="hover" class="stat-card border-none!">
-              <div class="flex items-center gap-4">
-                <div class="stat-icon bg-emerald-50! text-emerald-600!">
+              <div class="flex items-center gap-5">
+                <div class="stat-icon-circle bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400">
                   <el-icon :size="24"><Key /></el-icon>
                 </div>
                 <div class="stat-info">
-                  <div class="stat-label">Active Routes</div>
-                  <div class="stat-value text-emerald-600!">{{ status.route_count || 0 }}</div>
+                  <div class="stat-label uppercase tracking-wider text-[11px] font-bold opacity-70">Active Keys</div>
+                  <div class="stat-value text-emerald-700! dark:text-emerald-400!">{{ status.route_count || 0 }}</div>
                 </div>
               </div>
             </el-card>
@@ -111,10 +111,10 @@ onMounted(async () => {
 <style lang="scss" scoped>
 .stat-card {
   height: 100%;
-  .stat-icon {
-    width: 52px;
-    height: 52px;
-    border-radius: 14px;
+  .stat-icon-circle {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -124,7 +124,7 @@ onMounted(async () => {
 
 .preset-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   gap: 16px;
 }
 
@@ -132,18 +132,18 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px;
-  border-radius: 12px;
-  background-color: #f8fafc;
-  border: 1px solid #f1f5f9;
-  transition: all 0.2s ease;
+  padding: 14px;
+  border-radius: var(--v3-border-radius-small);
+  background-color: #fbfaf8;
+  border: 1px solid var(--el-border-color);
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
   cursor: default;
 
   &:hover {
     border-color: var(--p-color);
     background-color: #ffffff;
-    transform: translateY(-2px);
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+    transform: translateY(-3px);
+    box-shadow: 0 4px 12px rgba(29, 28, 22, 0.06);
   }
 
   .preset-icon {
