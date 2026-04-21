@@ -14,19 +14,21 @@ use([CanvasRenderer, BarChart, LineChart, GridComponent, TooltipComponent, Legen
 const loading = ref(true)
 const records = ref<UsageRecord[]>([])
 const providers = ref<Provider[]>([])
-const dateRange = ref<[string, string]>(getDefaultRange())
+const startDate = ref(getDefaultRange()[0])
+const endDate = ref(getDefaultRange()[1])
 const filterProvider = ref("")
 const filterModel = ref("")
 
 function getDefaultRange(): [string, string] {
-  const end = new Date()
-  const start = new Date()
-  start.setDate(start.getDate() - 14)
-  return [fmt(start), fmt(end)]
+  const today = fmt(new Date())
+  return [today, today]
 }
 
 function fmt(d: Date): string {
-  return d.toISOString().slice(0, 10)
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
 }
 
 const modelOptions = computed(() => {
@@ -120,7 +122,7 @@ async function load() {
   loading.value = true
   try {
     const [r, p] = await Promise.all([
-      queryStats({ start_date: dateRange.value[0], end_date: dateRange.value[1] }),
+      queryStats({ start_date: startDate.value, end_date: endDate.value }),
       listProviders(),
     ])
     records.value = r.data.data
@@ -144,14 +146,20 @@ onMounted(load)
       </div>
       <div class="flex gap-3">
         <el-date-picker
-          v-model="dateRange"
-          type="daterange"
-          range-separator="to"
-          start-placeholder="Start"
-          end-placeholder="End"
+          v-model="startDate"
+          type="date"
+          placeholder="Start"
           value-format="YYYY-MM-DD"
           size="default"
-          style="width: 240px"
+          style="width: 140px"
+        />
+        <el-date-picker
+          v-model="endDate"
+          type="date"
+          placeholder="End"
+          value-format="YYYY-MM-DD"
+          size="default"
+          style="width: 140px"
         />
         <el-select v-model="filterProvider" placeholder="Provider" clearable style="width: 150px">
           <el-option v-for="p in providers" :key="p.key" :label="p.name" :value="p.key" />
