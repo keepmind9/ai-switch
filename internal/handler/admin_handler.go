@@ -168,7 +168,7 @@ func (a *AdminHandler) updateProvider(c *gin.Context) {
 	if req.Path != nil {
 		p.Path = *req.Path
 	}
-	if req.APIKey != nil {
+	if req.APIKey != nil && *req.APIKey != "" {
 		p.APIKey = *req.APIKey
 	}
 	if req.Format != nil {

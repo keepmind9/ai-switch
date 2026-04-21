@@ -135,6 +135,55 @@ func TestUpdateProvider(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 }
 
+func TestUpdateProviderPreserveAPIKey(t *testing.T) {
+	tests := []struct {
+		name       string
+		payload    map[string]any
+		wantAPIKey string
+	}{
+		{
+			name:       "empty api_key preserves existing",
+			payload:    map[string]any{"name": "Updated", "api_key": ""},
+			wantAPIKey: "sk-test-key-12345678",
+		},
+		{
+			name:       "new api_key overwrites",
+			payload:    map[string]any{"name": "Updated", "api_key": "sk-new-key"},
+			wantAPIKey: "sk-new-key",
+		},
+		{
+			name:       "omit api_key preserves existing",
+			payload:    map[string]any{"name": "Updated"},
+			wantAPIKey: "sk-test-key-12345678",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			r, _ := setupAdminTest(t)
+
+			body, _ := json.Marshal(tc.payload)
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodPut, "/api/admin/providers/minimax", bytes.NewReader(body))
+			req.Header.Set("Content-Type", "application/json")
+			r.ServeHTTP(w, req)
+
+			assert.Equal(t, http.StatusOK, w.Code)
+
+			// Verify via GET that api_key is masked (still present)
+			w = httptest.NewRecorder()
+			req = httptest.NewRequest(http.MethodGet, "/api/admin/providers", nil)
+			r.ServeHTTP(w, req)
+
+			var resp map[string]any
+			require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+			data := resp["data"].([]any)
+			p := data[0].(map[string]any)
+			assert.Contains(t, p["api_key"], "****")
+		})
+	}
+}
+
 func TestDeleteProvider(t *testing.T) {
 	r, cfgPath := setupAdminTest(t)
 
