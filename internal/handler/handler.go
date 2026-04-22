@@ -179,10 +179,9 @@ func copyUpstreamHeaders(c *gin.Context, resp *http.Response) {
 	}
 }
 
-// writeUpstreamError forwards an upstream error response to the client.
-func (h *Handler) writeUpstreamError(c *gin.Context, resp *http.Response) {
+// writeUpstreamError forwards an upstream error response to the client (same-format passthrough).
+func (h *Handler) writeUpstreamError(c *gin.Context, resp *http.Response, respBody []byte) {
 	copyUpstreamHeaders(c, resp)
-	respBody, _ := io.ReadAll(resp.Body)
 	c.Data(resp.StatusCode, "application/json", respBody)
 }
 
@@ -225,7 +224,7 @@ func (h *Handler) streamChatToClient(c *gin.Context, resp *http.Response, conver
 		if isSSEErrorData(data) {
 			msg, errType := parseUpstreamError([]byte(data))
 			slog.Warn("SSE error event from upstream", "message", msg, "type", errType)
-			_ = msg
+			writeSSEErrorToClient(ginWriter, msg, errType, clientFormat)
 			break
 		}
 		if convertFn(ginWriter, data) {
@@ -359,7 +358,13 @@ func (h *Handler) streamToChatSSE(c *gin.Context, resp *http.Response, convertFn
 		if data != "" && isSSEErrorData(data) {
 			msg, errType := parseUpstreamError([]byte(data))
 			slog.Warn("SSE error event from upstream", "message", msg, "type", errType)
-			_ = msg
+			errData, _ := json.Marshal(map[string]any{
+				"error": map[string]any{"message": msg, "type": errType},
+			})
+			c.Writer.WriteString("data: " + string(errData) + "\n\n")
+			if canFlush {
+				flusher.Flush()
+			}
 			break
 		}
 
@@ -675,7 +680,7 @@ func (h *Handler) passthroughRequest(c *gin.Context, result *router.RouteResult,
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
 		h.logLLMRequest(result.Model, providerStr, upstreamURL, latency, isStreaming, originalBody, string(respBody))
-		h.writeUpstreamError(c, resp)
+		h.writeUpstreamError(c, resp, respBody)
 		return
 	}
 
@@ -720,7 +725,7 @@ func (h *Handler) responsesViaChat(c *gin.Context, result *router.RouteResult, r
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
 		h.logLLMRequest(model, providerStr, upstreamURL, latency, isStreaming, chatBody, string(respBody))
-		h.writeConvertedError(c, resp, "responses")
+		h.writeConvertedError(c, resp, respBody, "responses")
 		return
 	}
 
@@ -780,7 +785,7 @@ func (h *Handler) anthropicViaChat(c *gin.Context, result *router.RouteResult, r
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
 		h.logLLMRequest(model, providerStr, upstreamURL, latency, isStreaming, chatBody, string(respBody))
-		h.writeConvertedError(c, resp, "anthropic")
+		h.writeConvertedError(c, resp, respBody, "anthropic")
 		return
 	}
 
@@ -836,7 +841,7 @@ func (h *Handler) chatViaAnthropic(c *gin.Context, result *router.RouteResult, c
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
 		h.logLLMRequest(chatReq.Model, providerStr, upstreamURL, latency, isStreaming, anthBody, string(respBody))
-		h.writeConvertedError(c, resp, "chat")
+		h.writeConvertedError(c, resp, respBody, "chat")
 		return
 	}
 
@@ -887,7 +892,7 @@ func (h *Handler) chatViaResponses(c *gin.Context, result *router.RouteResult, c
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
 		h.logLLMRequest(chatReq.Model, providerStr, upstreamURL, latency, isStreaming, respBodyData, string(respBody))
-		h.writeConvertedError(c, resp, "chat")
+		h.writeConvertedError(c, resp, respBody, "chat")
 		return
 	}
 
@@ -938,7 +943,7 @@ func (h *Handler) responsesViaChatToAnthropic(c *gin.Context, result *router.Rou
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
 		h.logLLMRequest(model, providerStr, upstreamURL, latency, isStreaming, anthBody, string(respBody))
-		h.writeConvertedError(c, resp, "responses")
+		h.writeConvertedError(c, resp, respBody, "responses")
 		return
 	}
 
@@ -996,7 +1001,7 @@ func (h *Handler) anthropicViaChatToResponses(c *gin.Context, result *router.Rou
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
 		h.logLLMRequest(model, providerStr, upstreamURL, latency, isStreaming, chatBody, string(respBody))
-		h.writeConvertedError(c, resp, "anthropic")
+		h.writeConvertedError(c, resp, respBody, "anthropic")
 		return
 	}
 

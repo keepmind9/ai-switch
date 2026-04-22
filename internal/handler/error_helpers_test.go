@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -46,7 +47,6 @@ func TestParseUpstreamError_UnknownFormat(t *testing.T) {
 func TestWriteConvertedError_ChatClient(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	// Simulate Anthropic upstream returning an error
 	upstreamBody, _ := json.Marshal(types.AnthropicErrorResponse{
 		Type: "error",
 		Error: &types.AnthropicErrorDetail{
@@ -65,9 +65,10 @@ func TestWriteConvertedError_ChatClient(t *testing.T) {
 	resp, _ := http.NewRequest("POST", upstream.URL, nil)
 	c.Request = resp
 	upstreamResp, _ := http.DefaultClient.Do(resp)
+	respBody, _ := io.ReadAll(upstreamResp.Body)
 
 	h := &Handler{}
-	h.writeConvertedError(c, upstreamResp, "chat")
+	h.writeConvertedError(c, upstreamResp, respBody, "chat")
 
 	assert.Equal(t, http.StatusTooManyRequests, w.Code)
 
@@ -81,7 +82,6 @@ func TestWriteConvertedError_ChatClient(t *testing.T) {
 func TestWriteConvertedError_AnthropicClient(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	// Simulate Chat upstream returning an error
 	upstreamBody, _ := json.Marshal(types.ChatErrorResponse{
 		Error: &types.ChatErrorDetail{
 			Message: "model not found",
@@ -99,9 +99,10 @@ func TestWriteConvertedError_AnthropicClient(t *testing.T) {
 	resp, _ := http.NewRequest("POST", upstream.URL, nil)
 	c.Request = resp
 	upstreamResp, _ := http.DefaultClient.Do(resp)
+	respBody, _ := io.ReadAll(upstreamResp.Body)
 
 	h := &Handler{}
-	h.writeConvertedError(c, upstreamResp, "anthropic")
+	h.writeConvertedError(c, upstreamResp, respBody, "anthropic")
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 

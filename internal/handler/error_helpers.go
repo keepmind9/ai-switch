@@ -2,12 +2,12 @@ package handler
 
 import (
 	"encoding/json"
-	"io"
 	"log/slog"
 	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/keepmind9/ai-switch/internal/converter"
 	"github.com/keepmind9/ai-switch/internal/types"
 )
 
@@ -30,11 +30,10 @@ func parseUpstreamError(body []byte) (message, errType string) {
 	return string(body), ""
 }
 
-// writeConvertedError reads an upstream error response and forwards it to the client
-// converted into the client's expected error format.
-func (h *Handler) writeConvertedError(c *gin.Context, resp *http.Response, clientFormat string) {
+// writeConvertedError forwards an upstream error to the client converted into
+// the client's expected error format. respBody must be pre-read by the caller.
+func (h *Handler) writeConvertedError(c *gin.Context, resp *http.Response, respBody []byte, clientFormat string) {
 	copyUpstreamHeaders(c, resp)
-	respBody, _ := io.ReadAll(resp.Body)
 
 	message, errType := parseUpstreamError(respBody)
 	slog.Warn("upstream error", "status", resp.StatusCode, "message", message, "type", errType, "client_format", clientFormat)
@@ -101,6 +100,25 @@ func writeStreamErrorJSON(c *gin.Context, statusCode int, message, errType, clie
 				Type:    errType,
 				Code:    errType,
 			},
+		})
+	}
+}
+
+// writeSSEErrorToClient writes an error event to the client's SSE stream
+// in the appropriate format before the stream closes.
+func writeSSEErrorToClient(w converter.SSEWriter, msg, errType, clientFormat string) {
+	switch clientFormat {
+	case "anthropic":
+		if errType == "" {
+			errType = "api_error"
+		}
+		w.WriteEvent("error", map[string]any{
+			"type":  "error",
+			"error": map[string]any{"type": errType, "message": msg},
+		})
+	default:
+		w.WriteEvent("", map[string]any{
+			"error": map[string]any{"message": msg, "type": errType},
 		})
 	}
 }
