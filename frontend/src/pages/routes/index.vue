@@ -1,20 +1,41 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from "vue"
 import { ElMessage, ElMessageBox } from "element-plus"
-import { Plus, Delete, Edit, Close, Search, Refresh, CopyDocument, MagicStick, Warning, Right } from "@element-plus/icons-vue"
-import { listRoutes, createRoute, updateRoute, deleteRoute, generateKey, type Route } from "@/api/routes"
+import { Plus, Delete, Edit, Close, Search, Refresh, CopyDocument, MagicStick, Warning, Right, QuestionFilled } from "@element-plus/icons-vue"
+import { listRoutes, createRoute, updateRoute, deleteRoute, generateKey, updateDefaultRoutes, type Route } from "@/api/routes"
 import { listProviders, type Provider } from "@/api/providers"
+import { getAdminStatus } from "@/api/stats"
 import { useConfirm } from "@@/composables/useConfirm"
 
 const routes = ref<Route[]>([])
 const providers = ref<Provider[]>([])
 const loading = ref(true)
+const savingDefaults = ref(false)
 const showDrawer = ref(false)
 const isEdit = ref(false)
 const editKey = ref("")
 const form = ref<any>({})
 const searchQuery = ref("")
 const { confirmState, toggle: toggleDelete, reset: resetDelete } = useConfirm()
+
+// Helper to normalize values (null/undefined -> "")
+const normalize = (v: any) => v ?? ""
+
+// Current values in the UI
+const defaultRoutes = ref({
+  default_route: "",
+  default_anthropic_route: "",
+  default_responses_route: "",
+  default_chat_route: ""
+})
+
+// Backup for dirty checking
+const originalDefaults = ref({
+  default_route: "",
+  default_anthropic_route: "",
+  default_responses_route: "",
+  default_chat_route: ""
+})
 
 const sceneMapData = ref<{ key: string; value: string }[]>([])
 const modelMapData = ref<{ key: string; value: string }[]>([])
@@ -31,15 +52,84 @@ const filteredRoutes = computed(() => {
   return routes.value.filter(r => r.key.toLowerCase().includes(q) || r.provider.toLowerCase().includes(q) || r.default_model.toLowerCase().includes(q))
 })
 
+// Reactive dirty checking
+const isDirty = computed(() => {
+  const curr = defaultRoutes.value
+  const orig = originalDefaults.value
+  return normalize(curr.default_route) !== orig.default_route ||
+         normalize(curr.default_anthropic_route) !== orig.default_anthropic_route ||
+         normalize(curr.default_responses_route) !== orig.default_responses_route ||
+         normalize(curr.default_chat_route) !== orig.default_chat_route
+})
+
 async function load() {
   loading.value = true
   try { 
-    const [r, p] = await Promise.all([listRoutes(), listProviders()])
+    const [r, p, s] = await Promise.all([listRoutes(), listProviders(), getAdminStatus()])
     routes.value = r.data.data
     providers.value = p.data.data 
+    
+    const status = s.data
+    if (status) {
+      const values = {
+        default_route: normalize(status.default_route),
+        default_anthropic_route: normalize(status.default_anthropic_route),
+        default_responses_route: normalize(status.default_responses_route),
+        default_chat_route: normalize(status.default_chat_route)
+      }
+      defaultRoutes.value = { ...values }
+      originalDefaults.value = { ...values }
+    }
+    
     routes.value.forEach(r => resetDelete(r.key))
   } finally { 
     loading.value = false 
+  }
+}
+
+async function saveDefaultRoutes() {
+  const payload: any = {}
+  const curr = defaultRoutes.value
+  const orig = originalDefaults.value
+
+  // Check each field and explicitly use "" for cleared fields (Partial Update)
+  if (normalize(curr.default_route) !== orig.default_route) {
+    payload.default_route = normalize(curr.default_route)
+  }
+  if (normalize(curr.default_anthropic_route) !== orig.default_anthropic_route) {
+    payload.default_anthropic_route = normalize(curr.default_anthropic_route)
+  }
+  if (normalize(curr.default_responses_route) !== orig.default_responses_route) {
+    payload.default_responses_route = normalize(curr.default_responses_route)
+  }
+  if (normalize(curr.default_chat_route) !== orig.default_chat_route) {
+    payload.default_chat_route = normalize(curr.default_chat_route)
+  }
+
+  const changeCount = Object.keys(payload).length
+  if (changeCount === 0) {
+    ElMessage.info("No changes detected")
+    return
+  }
+
+  savingDefaults.value = true
+  try {
+    console.log(`[DefaultRoutes] Saving ${changeCount} field(s):`, payload)
+    await updateDefaultRoutes(payload)
+    
+    // Sync UI state back to original to clear 'isDirty'
+    originalDefaults.value = {
+      default_route: normalize(curr.default_route),
+      default_anthropic_route: normalize(curr.default_anthropic_route),
+      default_responses_route: normalize(curr.default_responses_route),
+      default_chat_route: normalize(curr.default_chat_route)
+    }
+    ElMessage.success("Strategy applied successfully")
+  } catch (e) {
+    console.error("[DefaultRoutes] Update failed:", e)
+    ElMessage.error("Update failed")
+  } finally {
+    savingDefaults.value = false
   }
 }
 
@@ -133,6 +223,78 @@ onMounted(load)
         <el-button :icon="Refresh" circle @click="load" />
       </div>
     </div>
+
+    <!-- Default Routing Strategy Panel -->
+    <el-card shadow="never" :class="['mb-6 border-slate-200! transition-all duration-300 shadow-sm!', isDirty ? 'bg-orange-50! border-orange-300!' : 'bg-slate-50/50!']">
+      <template #header>
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <span class="text-sm font-bold text-slate-800">Default Routing Strategy</span>
+            <el-tooltip content="Fallback routes used when a request doesn't provide a matching API key. Priority: Key Match > Protocol Default > Global Default.">
+              <el-icon class="text-slate-500 cursor-help"><QuestionFilled /></el-icon>
+            </el-tooltip>
+            <el-tag v-if="isDirty" size="small" type="warning" effect="dark" class="animate-pulse border-none!">Pending Changes</el-tag>
+          </div>
+          <el-button 
+            :type="isDirty ? 'warning' : 'primary'" 
+            size="default" 
+            @click="saveDefaultRoutes" 
+            :loading="savingDefaults" 
+            :plain="!isDirty"
+            class="transition-all duration-300 font-bold px-6!"
+            :style="isDirty ? 'transform: scale(1.02); box-shadow: 0 4px 12px rgba(230, 162, 60, 0.2)' : ''"
+          >
+            {{ isDirty ? 'Apply Changes' : 'Save Strategy' }}
+          </el-button>
+        </div>
+      </template>
+      <el-row :gutter="20">
+        <el-col :span="6">
+          <div class="flex items-center gap-1 mb-2">
+            <div class="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Global Default</div>
+            <el-tooltip content="Final fallback for ALL protocols if no specific default is set.">
+              <el-icon class="text-slate-400 text-[11px] cursor-help"><QuestionFilled /></el-icon>
+            </el-tooltip>
+          </div>
+          <el-select v-model="defaultRoutes.default_route" placeholder="Not set" clearable filterable class="w-full!">
+            <el-option v-for="r in routes" :key="r.key" :label="r.key" :value="r.key" />
+          </el-select>
+        </el-col>
+        <el-col :span="6">
+          <div class="flex items-center gap-1 mb-2">
+            <div class="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Anthropic Default</div>
+            <el-tooltip content="Used by tools like Claude Code (Anthropic protocol).">
+              <el-icon class="text-slate-400 text-[11px] cursor-help"><QuestionFilled /></el-icon>
+            </el-tooltip>
+          </div>
+          <el-select v-model="defaultRoutes.default_anthropic_route" placeholder="Not set" clearable filterable class="w-full!">
+            <el-option v-for="r in routes" :key="r.key" :label="r.key" :value="r.key" />
+          </el-select>
+        </el-col>
+        <el-col :span="6">
+          <div class="flex items-center gap-1 mb-2">
+            <div class="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Responses Default</div>
+            <el-tooltip content="Used by tools like Codex CLI (Custom Response protocol).">
+              <el-icon class="text-slate-400 text-[11px] cursor-help"><QuestionFilled /></el-icon>
+            </el-tooltip>
+          </div>
+          <el-select v-model="defaultRoutes.default_responses_route" placeholder="Not set" clearable filterable class="w-full!">
+            <el-option v-for="r in routes" :key="r.key" :label="r.key" :value="r.key" />
+          </el-select>
+        </el-col>
+        <el-col :span="6">
+          <div class="flex items-center gap-1 mb-2">
+            <div class="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Chat Default</div>
+            <el-tooltip content="Used by most OpenAI-compatible clients and SDKs.">
+              <el-icon class="text-slate-400 text-[11px] cursor-help"><QuestionFilled /></el-icon>
+            </el-tooltip>
+          </div>
+          <el-select v-model="defaultRoutes.default_chat_route" placeholder="Not set" clearable filterable class="w-full!">
+            <el-option v-for="r in routes" :key="r.key" :label="r.key" :value="r.key" />
+          </el-select>
+        </el-col>
+      </el-row>
+    </el-card>
 
     <el-card shadow="never" class="border-none!">
       <el-table :data="filteredRoutes" v-loading="loading" stripe size="large">
