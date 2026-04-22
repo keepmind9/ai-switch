@@ -1,6 +1,7 @@
 import { DeviceEnum, SIDEBAR_CLOSED, SIDEBAR_OPENED } from "@@/constants/app-key"
-import { getSidebarStatus, setSidebarStatus } from "@@/utils/local-storage"
+import { getSidebarStatus, setSidebarStatus, getLanguage, setLanguage as setLocalStorageLanguage } from "@@/utils/local-storage"
 import { pinia } from "@/pinia"
+import { i18n } from "@/locales"
 
 interface Sidebar {
   opened: boolean
@@ -21,6 +22,9 @@ export const useAppStore = defineStore("app", () => {
 
   // Device type
   const device = ref<DeviceEnum>(DeviceEnum.Desktop)
+
+  // Language
+  const language = ref<string>(getLanguage())
 
   // Watch sidebar opened state
   watch(
@@ -47,7 +51,14 @@ export const useAppStore = defineStore("app", () => {
     device.value = value
   }
 
-  return { device, sidebar, toggleSidebar, closeSidebar, toggleDevice }
+  // Set language
+  const setLanguage = (value: string) => {
+    language.value = value
+    setLocalStorageLanguage(value)
+    ;(i18n.global.locale.value as any) = value
+  }
+
+  return { device, sidebar, language, toggleSidebar, closeSidebar, toggleDevice, setLanguage }
 })
 
 /**

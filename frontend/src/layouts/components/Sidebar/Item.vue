@@ -53,7 +53,7 @@ function resolvePath(routePath: string) {
         <SvgIcon v-if="theOnlyOneChild.meta.svgIcon" :name="theOnlyOneChild.meta.svgIcon" class="svg-icon" />
         <component v-else-if="theOnlyOneChild.meta.elIcon" :is="theOnlyOneChild.meta.elIcon" class="el-icon" />
         <template v-if="theOnlyOneChild.meta.title" #title>
-          <span class="title">{{ theOnlyOneChild.meta.title }}</span>
+          <span class="title">{{ $t('route.' + theOnlyOneChild.meta.title) }}</span>
         </template>
       </el-menu-item>
     </Link>
@@ -62,7 +62,7 @@ function resolvePath(routePath: string) {
     <template #title>
       <SvgIcon v-if="item.meta?.svgIcon" :name="item.meta.svgIcon" class="svg-icon" />
       <component v-else-if="item.meta?.elIcon" :is="item.meta.elIcon" class="el-icon" />
-      <span v-if="item.meta?.title" class="title">{{ item.meta.title }}</span>
+      <span v-if="item.meta?.title" class="title">{{ $t('route.' + item.meta.title) }}</span>
     </template>
     <template v-if="item.children">
       <Item

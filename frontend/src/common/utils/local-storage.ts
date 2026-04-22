@@ -34,3 +34,17 @@ export function getActiveThemeName() {
 export function setActiveThemeName(themeName: ThemeName) {
   localStorage.setItem(CacheKey.ACTIVE_THEME_NAME, themeName)
 }
+
+// Language
+export function getLanguage() {
+  const cacheLang = localStorage.getItem(CacheKey.LANGUAGE)
+  if (cacheLang) return cacheLang
+  // Browser language
+  const browserLang = navigator.language.toLowerCase()
+  if (browserLang.includes("zh")) return "zh-cn"
+  return "en"
+}
+
+export function setLanguage(lang: string) {
+  localStorage.setItem(CacheKey.LANGUAGE, lang)
+}

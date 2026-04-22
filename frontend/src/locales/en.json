@@ -1,0 +1,164 @@
+{
+  "route": {
+    "dashboard": "Dashboard",
+    "providers": "Providers",
+    "routes": "Routes",
+    "stats": "Usage Stats"
+  },
+  "navbar": {
+    "screenfull": "Full Screen",
+    "screenfullDeny": "Exit Full Screen",
+    "language": "Language"
+  },
+  "dashboard": {
+    "overview": "System Overview",
+    "overviewDesc": "Monitor your AI Switch status and configured providers.",
+    "status": "Status",
+    "providers": "Providers",
+    "activeKeys": "Active Keys",
+    "supportedPresets": "Supported Presets",
+    "viewDocs": "View Docs",
+    "partnerProvider": "Partner Provider"
+  },
+  "providers": {
+    "title": "AI Providers",
+    "desc": "Manage upstream LLM services and API connections.",
+    "search": "Search providers...",
+    "add": "Add Provider",
+    "table": {
+      "provider": "Provider",
+      "endpoint": "Endpoint",
+      "format": "Format",
+      "models": "Models",
+      "apiKey": "API Key",
+      "actions": "Actions",
+      "noModels": "No models"
+    },
+    "actions": {
+      "edit": "Edit Settings",
+      "delete": "Delete",
+      "confirm": "Confirm?",
+      "cancel": "Cancel",
+      "successAdd": "Provider created successfully",
+      "successUpdate": "Provider updated successfully",
+      "successDelete": "Provider deleted successfully",
+      "failSave": "Failed to save provider",
+      "copySuccess": "Copied to clipboard"
+    },
+    "drawer": {
+      "add": "Add New Provider",
+      "edit": "Edit AI Provider",
+      "presets": "Quick Setup Presets",
+      "form": {
+        "id": "Provider ID",
+        "name": "Display Name",
+        "baseUrl": "Base API URL",
+        "path": "URL Path Override",
+        "pathTip": "Custom endpoint path. If empty, the gateway uses the default path based on the protocol format.",
+        "apiKey": "API Key",
+        "apiKeyPlaceholder": "sk-••••••••",
+        "apiKeyEditTip": "Keep empty to remain unchanged",
+        "format": "Protocol Format",
+        "type": "Provider Type",
+        "isPartner": "Is Partner/Sponsor",
+        "models": "Available Models",
+        "addModel": "Add model (e.g. gpt-4o)"
+      }
+    }
+  },
+  "routes": {
+    "title": "Access Routes",
+    "desc": "Configure API keys and model routing logic for your clients.",
+    "search": "Search routes...",
+    "add": "Add Route",
+    "strategy": {
+      "title": "Default Routing Strategy",
+      "tip": "Fallback routes used when a request doesn't provide a matching API key. Priority: Key Match > Protocol Default > Global Default.",
+      "pending": "Pending Changes",
+      "save": "Save Strategy",
+      "apply": "Apply Changes",
+      "global": "Global Default",
+      "globalTip": "Final fallback for ALL protocols if no specific default is set.",
+      "anthropic": "Anthropic Default",
+      "anthropicTip": "Used by tools like Claude Code (Anthropic protocol).",
+      "responses": "Responses Default",
+      "responsesTip": "Used by tools like Codex CLI (Custom Response protocol).",
+      "chat": "Chat Default",
+      "chatTip": "Used by most OpenAI-compatible clients and SDKs.",
+      "notSet": "Not set",
+      "success": "Strategy applied successfully",
+      "fail": "Update failed",
+      "noChanges": "No changes detected"
+    },
+    "table": {
+      "key": "Route Key",
+      "provider": "Provider",
+      "model": "Default Model",
+      "mappings": "Mappings"
+    },
+    "actions": {
+      "edit": "Edit Routing Configuration",
+      "delete": "Delete",
+      "confirm": "Confirm?",
+      "cancel": "Cancel",
+      "successAdd": "Route created",
+      "successUpdate": "Route updated",
+      "successDelete": "Route deleted",
+      "failSave": "Failed to save route",
+      "copySuccess": "Copied to clipboard"
+    },
+    "drawer": {
+      "add": "Create New Route",
+      "edit": "Edit Routing Configuration",
+      "form": {
+        "key": "Route Key",
+        "keyPlaceholder": "Client will use this key",
+        "autoGen": "Auto-Gen",
+        "provider": "Upstream Provider",
+        "providerPlaceholder": "Select target",
+        "model": "Default Model",
+        "modelPlaceholder": "Fallback model",
+        "threshold": "Long Context Threshold",
+        "scenes": "Scene Mappings",
+        "addScene": "+ Add Scene",
+        "scenePlaceholder": "Scene",
+        "mapTo": "Map to model",
+        "noScenes": "No scene-based routing defined.",
+        "aliases": "Model Aliases",
+        "addAlias": "+ Add Mapping",
+        "clientModel": "Client model name",
+        "upstreamModel": "Upstream model",
+        "noAliases": "No model aliases defined."
+      }
+    }
+  },
+  "stats": {
+    "title": "Usage Statistics",
+    "desc": "Analyze token consumption and request patterns.",
+    "start": "Start",
+    "end": "End",
+    "provider": "Provider",
+    "apply": "Apply",
+    "cards": {
+      "requests": "Requests",
+      "totalTokens": "Total Tokens",
+      "inputTokens": "Input Tokens",
+      "outputTokens": "Output Tokens"
+    },
+    "chart": {
+      "title": "Daily Consumption",
+      "unit": "Values in tokens"
+    },
+    "table": {
+      "title": "Detailed Records",
+      "filterModel": "Filter Model",
+      "date": "Date",
+      "provider": "Provider",
+      "model": "Model",
+      "requests": "Requests",
+      "input": "Input",
+      "output": "Output",
+      "total": "Total"
+    }
+  }
+}

@@ -1,0 +1,164 @@
+{
+  "route": {
+    "dashboard": "控制台",
+    "providers": "服务商",
+    "routes": "路由密钥",
+    "stats": "使用统计"
+  },
+  "navbar": {
+    "screenfull": "全屏",
+    "screenfullDeny": "退出全屏",
+    "language": "语言切换"
+  },
+  "dashboard": {
+    "overview": "系统概览",
+    "overviewDesc": "监控 AI Switch 的运行状态和已配置的服务商。",
+    "status": "服务状态",
+    "providers": "服务商数量",
+    "activeKeys": "活动密钥",
+    "supportedPresets": "支持的预设",
+    "viewDocs": "查看文档",
+    "partnerProvider": "合作伙伴服务商"
+  },
+  "providers": {
+    "title": "AI 服务商",
+    "desc": "管理上游 LLM 服务和 API 连接。",
+    "search": "搜索服务商...",
+    "add": "添加服务商",
+    "table": {
+      "provider": "服务商",
+      "endpoint": "接口地址",
+      "format": "协议格式",
+      "models": "可用模型",
+      "apiKey": "API 密钥",
+      "actions": "操作",
+      "noModels": "无模型"
+    },
+    "actions": {
+      "edit": "编辑设置",
+      "delete": "删除",
+      "confirm": "确认删除?",
+      "cancel": "取消",
+      "successAdd": "服务商创建成功",
+      "successUpdate": "服务商更新成功",
+      "successDelete": "服务商删除成功",
+      "failSave": "保存服务商失败",
+      "copySuccess": "已复制到剪贴板"
+    },
+    "drawer": {
+      "add": "添加新服务商",
+      "edit": "编辑服务商",
+      "presets": "快速设置预设",
+      "form": {
+        "id": "服务商 ID",
+        "name": "显示名称",
+        "baseUrl": "Base API 地址",
+        "path": "URL 路径重写",
+        "pathTip": "自定义接口路径。如果为空，网关将根据协议格式使用默认路径。",
+        "apiKey": "API 密钥",
+        "apiKeyPlaceholder": "sk-••••••••",
+        "apiKeyEditTip": "留空表示保持不变",
+        "format": "协议格式",
+        "type": "服务商类型",
+        "isPartner": "是否为合作伙伴/赞助商",
+        "models": "可用模型列表",
+        "addModel": "添加模型 (例如 gpt-4o)"
+      }
+    }
+  },
+  "routes": {
+    "title": "路由密钥",
+    "desc": "为您的客户端配置 API 密钥和模型路由逻辑。",
+    "search": "搜索路由...",
+    "add": "添加路由",
+    "strategy": {
+      "title": "默认路由策略",
+      "tip": "当请求未提供匹配的 API 密钥时使用的回退路由。优先级：密钥匹配 > 协议默认 > 全局默认。",
+      "pending": "待保存更改",
+      "save": "保存策略",
+      "apply": "应用更改",
+      "global": "全局默认",
+      "globalTip": "如果未设置特定协议的默认路由，则作为所有协议的最终回退。",
+      "anthropic": "Anthropic 默认",
+      "anthropicTip": "供 Claude Code 等工具使用 (Anthropic 协议)。",
+      "responses": "Responses 默认",
+      "responsesTip": "供 Codex CLI 等工具使用 (自定义 Response 协议)。",
+      "chat": "Chat 默认",
+      "chatTip": "供大多数 OpenAI 兼容客户端和 SDK 使用。",
+      "notSet": "未设置",
+      "success": "策略应用成功",
+      "fail": "更新失败",
+      "noChanges": "未检测到更改"
+    },
+    "table": {
+      "key": "路由密钥",
+      "provider": "服务商",
+      "model": "默认模型",
+      "mappings": "映射配置"
+    },
+    "actions": {
+      "edit": "编辑路由配置",
+      "delete": "删除",
+      "confirm": "确认删除?",
+      "cancel": "取消",
+      "successAdd": "路由创建成功",
+      "successUpdate": "路由更新成功",
+      "successDelete": "路由删除成功",
+      "failSave": "保存路由失败",
+      "copySuccess": "已复制到剪贴板"
+    },
+    "drawer": {
+      "add": "创建新路由",
+      "edit": "编辑路由配置",
+      "form": {
+        "key": "路由密钥",
+        "keyPlaceholder": "客户端将使用此密钥",
+        "autoGen": "自动生成",
+        "provider": "上游服务商",
+        "providerPlaceholder": "选择目标服务商",
+        "model": "默认模型",
+        "modelPlaceholder": "回退模型",
+        "threshold": "长上下文阈值",
+        "scenes": "场景映射 (Scene Mappings)",
+        "addScene": "+ 添加场景",
+        "scenePlaceholder": "场景",
+        "mapTo": "映射到模型",
+        "noScenes": "未定义基于场景的路由。",
+        "aliases": "模型别名 (Model Aliases)",
+        "addAlias": "+ 添加映射",
+        "clientModel": "客户端模型名称",
+        "upstreamModel": "上游模型",
+        "noAliases": "未定义模型别名。"
+      }
+    }
+  },
+  "stats": {
+    "title": "使用统计",
+    "desc": "分析 Token 消耗情况和请求模式。",
+    "start": "开始日期",
+    "end": "结束日期",
+    "provider": "服务商",
+    "apply": "查询",
+    "cards": {
+      "requests": "请求数",
+      "totalTokens": "总 Token",
+      "inputTokens": "输入 Token",
+      "outputTokens": "输出 Token"
+    },
+    "chart": {
+      "title": "每日消耗趋势",
+      "unit": "数值单位为 Token"
+    },
+    "table": {
+      "title": "详细记录",
+      "filterModel": "筛选模型",
+      "date": "日期",
+      "provider": "服务商",
+      "model": "模型",
+      "requests": "请求数",
+      "input": "输入",
+      "output": "输出",
+      "total": "总计"
+    }
+  }
+}

@@ -31,7 +31,7 @@ export const constantRoutes: RouteRecordRaw[] = [
         path: "dashboard",
         component: () => import("@/pages/dashboard/index.vue"),
         name: "Dashboard",
-        meta: { title: "Dashboard", svgIcon: "dashboard", affix: true }
+        meta: { title: "dashboard", svgIcon: "dashboard", affix: true }
       }
     ]
   },
@@ -43,7 +43,7 @@ export const constantRoutes: RouteRecordRaw[] = [
         path: "",
         component: () => import("@/pages/providers/index.vue"),
         name: "Providers",
-        meta: { title: "Providers", elIcon: "Connection" }
+        meta: { title: "providers", elIcon: "Connection" }
       }
     ]
   },
@@ -55,7 +55,7 @@ export const constantRoutes: RouteRecordRaw[] = [
         path: "",
         component: () => import("@/pages/routes/index.vue"),
         name: "Routes",
-        meta: { title: "Routes", elIcon: "Key" }
+        meta: { title: "routes", elIcon: "Key" }
       }
     ]
   },
@@ -67,7 +67,7 @@ export const constantRoutes: RouteRecordRaw[] = [
         path: "",
         component: () => import("@/pages/stats/index.vue"),
         name: "Stats",
-        meta: { title: "Usage Stats", elIcon: "DataAnalysis" }
+        meta: { title: "stats", elIcon: "DataAnalysis" }
       }
     ]
   }

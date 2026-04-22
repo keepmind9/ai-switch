@@ -3,6 +3,7 @@ import { ref, onMounted, computed } from "vue"
 import { queryStats, type UsageRecord } from "@/api/stats"
 import { listProviders, type Provider } from "@/api/providers"
 import { DataAnalysis, Histogram, Files, Mouse } from "@element-plus/icons-vue"
+import { useI18n } from "vue-i18n"
 import { use } from "echarts/core"
 import { CanvasRenderer } from "echarts/renderers"
 import { BarChart, LineChart } from "echarts/charts"
@@ -11,6 +12,7 @@ import VChart from "vue-echarts"
 
 use([CanvasRenderer, BarChart, LineChart, GridComponent, TooltipComponent, LegendComponent])
 
+const { t } = useI18n()
 const loading = ref(true)
 const records = ref<UsageRecord[]>([])
 const providers = ref<Provider[]>([])
@@ -78,7 +80,7 @@ const chartOption = computed(() => {
       boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)"
     },
     legend: {
-      data: ["Input Tokens", "Output Tokens"],
+      data: [t("stats.cards.inputTokens"), t("stats.cards.outputTokens")],
       bottom: 0,
       icon: "circle",
       itemWidth: 8,
@@ -99,7 +101,7 @@ const chartOption = computed(() => {
     },
     series: [
       {
-        name: "Input Tokens",
+        name: t("stats.cards.inputTokens"),
         type: "bar",
         stack: "tokens",
         barMaxWidth: 20,
@@ -107,7 +109,7 @@ const chartOption = computed(() => {
         data: dates.map(d => daily[d].input),
       },
       {
-        name: "Output Tokens",
+        name: t("stats.cards.outputTokens"),
         type: "bar",
         stack: "tokens",
         barMaxWidth: 20,
@@ -141,14 +143,14 @@ onMounted(load)
   <div class="app-container">
     <div class="page-header">
       <div>
-        <h3>Usage Statistics</h3>
-        <p class="text-sm text-slate-500 mt-1">Analyze token consumption and request patterns.</p>
+        <h3>{{ $t('stats.title') }}</h3>
+        <p class="text-sm text-slate-500 mt-1">{{ $t('stats.desc') }}</p>
       </div>
       <div class="flex gap-3">
         <el-date-picker
           v-model="startDate"
           type="date"
-          placeholder="Start"
+          :placeholder="$t('stats.start')"
           value-format="YYYY-MM-DD"
           size="default"
           style="width: 140px"
@@ -156,15 +158,15 @@ onMounted(load)
         <el-date-picker
           v-model="endDate"
           type="date"
-          placeholder="End"
+          :placeholder="$t('stats.end')"
           value-format="YYYY-MM-DD"
           size="default"
           style="width: 140px"
         />
-        <el-select v-model="filterProvider" placeholder="Provider" clearable style="width: 150px">
+        <el-select v-model="filterProvider" :placeholder="$t('stats.provider')" clearable style="width: 150px">
           <el-option v-for="p in providers" :key="p.key" :label="p.name" :value="p.key" />
         </el-select>
-        <el-button type="primary" @click="handleSearch" :icon="Mouse">Apply</el-button>
+        <el-button type="primary" @click="handleSearch" :icon="Mouse">{{ $t('stats.apply') }}</el-button>
       </div>
     </div>
 
@@ -172,25 +174,25 @@ onMounted(load)
     <el-row :gutter="20" class="mb-6">
       <el-col :xs="24" :sm="6">
         <el-card shadow="never" class="stat-card border-none!">
-          <div class="stat-label flex items-center gap-2"><el-icon><Histogram /></el-icon> Requests</div>
+          <div class="stat-label flex items-center gap-2"><el-icon><Histogram /></el-icon> {{ $t('stats.cards.requests') }}</div>
           <div class="stat-value">{{ summary.requests.toLocaleString() }}</div>
         </el-card>
       </el-col>
       <el-col :xs="24" :sm="6">
         <el-card shadow="never" class="stat-card border-none!">
-          <div class="stat-label flex items-center gap-2"><el-icon><DataAnalysis /></el-icon> Total Tokens</div>
+          <div class="stat-label flex items-center gap-2"><el-icon><DataAnalysis /></el-icon> {{ $t('stats.cards.totalTokens') }}</div>
           <div class="stat-value text-blue-600!">{{ summary.total_tokens.toLocaleString() }}</div>
         </el-card>
       </el-col>
       <el-col :xs="24" :sm="6">
         <el-card shadow="never" class="stat-card border-none!">
-          <div class="stat-label flex items-center gap-2"><el-icon><Files /></el-icon> Input Tokens</div>
+          <div class="stat-label flex items-center gap-2"><el-icon><Files /></el-icon> {{ $t('stats.cards.inputTokens') }}</div>
           <div class="stat-value text-slate-600!">{{ summary.input_tokens.toLocaleString() }}</div>
         </el-card>
       </el-col>
       <el-col :xs="24" :sm="6">
         <el-card shadow="never" class="stat-card border-none!">
-          <div class="stat-label flex items-center gap-2"><el-icon><Files /></el-icon> Output Tokens</div>
+          <div class="stat-label flex items-center gap-2"><el-icon><Files /></el-icon> {{ $t('stats.cards.outputTokens') }}</div>
           <div class="stat-value text-emerald-600!">{{ summary.output_tokens.toLocaleString() }}</div>
         </el-card>
       </el-col>
@@ -200,8 +202,8 @@ onMounted(load)
     <el-card shadow="never" class="mb-6 border-none!">
       <template #header>
         <div class="flex items-center justify-between">
-          <span class="card-header-label">Daily Consumption</span>
-          <div class="text-xs text-slate-400">Values in tokens</div>
+          <span class="card-header-label">{{ $t('stats.chart.title') }}</span>
+          <div class="text-xs text-slate-400">{{ $t('stats.chart.unit') }}</div>
         </div>
       </template>
       <v-chart :option="chartOption" class="chart" autoresize />
@@ -211,28 +213,28 @@ onMounted(load)
     <el-card shadow="never" class="border-none!">
       <template #header>
         <div class="flex items-center justify-between">
-          <span class="card-header-label">Detailed Records</span>
-          <el-select v-model="filterModel" placeholder="Filter Model" clearable size="small" style="width: 200px">
+          <span class="card-header-label">{{ $t('stats.table.title') }}</span>
+          <el-select v-model="filterModel" :placeholder="$t('stats.table.filterModel')" clearable size="small" style="width: 200px">
             <el-option v-for="m in modelOptions" :key="m" :label="m" :value="m" />
           </el-select>
         </div>
       </template>
       <el-table :data="filtered" v-loading="loading" stripe size="default">
-        <el-table-column prop="date" label="Date" width="120" sortable />
-        <el-table-column prop="provider" label="Provider" min-width="150" />
-        <el-table-column prop="model" label="Model" min-width="200" />
-        <el-table-column prop="requests" label="Requests" width="120" align="right">
+        <el-table-column prop="date" :label="$t('stats.table.date')" width="120" sortable />
+        <el-table-column prop="provider" :label="$t('stats.table.provider')" min-width="150" />
+        <el-table-column prop="model" :label="$t('stats.table.model')" min-width="200" />
+        <el-table-column prop="requests" :label="$t('stats.table.requests')" width="120" align="right">
           <template #default="{ row }">
             <span class="font-medium">{{ row.requests.toLocaleString() }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="input_tokens" label="Input" width="140" align="right">
+        <el-table-column prop="input_tokens" :label="$t('stats.table.input')" width="140" align="right">
           <template #default="{ row }">{{ row.input_tokens.toLocaleString() }}</template>
         </el-table-column>
-        <el-table-column prop="output_tokens" label="Output" width="140" align="right">
+        <el-table-column prop="output_tokens" :label="$t('stats.table.output')" width="140" align="right">
           <template #default="{ row }">{{ row.output_tokens.toLocaleString() }}</template>
         </el-table-column>
-        <el-table-column prop="total_tokens" label="Total" width="140" align="right">
+        <el-table-column prop="total_tokens" :label="$t('stats.table.total')" width="140" align="right">
           <template #default="{ row }">
             <span class="font-bold text-blue-600">{{ row.total_tokens.toLocaleString() }}</span>
           </template>

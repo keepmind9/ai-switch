@@ -6,7 +6,9 @@ import { listRoutes, createRoute, updateRoute, deleteRoute, generateKey, updateD
 import { listProviders, type Provider } from "@/api/providers"
 import { getAdminStatus } from "@/api/stats"
 import { useConfirm } from "@@/composables/useConfirm"
+import { useI18n } from "vue-i18n"
 
+const { t } = useI18n()
 const routes = ref<Route[]>([])
 const providers = ref<Provider[]>([])
 const loading = ref(true)
@@ -108,7 +110,7 @@ async function saveDefaultRoutes() {
 
   const changeCount = Object.keys(payload).length
   if (changeCount === 0) {
-    ElMessage.info("No changes detected")
+    ElMessage.info(t("routes.strategy.noChanges"))
     return
   }
 
@@ -124,10 +126,10 @@ async function saveDefaultRoutes() {
       default_responses_route: normalize(curr.default_responses_route),
       default_chat_route: normalize(curr.default_chat_route)
     }
-    ElMessage.success("Strategy applied successfully")
+    ElMessage.success(t("routes.strategy.success"))
   } catch (e) {
     console.error("[DefaultRoutes] Update failed:", e)
-    ElMessage.error("Update failed")
+    ElMessage.error(t("routes.strategy.fail"))
   } finally {
     savingDefaults.value = false
   }
@@ -160,7 +162,7 @@ async function handleGenerateKey() {
 async function handleDelete(key: string) {
   await deleteRoute(key)
   resetDelete(key)
-  ElMessage.success("Route deleted")
+  ElMessage.success(t("routes.actions.successDelete"))
   load()
 }
 
@@ -179,10 +181,10 @@ async function handleSubmit() {
       const data = { ...form.value }
       delete data.key
       res = await updateRoute(editKey.value, data)
-      ElMessage.success("Route updated") 
+      ElMessage.success(t("routes.actions.successUpdate")) 
     } else { 
       res = await createRoute(form.value)
-      ElMessage.success("Route created") 
+      ElMessage.success(t("routes.actions.successAdd")) 
     }
 
     const warnings = res.data?.warnings
@@ -193,7 +195,7 @@ async function handleSubmit() {
     showDrawer.value = false
     load()
   } catch (e) {
-    ElMessage.error("Failed to save route")
+    ElMessage.error(t("routes.actions.failSave"))
   }
 }
 
@@ -204,7 +206,7 @@ function removeModelEntry(idx: number) { modelMapData.value.splice(idx, 1) }
 
 const copyToClipboard = (text: string) => {
   navigator.clipboard.writeText(text)
-  ElMessage.success("Copied to clipboard")
+  ElMessage.success(t("routes.actions.copySuccess"))
 }
 
 onMounted(load)
@@ -214,12 +216,12 @@ onMounted(load)
   <div class="app-container">
     <div class="page-header">
       <div>
-        <h3>Access Routes</h3>
-        <p class="text-sm text-slate-500 mt-1">Configure API keys and model routing logic for your clients.</p>
+        <h3>{{ $t('routes.title') }}</h3>
+        <p class="text-sm text-slate-500 mt-1">{{ $t('routes.desc') }}</p>
       </div>
       <div class="flex gap-3">
-        <el-input v-model="searchQuery" placeholder="Search routes..." :prefix-icon="Search" clearable style="width: 240px" />
-        <el-button type="primary" :icon="Plus" @click="openCreate">Add Route</el-button>
+        <el-input v-model="searchQuery" :placeholder="$t('routes.search')" :prefix-icon="Search" clearable style="width: 240px" />
+        <el-button type="primary" :icon="Plus" @click="openCreate">{{ $t('routes.add') }}</el-button>
         <el-button :icon="Refresh" circle @click="load" />
       </div>
     </div>
@@ -229,11 +231,11 @@ onMounted(load)
       <template #header>
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-2">
-            <span class="text-sm font-bold text-slate-800">Default Routing Strategy</span>
-            <el-tooltip content="Fallback routes used when a request doesn't provide a matching API key. Priority: Key Match > Protocol Default > Global Default.">
+            <span class="text-sm font-bold text-slate-800">{{ $t('routes.strategy.title') }}</span>
+            <el-tooltip :content="$t('routes.strategy.tip')">
               <el-icon class="text-slate-500 cursor-help"><QuestionFilled /></el-icon>
             </el-tooltip>
-            <el-tag v-if="isDirty" size="small" type="warning" effect="dark" class="animate-pulse border-none!">Pending Changes</el-tag>
+            <el-tag v-if="isDirty" size="small" type="warning" effect="dark" class="animate-pulse border-none!">{{ $t('routes.strategy.pending') }}</el-tag>
           </div>
           <el-button 
             :type="isDirty ? 'warning' : 'primary'" 
@@ -244,52 +246,52 @@ onMounted(load)
             class="transition-all duration-300 font-bold px-6!"
             :style="isDirty ? 'transform: scale(1.02); box-shadow: 0 4px 12px rgba(230, 162, 60, 0.2)' : ''"
           >
-            {{ isDirty ? 'Apply Changes' : 'Save Strategy' }}
+            {{ isDirty ? $t('routes.strategy.apply') : $t('routes.strategy.save') }}
           </el-button>
         </div>
       </template>
       <el-row :gutter="20">
         <el-col :span="6">
           <div class="flex items-center gap-1 mb-2">
-            <div class="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Global Default</div>
-            <el-tooltip content="Final fallback for ALL protocols if no specific default is set.">
+            <div class="text-[11px] font-bold text-slate-500 uppercase tracking-wider">{{ $t('routes.strategy.global') }}</div>
+            <el-tooltip :content="$t('routes.strategy.globalTip')">
               <el-icon class="text-slate-400 text-[11px] cursor-help"><QuestionFilled /></el-icon>
             </el-tooltip>
           </div>
-          <el-select v-model="defaultRoutes.default_route" placeholder="Not set" clearable filterable class="w-full!">
+          <el-select v-model="defaultRoutes.default_route" :placeholder="$t('routes.strategy.notSet')" clearable filterable class="w-full!">
             <el-option v-for="r in routes" :key="r.key" :label="r.key" :value="r.key" />
           </el-select>
         </el-col>
         <el-col :span="6">
           <div class="flex items-center gap-1 mb-2">
-            <div class="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Anthropic Default</div>
-            <el-tooltip content="Used by tools like Claude Code (Anthropic protocol).">
+            <div class="text-[11px] font-bold text-slate-500 uppercase tracking-wider">{{ $t('routes.strategy.anthropic') }}</div>
+            <el-tooltip :content="$t('routes.strategy.anthropicTip')">
               <el-icon class="text-slate-400 text-[11px] cursor-help"><QuestionFilled /></el-icon>
             </el-tooltip>
           </div>
-          <el-select v-model="defaultRoutes.default_anthropic_route" placeholder="Not set" clearable filterable class="w-full!">
+          <el-select v-model="defaultRoutes.default_anthropic_route" :placeholder="$t('routes.strategy.notSet')" clearable filterable class="w-full!">
             <el-option v-for="r in routes" :key="r.key" :label="r.key" :value="r.key" />
           </el-select>
         </el-col>
         <el-col :span="6">
           <div class="flex items-center gap-1 mb-2">
-            <div class="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Responses Default</div>
-            <el-tooltip content="Used by tools like Codex CLI (Custom Response protocol).">
+            <div class="text-[11px] font-bold text-slate-500 uppercase tracking-wider">{{ $t('routes.strategy.responses') }}</div>
+            <el-tooltip :content="$t('routes.strategy.responsesTip')">
               <el-icon class="text-slate-400 text-[11px] cursor-help"><QuestionFilled /></el-icon>
             </el-tooltip>
           </div>
-          <el-select v-model="defaultRoutes.default_responses_route" placeholder="Not set" clearable filterable class="w-full!">
+          <el-select v-model="defaultRoutes.default_responses_route" :placeholder="$t('routes.strategy.notSet')" clearable filterable class="w-full!">
             <el-option v-for="r in routes" :key="r.key" :label="r.key" :value="r.key" />
           </el-select>
         </el-col>
         <el-col :span="6">
           <div class="flex items-center gap-1 mb-2">
-            <div class="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Chat Default</div>
-            <el-tooltip content="Used by most OpenAI-compatible clients and SDKs.">
+            <div class="text-[11px] font-bold text-slate-500 uppercase tracking-wider">{{ $t('routes.strategy.chat') }}</div>
+            <el-tooltip :content="$t('routes.strategy.chatTip')">
               <el-icon class="text-slate-400 text-[11px] cursor-help"><QuestionFilled /></el-icon>
             </el-tooltip>
           </div>
-          <el-select v-model="defaultRoutes.default_chat_route" placeholder="Not set" clearable filterable class="w-full!">
+          <el-select v-model="defaultRoutes.default_chat_route" :placeholder="$t('routes.strategy.notSet')" clearable filterable class="w-full!">
             <el-option v-for="r in routes" :key="r.key" :label="r.key" :value="r.key" />
           </el-select>
         </el-col>
@@ -298,7 +300,7 @@ onMounted(load)
 
     <el-card shadow="never" class="border-none!">
       <el-table :data="filteredRoutes" v-loading="loading" stripe size="large">
-        <el-table-column label="Route Key" min-width="240">
+        <el-table-column :label="$t('routes.table.key')" min-width="240">
           <template #default="{ row }">
             <div class="flex items-center gap-2">
               <span class="mono text-xs px-2 py-1 rounded truncate max-w-180px border" :style="{ backgroundColor: 'var(--v3-key-bg)', borderColor: 'var(--v3-key-border)', color: 'var(--v3-key-text-color)' }">
@@ -309,19 +311,19 @@ onMounted(load)
           </template>
         </el-table-column>
         
-        <el-table-column prop="provider" label="Provider" width="140">
+        <el-table-column prop="provider" :label="$t('routes.table.provider')" width="140">
           <template #default="{ row }">
             <el-tag effect="plain" class="border-slate-200! text-slate-600! font-medium capitalize">{{ row.provider }}</el-tag>
           </template>
         </el-table-column>
         
-        <el-table-column prop="default_model" label="Default Model" min-width="180">
+        <el-table-column prop="default_model" :label="$t('routes.table.model')" min-width="180">
           <template #default="{ row }">
             <span class="text-sm text-slate-600">{{ row.default_model }}</span>
           </template>
         </el-table-column>
         
-        <el-table-column label="Mappings" min-width="300">
+        <el-table-column :label="$t('routes.table.mappings')" min-width="300">
           <template #default="{ row }">
             <div class="flex flex-wrap gap-1">
               <el-tooltip v-for="(v, k) in row.scene_map" :key="'s'+k" :content="`Scene Map: ${k} → ${v}`">
@@ -335,13 +337,13 @@ onMounted(load)
           </template>
         </el-table-column>
         
-        <el-table-column label="Actions" width="160" fixed="right" align="right">
+        <el-table-column :label="$t('providers.table.actions')" width="160" fixed="right" align="right">
           <template #default="{ row }">
             <div class="flex justify-end gap-1">
               <el-button link type="primary" :icon="Edit" @click="openEdit(row)" />
               <div v-if="confirmState[row.key]" class="flex items-center gap-1">
-                <el-button link type="danger" size="small" class="font-medium" @click="handleDelete(row.key)">Confirm?</el-button>
-                <el-button link type="info" size="small" class="font-medium" @click="resetDelete(row.key)">Cancel</el-button>
+                <el-button link type="danger" size="small" class="font-medium" @click="handleDelete(row.key)">{{ $t('routes.actions.confirm') }}</el-button>
+                <el-button link type="info" size="small" class="font-medium" @click="resetDelete(row.key)">{{ $t('routes.actions.cancel') }}</el-button>
               </div>
               <el-button v-else link type="primary" :icon="Delete" @click="toggleDelete(row.key)" />
             </div>
@@ -352,37 +354,37 @@ onMounted(load)
 
     <el-drawer
       v-model="showDrawer"
-      :title="isEdit ? 'Edit Routing Configuration' : 'Create New Route'"
+      :title="isEdit ? $t('routes.drawer.edit') : $t('routes.drawer.add')"
       size="550px"
       destroy-on-close
     >
       <div class="px-2 pb-10">
         <el-form :model="form" label-position="top" class="custom-form">
-          <el-form-item label="Route Key" required>
+          <el-form-item :label="$t('routes.drawer.form.key')" required>
             <div class="flex gap-2 w-full">
-              <el-input v-model="form.key" :disabled="isEdit" placeholder="Client will use this key" class="mono-input" />
-              <el-button v-if="!isEdit" @click="handleGenerateKey" :icon="MagicStick">Auto-Gen</el-button>
+              <el-input v-model="form.key" :disabled="isEdit" :placeholder="$t('routes.drawer.form.keyPlaceholder')" class="mono-input" />
+              <el-button v-if="!isEdit" @click="handleGenerateKey" :icon="MagicStick">{{ $t('routes.drawer.form.autoGen') }}</el-button>
             </div>
           </el-form-item>
 
           <el-row :gutter="16">
             <el-col :span="12">
-              <el-form-item label="Upstream Provider" required>
-                <el-select v-model="form.provider" placeholder="Select target" class="w-full">
+              <el-form-item :label="$t('routes.drawer.form.provider')" required>
+                <el-select v-model="form.provider" :placeholder="$t('routes.drawer.form.providerPlaceholder')" class="w-full">
                   <el-option v-for="p in providers" :key="p.key" :label="p.name" :value="p.key" />
                 </el-select>
               </el-form-item>
             </el-col>
             <el-col :span="12">
-              <el-form-item label="Default Model" required>
-                <el-select v-model="form.default_model" placeholder="Fallback model" class="w-full" filterable allow-create clearable default-first-option>
+              <el-form-item :label="$t('routes.drawer.form.model')" required>
+                <el-select v-model="form.default_model" :placeholder="$t('routes.drawer.form.modelPlaceholder')" class="w-full" filterable allow-create clearable default-first-option>
                   <el-option v-for="m in providerModels" :key="m" :label="m" :value="m" />
                 </el-select>
               </el-form-item>
             </el-col>
           </el-row>
 
-          <el-form-item label="Long Context Threshold">
+          <el-form-item :label="$t('routes.drawer.form.threshold')">
             <el-input-number v-model="form.long_context_threshold" :min="0" :step="10000" controls-position="right" class="w-full!" />
           </el-form-item>
 
@@ -390,39 +392,39 @@ onMounted(load)
 
           <div class="mb-6">
             <div class="flex items-center justify-between mb-3">
-              <span class="text-sm font-bold text-slate-700">Scene Mappings</span>
-              <el-button size="small" link type="primary" @click="addSceneEntry">+ Add Scene</el-button>
+              <span class="text-sm font-bold text-slate-700">{{ $t('routes.drawer.form.scenes') }}</span>
+              <el-button size="small" link type="primary" @click="addSceneEntry">{{ $t('routes.drawer.form.addScene') }}</el-button>
             </div>
             <div class="p-3 rounded-xl border min-h-40px" style="background-color: var(--v3-section-bg); border-color: var(--el-border-color-light)">
               <div v-for="(item, idx) in sceneMapData" :key="idx" class="flex gap-2 mb-2 items-center">
-                <el-select v-model="item.key" placeholder="Scene" class="w-140px shrink-0" size="default">
+                <el-select v-model="item.key" :placeholder="$t('routes.drawer.form.scenePlaceholder')" class="w-140px shrink-0" size="default">
                   <el-option v-for="s in sceneOptions" :key="s" :label="s" :value="s" />
                 </el-select>
                 <el-icon class="text-slate-300"><Right /></el-icon>
-                <el-select v-model="item.value" placeholder="Map to model" class="flex-1" filterable allow-create default-first-option size="default">
+                <el-select v-model="item.value" :placeholder="$t('routes.drawer.form.mapTo')" class="flex-1" filterable allow-create default-first-option size="default">
                   <el-option v-for="m in providerModels" :key="m" :label="m" :value="m" />
                 </el-select>
                 <el-button link type="danger" :icon="Delete" @click="removeSceneEntry(idx)" />
               </div>
-              <div v-if="!sceneMapData.length" class="text-center py-4 text-xs text-slate-400 italic">No scene-based routing defined.</div>
+              <div v-if="!sceneMapData.length" class="text-center py-4 text-xs text-slate-400 italic">{{ $t('routes.drawer.form.noScenes') }}</div>
             </div>
           </div>
 
           <div>
             <div class="flex items-center justify-between mb-3">
-              <span class="text-sm font-bold text-slate-700">Model Aliases</span>
-              <el-button size="small" link type="primary" @click="addModelEntry">+ Add Mapping</el-button>
+              <span class="text-sm font-bold text-slate-700">{{ $t('routes.drawer.form.aliases') }}</span>
+              <el-button size="small" link type="primary" @click="addModelEntry">{{ $t('routes.drawer.form.addAlias') }}</el-button>
             </div>
             <div class="p-3 rounded-xl border min-h-40px" style="background-color: var(--v3-section-bg); border-color: var(--el-border-color-light)">
               <div v-for="(item, idx) in modelMapData" :key="idx" class="flex gap-2 mb-2 items-center">
-                <el-input v-model="item.key" placeholder="Client model name" class="flex-1" size="default" />
+                <el-input v-model="item.key" :placeholder="$t('routes.drawer.form.clientModel')" class="flex-1" size="default" />
                 <el-icon class="text-slate-300"><Right /></el-icon>
-                <el-select v-model="item.value" placeholder="Upstream model" class="flex-1" filterable allow-create default-first-option size="default">
+                <el-select v-model="item.value" :placeholder="$t('routes.drawer.form.upstreamModel')" class="flex-1" filterable allow-create default-first-option size="default">
                   <el-option v-for="m in providerModels" :key="m" :label="m" :value="m" />
                 </el-select>
                 <el-button link type="danger" :icon="Delete" @click="removeModelEntry(idx)" />
               </div>
-              <div v-if="!modelMapData.length" class="text-center py-4 text-xs text-slate-400 italic">No model aliases defined.</div>
+              <div v-if="!modelMapData.length" class="text-center py-4 text-xs text-slate-400 italic">{{ $t('routes.drawer.form.noAliases') }}</div>
             </div>
           </div>
         </el-form>
@@ -430,9 +432,9 @@ onMounted(load)
       
       <template #footer>
         <div class="flex justify-end gap-3 px-2">
-          <el-button @click="showDrawer = false">Cancel</el-button>
+          <el-button @click="showDrawer = false">{{ $t('routes.actions.cancel') }}</el-button>
           <el-button type="primary" @click="handleSubmit" style="min-width: 100px">
-            {{ isEdit ? 'Save Route' : 'Create Route' }}
+            {{ isEdit ? $t('routes.actions.edit') : $t('routes.drawer.add') }}
           </el-button>
         </div>
       </template>

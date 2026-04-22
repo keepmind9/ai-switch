@@ -22,8 +22,8 @@ onMounted(async () => {
   <div class="app-container">
     <div class="page-header">
       <div>
-        <h3>System Overview</h3>
-        <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">Monitor your AI Switch status and configured providers.</p>
+        <h3>{{ $t('dashboard.overview') }}</h3>
+        <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">{{ $t('dashboard.overviewDesc') }}</p>
       </div>
     </div>
 
@@ -38,7 +38,7 @@ onMounted(async () => {
                   <el-icon :size="24"><Monitor /></el-icon>
                 </div>
                 <div class="stat-info">
-                  <div class="stat-label uppercase tracking-wider text-[11px] font-bold opacity-70">Status</div>
+                  <div class="stat-label uppercase tracking-wider text-[11px] font-bold opacity-70">{{ $t('dashboard.status') }}</div>
                   <div class="stat-value text-lg! text-slate-900 dark:text-slate-100">{{ status.server?.host || '—' }}:{{ status.server?.port || '—' }}</div>
                 </div>
               </div>
@@ -51,7 +51,7 @@ onMounted(async () => {
                   <el-icon :size="24"><Connection /></el-icon>
                 </div>
                 <div class="stat-info">
-                  <div class="stat-label uppercase tracking-wider text-[11px] font-bold opacity-70">Providers</div>
+                  <div class="stat-label uppercase tracking-wider text-[11px] font-bold opacity-70">{{ $t('dashboard.providers') }}</div>
                   <div class="stat-value text-blue-600! dark:text-blue-400!">{{ status.provider_count || 0 }}</div>
                 </div>
               </div>
@@ -64,7 +64,7 @@ onMounted(async () => {
                   <el-icon :size="24"><Key /></el-icon>
                 </div>
                 <div class="stat-info">
-                  <div class="stat-label uppercase tracking-wider text-[11px] font-bold opacity-70">Active Keys</div>
+                  <div class="stat-label uppercase tracking-wider text-[11px] font-bold opacity-70">{{ $t('dashboard.activeKeys') }}</div>
                   <div class="stat-value text-emerald-700! dark:text-emerald-400!">{{ status.route_count || 0 }}</div>
                 </div>
               </div>
@@ -78,8 +78,8 @@ onMounted(async () => {
             <el-card shadow="never" class="section-card border-none!">
               <template #header>
                 <div class="flex items-center justify-between">
-                  <span class="card-header-label">Supported Presets</span>
-                  <el-button link type="primary">View Docs <el-icon class="ml-1"><Right /></el-icon></el-button>
+                  <span class="card-header-label">{{ $t('dashboard.supportedPresets') }}</span>
+                  <el-button link type="primary">{{ $t('dashboard.viewDocs') }} <el-icon class="ml-1"><Right /></el-icon></el-button>
                 </div>
               </template>
               <div class="preset-grid">
@@ -94,7 +94,7 @@ onMounted(async () => {
                   </div>
                   <div class="preset-name">
                     {{ p.name }}
-                    <el-tooltip v-if="p.is_partner" content="Partner Provider" placement="top">
+                    <el-tooltip v-if="p.is_partner" :content="$t('dashboard.partnerProvider')" placement="top">
                       <span class="partner-star">★</span>
                     </el-tooltip>
                   </div>

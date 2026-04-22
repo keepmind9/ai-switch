@@ -5,7 +5,9 @@ import { Plus, View, Edit, Hide, CopyDocument, Search, Refresh, Link, Delete, Qu
 import { listProviders, createProvider, updateProvider, deleteProvider, revealAPIKey, type Provider } from "@/api/providers"
 import { listPresets, type Preset } from "@/api/stats"
 import { useConfirm } from "@@/composables/useConfirm"
+import { useI18n } from "vue-i18n"
 
+const { t } = useI18n()
 const providers = ref<Provider[]>([])
 const presets = ref<Preset[]>([])
 const loading = ref(true)
@@ -79,7 +81,7 @@ function removeModel(idx: number) { form.value.models.splice(idx, 1) }
 async function handleDelete(key: string) {
   await deleteProvider(key)
   resetDelete(key)
-  ElMessage.success("Provider deleted successfully")
+  ElMessage.success(t("providers.actions.successDelete"))
   load()
 }
 
@@ -88,15 +90,15 @@ async function handleSubmit() {
     if (isEdit.value) { 
       const { key, ...data } = form.value
       await updateProvider(key, data)
-      ElMessage.success("Provider updated successfully") 
+      ElMessage.success(t("providers.actions.successUpdate")) 
     } else { 
       await createProvider(form.value)
-      ElMessage.success("Provider created successfully") 
+      ElMessage.success(t("providers.actions.successAdd")) 
     }
     showDrawer.value = false
     load()
   } catch (e) {
-    ElMessage.error("Failed to save provider")
+    ElMessage.error(t("providers.actions.failSave"))
   }
 }
 
@@ -110,7 +112,12 @@ async function revealKey(row: Provider) {
 
 async function handleCopyKey(row: Provider) {
   const key = revealedKeys.value[row.key] || row.api_key
-  try { await navigator.clipboard.writeText(key); ElMessage.success("Copied to clipboard") } catch { ElMessage.info(key) }
+  try { 
+    await navigator.clipboard.writeText(key)
+    ElMessage.success(t("providers.actions.copySuccess")) 
+  } catch { 
+    ElMessage.info(key) 
+  }
 }
 
 onMounted(load)
@@ -120,19 +127,19 @@ onMounted(load)
   <div class="app-container">
     <div class="page-header">
       <div>
-        <h3>AI Providers</h3>
-        <p class="text-sm text-slate-500 mt-1">Manage upstream LLM services and API connections.</p>
+        <h3>{{ $t('providers.title') }}</h3>
+        <p class="text-sm text-slate-500 mt-1">{{ $t('providers.desc') }}</p>
       </div>
       <div class="flex gap-3">
-        <el-input v-model="searchQuery" placeholder="Search providers..." :prefix-icon="Search" clearable style="width: 240px" />
-        <el-button type="primary" :icon="Plus" @click="openCreate">Add Provider</el-button>
+        <el-input v-model="searchQuery" :placeholder="$t('providers.search')" :prefix-icon="Search" clearable style="width: 240px" />
+        <el-button type="primary" :icon="Plus" @click="openCreate">{{ $t('providers.add') }}</el-button>
         <el-button :icon="Refresh" circle @click="load" />
       </div>
     </div>
 
     <el-card shadow="never" class="border-none!">
       <el-table :data="filteredProviders" v-loading="loading" stripe size="large" class="provider-table">
-        <el-table-column prop="name" label="Provider" min-width="200">
+        <el-table-column prop="name" :label="$t('providers.table.provider')" min-width="200">
           <template #default="{ row }">
             <div class="flex items-center gap-3">
               <div class="w-8 h-8 rounded bg-slate-100 flex items-center justify-center overflow-hidden shrink-0">
@@ -147,7 +154,7 @@ onMounted(load)
           </template>
         </el-table-column>
         
-        <el-table-column prop="base_url" label="Endpoint" min-width="220">
+        <el-table-column prop="base_url" :label="$t('providers.table.endpoint')" min-width="220">
           <template #default="{ row }">
             <div class="flex items-center gap-1 group">
               <span class="text-sm text-slate-500 truncate max-w-200px">{{ row.base_url }}</span>
@@ -156,7 +163,7 @@ onMounted(load)
           </template>
         </el-table-column>
         
-        <el-table-column prop="format" label="Format" width="120">
+        <el-table-column prop="format" :label="$t('providers.table.format')" width="120">
           <template #default="{ row }">
             <el-tag :type="row.format === 'chat' ? 'primary' : 'warning'" size="small" effect="light" class="capitalize">
               {{ row.format }}
@@ -164,7 +171,7 @@ onMounted(load)
           </template>
         </el-table-column>
 
-        <el-table-column label="Models" min-width="240">
+        <el-table-column :label="$t('providers.table.models')" min-width="240">
           <template #default="{ row }">
             <div class="flex flex-wrap gap-1 max-w-300px">
               <el-tag v-for="m in (row.models || []).slice(0, 5)" :key="m" size="small" type="info" effect="plain" class="rounded-md! border-slate-200! text-slate-500!">
@@ -180,12 +187,12 @@ onMounted(load)
                   +{{ row.models.length - 5 }}
                 </el-tag>
               </el-tooltip>
-              <span v-if="!(row.models || []).length" class="text-xs text-slate-300 italic">No models</span>
+              <span v-if="!(row.models || []).length" class="text-xs text-slate-300 italic">{{ $t('providers.table.noModels') }}</span>
             </div>
           </template>
         </el-table-column>
 
-        <el-table-column label="API Key" width="180">
+        <el-table-column :label="$t('providers.table.apiKey')" width="180">
           <template #default="{ row }">
             <div class="flex items-center gap-2">
               <span class="mono text-xs px-2 py-1 rounded truncate max-w-120px" :style="{ backgroundColor: 'var(--v3-key-bg)', color: revealedKeys[row.key] ? 'var(--v3-key-text-color)' : 'var(--el-text-color-placeholder)' }">
@@ -197,16 +204,16 @@ onMounted(load)
           </template>
         </el-table-column>
 
-        <el-table-column label="Actions" width="140" fixed="right" align="right">
+        <el-table-column :label="$t('providers.table.actions')" width="140" fixed="right" align="right">
           <template #default="{ row }">
             <div class="flex justify-end gap-1">
-              <el-tooltip content="Edit Settings" placement="top">
+              <el-tooltip :content="$t('providers.actions.edit')" placement="top">
                 <el-button link type="primary" :icon="Edit" @click="openEdit(row)" />
               </el-tooltip>
               <div class="flex items-center gap-1">
                 <template v-if="confirmState[row.key]">
-                  <el-button link type="danger" size="small" class="font-medium" @click="handleDelete(row.key)">Confirm?</el-button>
-                  <el-button link type="info" size="small" class="font-medium" @click="resetDelete(row.key)">Cancel</el-button>
+                  <el-button link type="danger" size="small" class="font-medium" @click="handleDelete(row.key)">{{ $t('providers.actions.confirm') }}</el-button>
+                  <el-button link type="info" size="small" class="font-medium" @click="resetDelete(row.key)">{{ $t('providers.actions.cancel') }}</el-button>
                 </template>
                 <el-button v-else link type="primary" :icon="Delete" @click="toggleDelete(row.key)" />
               </div>
@@ -218,13 +225,13 @@ onMounted(load)
 
     <el-drawer
       v-model="showDrawer"
-      :title="isEdit ? 'Edit AI Provider' : 'Add New Provider'"
+      :title="isEdit ? $t('providers.drawer.edit') : $t('providers.drawer.add')"
       size="500px"
       destroy-on-close
     >
       <div class="px-2">
         <div v-if="!isEdit" class="mb-8">
-          <div class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Quick Setup Presets</div>
+          <div class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">{{ $t('providers.drawer.presets') }}</div>
           <div class="grid grid-cols-2 gap-2">
             <div
               v-for="p in presets"
@@ -244,18 +251,18 @@ onMounted(load)
         <el-form :model="form" label-position="top" class="custom-form">
           <el-row :gutter="16">
             <el-col :span="12">
-              <el-form-item label="Provider ID" required>
+              <el-form-item :label="$t('providers.drawer.form.id')" required>
                 <el-input v-model="form.key" :disabled="isEdit" placeholder="e.g. openai" />
               </el-form-item>
             </el-col>
             <el-col :span="12">
-              <el-form-item label="Display Name" required>
+              <el-form-item :label="$t('providers.drawer.form.name')" required>
                 <el-input v-model="form.name" placeholder="e.g. OpenAI (Primary)" />
               </el-form-item>
             </el-col>
           </el-row>
 
-          <el-form-item label="Base API URL" required>
+          <el-form-item :label="$t('providers.drawer.form.baseUrl')" required>
             <el-input v-model="form.base_url" placeholder="https://api.openai.com/v1" />
           </el-form-item>
 
@@ -264,9 +271,9 @@ onMounted(load)
               <el-form-item>
                 <template #label>
                   <div class="flex items-center gap-1">
-                    <span>URL Path Override</span>
+                    <span>{{ $t('providers.drawer.form.path') }}</span>
                     <span class="text-[10px] text-slate-400 font-normal">(Optional)</span>
-                    <el-tooltip content="Custom endpoint path. If empty, the gateway uses the default path based on the protocol format." placement="top">
+                    <el-tooltip :content="$t('providers.drawer.form.pathTip')" placement="top">
                       <el-icon :size="12" class="text-slate-400 cursor-help"><QuestionFilled /></el-icon>
                     </el-tooltip>
                   </div>
@@ -275,15 +282,15 @@ onMounted(load)
               </el-form-item>
             </el-col>
             <el-col :span="12">
-              <el-form-item label="API Key">
-                <el-input v-model="form.api_key" type="password" show-password :placeholder="isEdit ? 'Keep empty to remain unchanged' : 'sk-••••••••'" />
+              <el-form-item :label="$t('providers.drawer.form.apiKey')">
+                <el-input v-model="form.api_key" type="password" show-password :placeholder="isEdit ? $t('providers.drawer.form.apiKeyEditTip') : $t('providers.drawer.form.apiKeyPlaceholder')" />
               </el-form-item>
             </el-col>
           </el-row>
 
           <el-row :gutter="16">
             <el-col :span="12">
-              <el-form-item label="Protocol Format">
+              <el-form-item :label="$t('providers.drawer.form.format')">
                 <el-select v-model="form.format" class="w-full">
                   <el-option label="OpenAI Chat" value="chat" />
                   <el-option label="Anthropic" value="anthropic" />
@@ -292,26 +299,26 @@ onMounted(load)
               </el-form-item>
             </el-col>
             <el-col :span="12">
-              <el-form-item label="Provider Type">
+              <el-form-item :label="$t('providers.drawer.form.type')">
                 <div class="flex items-center h-40px gap-2">
                   <el-switch v-model="form.sponsor" />
-                  <span class="text-sm text-slate-500">Is Partner/Sponsor</span>
+                  <span class="text-sm text-slate-500">{{ $t('providers.drawer.form.isPartner') }}</span>
                 </div>
               </el-form-item>
             </el-col>
           </el-row>
 
-          <el-form-item label="Available Models">
+          <el-form-item :label="$t('providers.drawer.form.models')">
             <div class="rounded-lg p-3" style="background-color: var(--v3-section-bg); border: 1px solid var(--el-border-color-light)">
               <div class="flex flex-wrap gap-2 mb-3">
                 <el-tag v-for="(m, idx) in form.models" :key="idx" closable @close="removeModel(Number(idx))" size="small" type="info">
                   {{ m }}
                 </el-tag>
-                <span v-if="!form.models.length" class="text-xs text-slate-400 italic mt-1">No models added yet.</span>
+                <span v-if="!form.models.length" class="text-xs text-slate-400 italic mt-1">{{ $t('providers.table.noModels') }}</span>
               </div>
               <div class="flex gap-2">
-                <el-input v-model="modelInput" placeholder="Add model (e.g. gpt-4o)" size="small" @keyup.enter="addModel" />
-                <el-button @click="addModel" size="small" :icon="Plus">Add</el-button>
+                <el-input v-model="modelInput" :placeholder="$t('providers.drawer.form.addModel')" size="small" @keyup.enter="addModel" />
+                <el-button @click="addModel" size="small" :icon="Plus">{{ $t('navbar.language') === 'Language' ? 'Add' : '添加' }}</el-button>
               </div>
             </div>
           </el-form-item>
@@ -319,9 +326,9 @@ onMounted(load)
       </div>
       <template #footer>
         <div class="flex justify-end gap-3 px-2">
-          <el-button @click="showDrawer = false">Cancel</el-button>
+          <el-button @click="showDrawer = false">{{ $t('providers.actions.cancel') }}</el-button>
           <el-button type="primary" @click="handleSubmit" style="min-width: 100px">
-            {{ isEdit ? 'Save Changes' : 'Create Provider' }}
+            {{ isEdit ? $t('providers.actions.edit') : $t('providers.add') }}
           </el-button>
         </div>
       </template>

@@ -5,6 +5,7 @@ import { useLayoutMode } from "@@/composables/useLayoutMode"
 import { useAppStore } from "@/pinia/stores/app"
 import { useSettingsStore } from "@/pinia/stores/settings"
 import { Breadcrumb, Hamburger, Sidebar } from "../index"
+import { Operation } from "@element-plus/icons-vue"
 
 const { isMobile } = useDevice()
 const { isTop } = useLayoutMode()
@@ -14,6 +15,11 @@ const { showScreenfull } = storeToRefs(settingsStore)
 
 function toggleSidebar() {
   appStore.toggleSidebar(false)
+}
+
+function handleLanguageChange(lang: string) {
+  appStore.setLanguage(lang)
+  ElMessage.success(lang === "zh-cn" ? "语言切换成功" : "Language switched successfully")
 }
 </script>
 
@@ -29,6 +35,19 @@ function toggleSidebar() {
     <Sidebar v-if="isTop && !isMobile" class="sidebar" />
     <div class="right-menu">
       <div class="right-menu-container">
+        <el-dropdown trigger="click" @command="handleLanguageChange">
+          <div class="right-menu-item">
+            <el-tooltip :content="$t('navbar.language')" placement="bottom">
+              <el-icon :size="18"><Operation /></el-icon>
+            </el-tooltip>
+          </div>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="en" :disabled="appStore.language === 'en'">English</el-dropdown-item>
+              <el-dropdown-item command="zh-cn" :disabled="appStore.language === 'zh-cn'">简体中文</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
         <Screenfull v-if="showScreenfull" class="right-menu-item" />
       </div>
     </div>
