@@ -175,10 +175,15 @@ func emitResponseCompleted(w SSEWriter, state *ResponsesStreamState) {
 // ParseSSEDataLine extracts the data portion from an SSE line.
 // Returns empty string if not a data line.
 func ParseSSEDataLine(line string) string {
-	if strings.HasPrefix(line, "data: ") {
-		return line[6:]
+	after, ok := strings.CutPrefix(line, "data:")
+	if !ok {
+		return ""
 	}
-	return ""
+	// Trim single leading space per SSE spec, but also handle "data:value" without space
+	if len(after) > 0 && after[0] == ' ' {
+		return after[1:]
+	}
+	return after
 }
 
 // FormatSSEEvent formats an SSE event string.

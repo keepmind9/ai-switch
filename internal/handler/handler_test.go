@@ -333,7 +333,7 @@ func TestHandleResponses_ConvertedToChat(t *testing.T) {
 
 	var resp map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
-	assert.Equal(t, "list", resp["object"])
+	assert.Equal(t, "response", resp["object"])
 
 	responses := resp["responses"].([]any)
 	require.Len(t, responses, 1)
@@ -589,4 +589,13 @@ func TestExtractClientAPIKey(t *testing.T) {
 			assert.Equal(t, tt.expected, result)
 		})
 	}
+}
+
+func TestTruncateString(t *testing.T) {
+	assert.Equal(t, "abc", truncateString("abc", 10))
+	assert.Equal(t, "abc", truncateString("abc", 3))
+	long := strings.Repeat("x", 100)
+	result := truncateString(long, 10)
+	assert.Equal(t, "xxxxxxxxxx...(truncated)", result)
+	assert.Equal(t, "", truncateString("", 10))
 }

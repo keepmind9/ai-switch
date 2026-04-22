@@ -28,6 +28,12 @@ var staticFS embed.FS
 
 const ctxProviderKey = "provider_key"
 
+const (
+	maxLogReqBodyLen  = 2048
+	maxLogRespBodyLen = 4096
+	maxStreamLogLen   = 512
+)
+
 type Handler struct {
 	provider   *config.Provider
 	converter  *converter.Converter
@@ -39,9 +45,11 @@ type Handler struct {
 
 func NewHandler(provider *config.Provider, usageStore *store.UsageStore, r router.Router, llmLogger *slog.Logger) *Handler {
 	return &Handler{
-		provider:   provider,
-		converter:  converter.NewConverter(),
-		client:     &http.Client{},
+		provider:  provider,
+		converter: converter.NewConverter(),
+		client: &http.Client{
+			Timeout: 10 * time.Minute, // covers long LLM streams; per-request context can override
+		},
 		usageStore: usageStore,
 		router:     r,
 		llmLogger:  llmLogger,
@@ -228,6 +236,9 @@ func (h *Handler) streamChatToClient(c *gin.Context, resp *http.Response, conver
 			flusher.Flush()
 		}
 	}
+	if err := scanner.Err(); err != nil {
+		slog.Warn("SSE scanner error", "error", err)
+	}
 	if !done {
 		convertFn(ginWriter, "[DONE]")
 	}
@@ -242,14 +253,18 @@ func (h *Handler) logLLMRequest(model, provider, url string, latency time.Durati
 	if h.llmLogger == nil {
 		return
 	}
+	maxResp := maxLogRespBodyLen
+	if stream {
+		maxResp = maxStreamLogLen
+	}
 	h.llmLogger.Info("llm request",
 		slog.String("model", model),
 		slog.String("provider", provider),
 		slog.String("url", url),
 		slog.Int64("latency_ms", latency.Milliseconds()),
 		slog.Bool("stream", stream),
-		slog.String("request", string(reqBody)),
-		slog.String("response", respBody),
+		slog.String("request", truncateString(string(reqBody), maxLogReqBodyLen)),
+		slog.String("response", truncateString(respBody, maxResp)),
 	)
 }
 
@@ -313,6 +328,9 @@ func (h *Handler) streamPassthrough(c *gin.Context, resp *http.Response, format 
 		}
 	}
 
+	if err := scanner.Err(); err != nil {
+		slog.Warn("SSE scanner error", "error", err)
+	}
 	h.recordStreamUsage(acc.Model, providerStr, int(acc.InputTokens), int(acc.OutputTokens))
 	return buf.String()
 }
@@ -445,6 +463,12 @@ func (h *Handler) streamAnthropicToResponsesSSE(c *gin.Context, resp *http.Respo
 		if canFlush {
 			flusher.Flush()
 		}
+	}
+	if err := scanner.Err(); err != nil {
+		slog.Warn("SSE scanner error", "error", err)
+	}
+	if err := scanner.Err(); err != nil {
+		slog.Warn("SSE scanner error", "error", err)
 	}
 	// Upstream closed without sending message_delta/message_stop — emit response.completed as fallback.
 	converter.EmitCompleted(w, state)
@@ -652,11 +676,15 @@ func (h *Handler) handleChat(c *gin.Context) {
 
 // passthroughRequest forwards the request body directly to upstream.
 func (h *Handler) passthroughRequest(c *gin.Context, result *router.RouteResult, body []byte, isStreaming bool) {
-	var raw map[string]any
 	originalBody := body
-	if json.Unmarshal(body, &raw) == nil && result.Model != "" {
-		raw["model"] = result.Model
-		body, _ = json.Marshal(raw)
+	if result.Model != "" {
+		var raw map[string]any
+		if json.Unmarshal(body, &raw) == nil {
+			raw["model"] = result.Model
+			if newBody, err := json.Marshal(raw); err == nil {
+				body = newBody
+			}
+		}
 	}
 
 	resp, latency, err := h.forwardRequest(result, body)
@@ -1071,4 +1099,11 @@ func (h *Handler) handleAPIStatus(c *gin.Context) {
 	status["providers"] = providers
 
 	c.JSON(http.StatusOK, status)
+}
+
+func truncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "...(truncated)"
 }

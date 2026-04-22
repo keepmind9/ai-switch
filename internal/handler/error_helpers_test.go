@@ -123,7 +123,7 @@ func TestIsSSEResponse(t *testing.T) {
 		{"SSE", "text/event-stream", true},
 		{"SSE with charset", "text/event-stream; charset=utf-8", true},
 		{"JSON", "application/json", false},
-		{"empty", "", true},
+		{"empty", "", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -139,4 +139,6 @@ func TestIsSSEErrorData(t *testing.T) {
 	assert.False(t, isSSEErrorData(`{"type":"message_start","message":{}}`))
 	assert.False(t, isSSEErrorData("[DONE]"))
 	assert.False(t, isSSEErrorData(""))
+	assert.False(t, isSSEErrorData(`{"type":"content_block_delta","delta":{"text":"error handling is important"}}`))
+	assert.False(t, isSSEErrorData(`not json at all "error"`))
 }

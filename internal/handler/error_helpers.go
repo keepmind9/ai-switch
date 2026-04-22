@@ -66,7 +66,7 @@ func (h *Handler) writeConvertedError(c *gin.Context, resp *http.Response, respB
 // isSSEResponse checks if the upstream response is SSE (text/event-stream).
 func isSSEResponse(resp *http.Response) bool {
 	ct := resp.Header.Get("Content-Type")
-	return ct == "" || strings.Contains(ct, "text/event-stream")
+	return strings.Contains(ct, "text/event-stream")
 }
 
 // isSSEErrorData checks if an SSE data payload contains an error object.
@@ -75,7 +75,12 @@ func isSSEErrorData(data string) bool {
 	if trimmed == "[DONE]" {
 		return false
 	}
-	return strings.Contains(trimmed, `"error"`)
+	var raw map[string]any
+	if json.Unmarshal([]byte(trimmed), &raw) != nil {
+		return false
+	}
+	_, hasError := raw["error"]
+	return hasError
 }
 
 // writeStreamErrorJSON writes a JSON error response for a streaming path that

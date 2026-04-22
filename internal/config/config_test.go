@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -556,13 +557,19 @@ func TestExpandEnv(t *testing.T) {
 		{"plain string", "plain-key", "", "", "plain-key"},
 		{"empty string", "", "", "", ""},
 		{"missing env", "${NONEXISTENT_VAR_XYZ}", "", "", ""},
+		{"embedded env", "key-${MY_KEY}-suffix", "MY_KEY", "my-value", "key-my-value-suffix"},
+		{"multiple env vars", "${A}-${B}", "A,B", "x,y", "x-y"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if tt.envKey != "" {
-				os.Setenv(tt.envKey, tt.envValue)
-				defer os.Unsetenv(tt.envKey)
+			keys := strings.Split(tt.envKey, ",")
+			vals := strings.Split(tt.envValue, ",")
+			for i, k := range keys {
+				if k != "" && i < len(vals) {
+					os.Setenv(k, vals[i])
+					defer os.Unsetenv(k)
+				}
 			}
 			result := expandEnv(tt.input)
 			assert.Equal(t, tt.expected, result)

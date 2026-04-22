@@ -237,6 +237,9 @@ func TestParseSSEDataLine(t *testing.T) {
 		{"event line", "event: message_start", ""},
 		{"empty line", "", ""},
 		{"comment line", ": keepalive", ""},
+		{"no space after colon", "data:{\"key\":\"val\"}", "{\"key\":\"val\"}"},
+		{"data empty value", "data:", ""},
+		{"data empty with space", "data: ", ""},
 	}
 
 	for _, tt := range tests {

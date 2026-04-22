@@ -206,13 +206,19 @@ func (c *Converter) convertChatRequest(upstreamFormat string, body []byte, defau
 
 func BuildResponsesFromChat(chatReq *types.ChatRequest, stream bool) *types.ResponsesRequest {
 	var instructions string
-	var input any
+	var inputParts []string
 	for _, msg := range chatReq.Messages {
 		if msg.Role == "system" {
 			instructions += msg.Content + "\n"
 		} else {
-			input = msg.Content
+			inputParts = append(inputParts, msg.Content)
 		}
+	}
+	var input any
+	if len(inputParts) == 1 {
+		input = inputParts[0]
+	} else if len(inputParts) > 1 {
+		input = inputParts
 	}
 	return &types.ResponsesRequest{
 		Model:        chatReq.Model,
@@ -223,6 +229,38 @@ func BuildResponsesFromChat(chatReq *types.ChatRequest, stream bool) *types.Resp
 		Temperature:  chatReq.Temperature,
 		TopP:         chatReq.TopP,
 	}
+}
+
+// ResponsesToChatResponse converts a Responses API response back to Chat Completions format.
+func (c *Converter) ResponsesToChatResponse(resp *types.ResponsesResponse) (*types.ChatResponse, error) {
+	chatResp := &types.ChatResponse{
+		ID:      resp.ID,
+		Object:  "chat.completion",
+		Created: resp.Created,
+		Model:   resp.Model,
+	}
+	if resp.Usage != nil {
+		chatResp.Usage = types.ChatUsage{
+			PromptTokens:     resp.Usage.InputTokens,
+			CompletionTokens: resp.Usage.OutputTokens,
+			TotalTokens:      resp.Usage.TotalTokens,
+		}
+	}
+	for _, item := range resp.Responses {
+		for _, block := range item.Content {
+			if block.Type == "output_text" {
+				chatResp.Choices = append(chatResp.Choices, types.ChatChoice{
+					Index: 0,
+					Message: types.ChatMessage{
+						Role:    "assistant",
+						Content: block.Text,
+					},
+					FinishReason: "stop",
+				})
+			}
+		}
+	}
+	return chatResp, nil
 }
 
 func NewConverter() *Converter {
@@ -319,7 +357,7 @@ func (c *Converter) ChatToResponses(chatResp *types.ChatResponse, model, thinkTa
 
 	resp := &types.ResponsesResponse{
 		ID:        chatResp.ID,
-		Object:    "list",
+		Object:    "response",
 		Created:   chatResp.Created,
 		Model:     model,
 		Responses: responseItems,

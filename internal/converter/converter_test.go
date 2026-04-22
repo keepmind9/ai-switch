@@ -177,3 +177,80 @@ func TestChatToResponses_MultipleChoices(t *testing.T) {
 	assert.Equal(t, "First", resp.Responses[0].Content[0].Text)
 	assert.Equal(t, "Second", resp.Responses[1].Content[0].Text)
 }
+
+func TestResponsesToChatResponse(t *testing.T) {
+	resp := &types.ResponsesResponse{
+		ID:      "resp-123",
+		Object:  "response",
+		Created: 1234567890,
+		Model:   "gpt-4o",
+		Responses: []types.ResponseItem{
+			{
+				ID:     "item-1",
+				Object: "response",
+				Role:   "assistant",
+				Content: []types.ContentBlock{
+					{Type: "output_text", Text: "Hello world"},
+				},
+				Status: "completed",
+			},
+		},
+		Usage: &types.Usage{InputTokens: 10, OutputTokens: 20, TotalTokens: 30},
+	}
+
+	c := NewConverter()
+	chatResp, err := c.ResponsesToChatResponse(resp)
+	require.NoError(t, err)
+	assert.Equal(t, "resp-123", chatResp.ID)
+	assert.Equal(t, "chat.completion", chatResp.Object)
+	assert.Equal(t, "gpt-4o", chatResp.Model)
+	require.Len(t, chatResp.Choices, 1)
+	assert.Equal(t, "Hello world", chatResp.Choices[0].Message.Content)
+	assert.Equal(t, "stop", chatResp.Choices[0].FinishReason)
+	assert.Equal(t, 10, chatResp.Usage.PromptTokens)
+	assert.Equal(t, 20, chatResp.Usage.CompletionTokens)
+}
+
+func TestResponsesToChatResponse_Empty(t *testing.T) {
+	resp := &types.ResponsesResponse{ID: "r1", Model: "m1"}
+	c := NewConverter()
+	chatResp, err := c.ResponsesToChatResponse(resp)
+	require.NoError(t, err)
+	assert.Empty(t, chatResp.Choices)
+}
+
+func TestBuildResponsesFromChat_MultiTurn(t *testing.T) {
+	chatReq := &types.ChatRequest{
+		Model: "gpt-4o",
+		Messages: []types.ChatMessage{
+			{Role: "system", Content: "Be helpful"},
+			{Role: "user", Content: "Hello"},
+			{Role: "assistant", Content: "Hi there"},
+			{Role: "user", Content: "How are you?"},
+		},
+	}
+
+	respReq := BuildResponsesFromChat(chatReq, false)
+	assert.Equal(t, "Be helpful", respReq.Instructions)
+	// Multi-turn: input should be array of all non-system messages
+	arr, ok := respReq.Input.([]string)
+	require.True(t, ok)
+	assert.Equal(t, []string{"Hello", "Hi there", "How are you?"}, arr)
+}
+
+func TestBuildResponsesFromChat_SingleTurn(t *testing.T) {
+	chatReq := &types.ChatRequest{
+		Model:    "gpt-4o",
+		Messages: []types.ChatMessage{{Role: "user", Content: "Hello"}},
+	}
+
+	respReq := BuildResponsesFromChat(chatReq, false)
+	// Single turn: input should be plain string
+	assert.Equal(t, "Hello", respReq.Input)
+}
+
+func TestBuildResponsesFromChat_NoMessages(t *testing.T) {
+	chatReq := &types.ChatRequest{Model: "gpt-4o"}
+	respReq := BuildResponsesFromChat(chatReq, false)
+	assert.Nil(t, respReq.Input)
+}

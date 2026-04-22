@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/keepmind9/ai-switch/internal/store"
+	"github.com/keepmind9/ai-switch/internal/util"
 )
 
 // responseCapture wraps gin.ResponseWriter to capture the response body.
@@ -32,6 +33,12 @@ func UsageMiddleware(usageStore *store.UsageStore) gin.HandlerFunc {
 		// Only track API endpoints
 		path := c.Request.URL.Path
 		if path == "/health" || path == "/api/reload" {
+			c.Next()
+			return
+		}
+
+		// Skip streaming requests early — avoid buffering SSE into memory
+		if c.GetHeader("Accept") == "text/event-stream" {
 			c.Next()
 			return
 		}
@@ -129,20 +136,7 @@ func extractUsage(body []byte, provider string) *store.UsageRecord {
 	return record
 }
 
-func toFloat(v any) float64 {
-	switch n := v.(type) {
-	case float64:
-		return n
-	case int:
-		return float64(n)
-	case int64:
-		return float64(n)
-	case json.Number:
-		f, _ := n.Float64()
-		return f
-	}
-	return 0
-}
+func toFloat(v any) float64 { return util.ToFloat64(v) }
 
 // StreamUsageAccumulator accumulates token usage from SSE data lines.
 type StreamUsageAccumulator struct {

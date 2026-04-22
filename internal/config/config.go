@@ -190,9 +190,7 @@ func DefaultConfigPath(flagPath string) (string, error) {
 }
 
 func expandEnv(s string) string {
-	if strings.HasPrefix(s, "${") && strings.HasSuffix(s, "}") {
-		envKey := s[2 : len(s)-1]
-		return os.Getenv(envKey)
-	}
-	return s
+	return os.Expand(s, func(key string) string {
+		return os.Getenv(key)
+	})
 }
