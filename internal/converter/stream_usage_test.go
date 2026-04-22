@@ -136,6 +136,24 @@ func TestResponsesStreamState_NoUsage(t *testing.T) {
 	assert.Equal(t, 0, state.OutputTokens)
 }
 
+func TestAnthropicToChatState_ChatStreamUsage(t *testing.T) {
+	state := &AnthropicToChatState{ID: "msg_1", Model: "claude-sonnet-4-5", InputTokens: 200, OutputTokens: 80}
+	id, model, in, out := state.ChatStreamUsage()
+	assert.Equal(t, "msg_1", id)
+	assert.Equal(t, "claude-sonnet-4-5", model)
+	assert.Equal(t, 200, in)
+	assert.Equal(t, 80, out)
+}
+
+func TestResponsesToChatState_ChatStreamUsage(t *testing.T) {
+	state := &ResponsesToChatState{ID: "resp_1", Model: "gpt-4o", InputTokens: 75, OutputTokens: 30}
+	id, model, in, out := state.ChatStreamUsage()
+	assert.Equal(t, "resp_1", id)
+	assert.Equal(t, "gpt-4o", model)
+	assert.Equal(t, 75, in)
+	assert.Equal(t, 30, out)
+}
+
 func TestResponsesToChatState_NoUsage(t *testing.T) {
 	state := &ResponsesToChatState{}
 

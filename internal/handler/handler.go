@@ -157,8 +157,29 @@ func (h *Handler) forwardRequest(result *router.RouteResult, path string, body [
 	return resp, time.Since(start), nil
 }
 
+// copyUpstreamHeaders forwards upstream response headers to the client,
+// preserving headers we explicitly override (Content-Type, etc.).
+func copyUpstreamHeaders(c *gin.Context, resp *http.Response) {
+	skip := map[string]bool{
+		"Content-Type":      true,
+		"Content-Length":    true,
+		"Transfer-Encoding": true,
+		"Cache-Control":     true,
+		"Connection":        true,
+	}
+	for k, vv := range resp.Header {
+		if skip[k] {
+			continue
+		}
+		for _, v := range vv {
+			c.Header(k, v)
+		}
+	}
+}
+
 // writeUpstreamError forwards an upstream error response to the client.
 func (h *Handler) writeUpstreamError(c *gin.Context, resp *http.Response) {
+	copyUpstreamHeaders(c, resp)
 	respBody, _ := io.ReadAll(resp.Body)
 	c.Data(resp.StatusCode, "application/json", respBody)
 }
@@ -166,6 +187,7 @@ func (h *Handler) writeUpstreamError(c *gin.Context, resp *http.Response) {
 // streamChatToClient reads Chat SSE from upstream and converts to the target
 // client format using the provided converter function. Returns accumulated upstream content.
 func (h *Handler) streamChatToClient(c *gin.Context, resp *http.Response, convertFn func(w converter.SSEWriter, data string) bool) string {
+	copyUpstreamHeaders(c, resp)
 	c.Header("Content-Type", "text/event-stream")
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Connection", "keep-alive")
@@ -244,6 +266,7 @@ func (h *Handler) recordStreamUsageFromState(c *gin.Context, model string, input
 
 // streamPassthrough forwards upstream SSE directly to the client. Returns accumulated upstream content.
 func (h *Handler) streamPassthrough(c *gin.Context, resp *http.Response, format string) string {
+	copyUpstreamHeaders(c, resp)
 	c.Header("Content-Type", "text/event-stream")
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Connection", "keep-alive")
@@ -280,6 +303,7 @@ func (h *Handler) streamPassthrough(c *gin.Context, resp *http.Response, format 
 // convertFn returns a *types.ChatStreamResponse, "[DONE]" string, or nil.
 // Returns accumulated upstream content.
 func (h *Handler) streamToChatSSE(c *gin.Context, resp *http.Response, convertFn func(state any, line string) any, initialState any) string {
+	copyUpstreamHeaders(c, resp)
 	c.Header("Content-Type", "text/event-stream")
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Connection", "keep-alive")
@@ -302,6 +326,27 @@ func (h *Handler) streamToChatSSE(c *gin.Context, resp *http.Response, convertFn
 			c.Writer.WriteString("data: " + string(data) + "\n\n")
 		case string:
 			if v == "[DONE]" {
+				// Emit final usage chunk if state provides usage data
+				if up, ok := initialState.(interface {
+					ChatStreamUsage() (string, string, int, int)
+				}); ok {
+					id, model, in, out := up.ChatStreamUsage()
+					if in > 0 || out > 0 {
+						usageChunk := &types.ChatStreamResponse{
+							ID:      id,
+							Object:  "chat.completion.chunk",
+							Model:   model,
+							Choices: []types.StreamChoice{},
+							Usage: &types.ChatUsage{
+								PromptTokens:     in,
+								CompletionTokens: out,
+								TotalTokens:      in + out,
+							},
+						}
+						data, _ := json.Marshal(usageChunk)
+						c.Writer.WriteString("data: " + string(data) + "\n\n")
+					}
+				}
 				c.Writer.WriteString("data: [DONE]\n\n")
 				if canFlush {
 					flusher.Flush()
@@ -320,6 +365,7 @@ func (h *Handler) streamToChatSSE(c *gin.Context, resp *http.Response, convertFn
 // streamAnthropicToResponsesSSE reads Anthropic SSE from resp and writes Responses API SSE to client.
 // Returns accumulated upstream content.
 func (h *Handler) streamAnthropicToResponsesSSE(c *gin.Context, resp *http.Response, state *converter.AnthropicToResponsesState) string {
+	copyUpstreamHeaders(c, resp)
 	c.Header("Content-Type", "text/event-stream")
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Connection", "keep-alive")
@@ -511,6 +557,7 @@ func (h *Handler) passthroughRequest(c *gin.Context, result *router.RouteResult,
 
 	respBody, _ := io.ReadAll(resp.Body)
 	h.logLLMRequest(result.Model, providerStr, upstreamURL, latency, false, originalBody, string(respBody))
+	copyUpstreamHeaders(c, resp)
 	c.Data(http.StatusOK, "application/json", respBody)
 }
 
@@ -726,6 +773,7 @@ func (h *Handler) chatViaResponses(c *gin.Context, result *router.RouteResult, c
 
 	respData, _ := io.ReadAll(resp.Body)
 	h.logLLMRequest(chatReq.Model, providerStr, upstreamURL, latency, false, respBodyData, string(respData))
+	copyUpstreamHeaders(c, resp)
 	c.Data(http.StatusOK, "application/json", respData)
 }
 
@@ -834,6 +882,7 @@ func (h *Handler) anthropicViaChatToResponses(c *gin.Context, result *router.Rou
 
 	respBody, _ := io.ReadAll(resp.Body)
 	h.logLLMRequest(model, providerStr, upstreamURL, latency, false, chatBody, string(respBody))
+	copyUpstreamHeaders(c, resp)
 	c.Data(http.StatusOK, "application/json", respBody)
 }
 

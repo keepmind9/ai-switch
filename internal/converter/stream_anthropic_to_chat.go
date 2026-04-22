@@ -20,6 +20,11 @@ type AnthropicToChatState struct {
 	Started      bool
 }
 
+// ChatStreamUsage returns token usage for the final Chat SSE usage chunk.
+func (s *AnthropicToChatState) ChatStreamUsage() (id, model string, input, output int) {
+	return s.ID, s.Model, s.InputTokens, s.OutputTokens
+}
+
 // ConvertAnthropicLineToChat processes a raw Anthropic SSE line and returns
 // a ChatStreamResponse chunk, or nil if the line should be skipped.
 // Returns the string "[DONE]" when the stream is complete.

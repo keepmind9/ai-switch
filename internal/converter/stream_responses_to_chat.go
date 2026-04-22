@@ -18,6 +18,11 @@ type ResponsesToChatState struct {
 	OutputTokens int
 }
 
+// ChatStreamUsage returns token usage for the final Chat SSE usage chunk.
+func (s *ResponsesToChatState) ChatStreamUsage() (id, model string, input, output int) {
+	return s.ID, s.Model, s.InputTokens, s.OutputTokens
+}
+
 // ConvertResponsesLineToChat processes a raw Responses SSE line and returns
 // a ChatStreamResponse chunk, or nil if the line should be skipped.
 // Returns the string "[DONE]" when the stream is complete.
