@@ -32,6 +32,7 @@ const (
 	maxLogReqBodyLen  = 2048
 	maxLogRespBodyLen = 4096
 	maxStreamLogLen   = 512
+	upstreamTimeout   = 30 * time.Second // connection + first-byte timeout for upstream requests
 )
 
 type Handler struct {
@@ -48,7 +49,9 @@ func NewHandler(provider *config.Provider, usageStore *store.UsageStore, r route
 		provider:  provider,
 		converter: converter.NewConverter(),
 		client: &http.Client{
-			Timeout: 10 * time.Minute, // covers long LLM streams; per-request context can override
+			Transport: &http.Transport{
+				ResponseHeaderTimeout: upstreamTimeout,
+			},
 		},
 		usageStore: usageStore,
 		router:     r,
@@ -463,9 +466,6 @@ func (h *Handler) streamAnthropicToResponsesSSE(c *gin.Context, resp *http.Respo
 		if canFlush {
 			flusher.Flush()
 		}
-	}
-	if err := scanner.Err(); err != nil {
-		slog.Warn("SSE scanner error", "error", err)
 	}
 	if err := scanner.Err(); err != nil {
 		slog.Warn("SSE scanner error", "error", err)
@@ -1101,9 +1101,10 @@ func (h *Handler) handleAPIStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, status)
 }
 
-func truncateString(s string, maxLen int) string {
-	if len(s) <= maxLen {
+func truncateString(s string, maxRunes int) string {
+	runes := []rune(s)
+	if len(runes) <= maxRunes {
 		return s
 	}
-	return s[:maxLen] + "...(truncated)"
+	return string(runes[:maxRunes]) + "...(truncated)"
 }
