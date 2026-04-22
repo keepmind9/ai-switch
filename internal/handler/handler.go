@@ -188,8 +188,19 @@ func (h *Handler) writeUpstreamError(c *gin.Context, resp *http.Response) {
 
 // streamChatToClient reads Chat SSE from upstream and converts to the target
 // client format using the provided converter function. Returns accumulated upstream content.
-func (h *Handler) streamChatToClient(c *gin.Context, resp *http.Response, convertFn func(w converter.SSEWriter, data string) bool) string {
+// clientFormat is used to format error events in the client's expected format.
+func (h *Handler) streamChatToClient(c *gin.Context, resp *http.Response, convertFn func(w converter.SSEWriter, data string) bool, clientFormat string) string {
 	copyUpstreamHeaders(c, resp)
+
+	// If upstream returned JSON instead of SSE, handle as error.
+	if !isSSEResponse(resp) {
+		respBody, _ := io.ReadAll(resp.Body)
+		slog.Warn("upstream returned non-SSE response in streaming path", "content_type", resp.Header.Get("Content-Type"), "body_len", len(respBody))
+		msg, errType := parseUpstreamError(respBody)
+		writeStreamErrorJSON(c, resp.StatusCode, msg, errType, clientFormat)
+		return string(respBody)
+	}
+
 	c.Header("Content-Type", "text/event-stream")
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Connection", "keep-alive")
@@ -197,6 +208,7 @@ func (h *Handler) streamChatToClient(c *gin.Context, resp *http.Response, conver
 	c.Writer.WriteHeader(http.StatusOK)
 
 	ginWriter := &ginSSEWriter{c: c}
+	flusher, canFlush := c.Writer.(http.Flusher)
 
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
@@ -210,13 +222,25 @@ func (h *Handler) streamChatToClient(c *gin.Context, resp *http.Response, conver
 		if data == "" {
 			continue
 		}
+		if isSSEErrorData(data) {
+			msg, errType := parseUpstreamError([]byte(data))
+			slog.Warn("SSE error event from upstream", "message", msg, "type", errType)
+			_ = msg
+			break
+		}
 		if convertFn(ginWriter, data) {
 			done = true
 			break
 		}
+		if canFlush {
+			flusher.Flush()
+		}
 	}
 	if !done {
 		convertFn(ginWriter, "[DONE]")
+	}
+	if canFlush {
+		flusher.Flush()
 	}
 	return buf.String()
 }
@@ -306,6 +330,16 @@ func (h *Handler) streamPassthrough(c *gin.Context, resp *http.Response, format 
 // Returns accumulated upstream content.
 func (h *Handler) streamToChatSSE(c *gin.Context, resp *http.Response, convertFn func(state any, line string) any, initialState any) string {
 	copyUpstreamHeaders(c, resp)
+
+	// If upstream returned JSON instead of SSE, handle as error.
+	if !isSSEResponse(resp) {
+		respBody, _ := io.ReadAll(resp.Body)
+		slog.Warn("upstream returned non-SSE response in streaming path", "content_type", resp.Header.Get("Content-Type"), "body_len", len(respBody))
+		msg, errType := parseUpstreamError(respBody)
+		writeStreamErrorJSON(c, resp.StatusCode, msg, errType, "chat")
+		return string(respBody)
+	}
+
 	c.Header("Content-Type", "text/event-stream")
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Connection", "keep-alive")
@@ -320,6 +354,15 @@ func (h *Handler) streamToChatSSE(c *gin.Context, resp *http.Response, convertFn
 	for scanner.Scan() {
 		line := scanner.Text()
 		buf.WriteString(line + "\n")
+
+		data := converter.ParseSSEDataLine(line)
+		if data != "" && isSSEErrorData(data) {
+			msg, errType := parseUpstreamError([]byte(data))
+			slog.Warn("SSE error event from upstream", "message", msg, "type", errType)
+			_ = msg
+			break
+		}
+
 		result := convertFn(initialState, line)
 
 		switch v := result.(type) {
@@ -378,10 +421,9 @@ func (h *Handler) streamAnthropicToResponsesSSE(c *gin.Context, resp *http.Respo
 	flusher, canFlush := c.Writer.(http.Flusher)
 
 	// If upstream returned JSON instead of SSE, handle as non-streaming.
-	ct := resp.Header.Get("Content-Type")
-	if ct != "" && !strings.Contains(ct, "text/event-stream") {
+	if !isSSEResponse(resp) {
 		respBody, _ := io.ReadAll(resp.Body)
-		slog.Warn("upstream returned non-SSE response in streaming path", "content_type", ct, "body_len", len(respBody))
+		slog.Warn("upstream returned non-SSE response in streaming path", "content_type", resp.Header.Get("Content-Type"), "body_len", len(respBody))
 		h.convertAnthropicJSONToResponsesSSE(w, state, respBody)
 		if canFlush {
 			flusher.Flush()
@@ -678,7 +720,7 @@ func (h *Handler) responsesViaChat(c *gin.Context, result *router.RouteResult, r
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
 		h.logLLMRequest(model, providerStr, upstreamURL, latency, isStreaming, chatBody, string(respBody))
-		h.writeUpstreamError(c, resp)
+		h.writeConvertedError(c, resp, "responses")
 		return
 	}
 
@@ -686,7 +728,7 @@ func (h *Handler) responsesViaChat(c *gin.Context, result *router.RouteResult, r
 		state := &converter.ResponsesStreamState{Created: time.Now().Unix(), Model: model, ThinkTag: result.ThinkTag}
 		content := h.streamChatToClient(c, resp, func(w converter.SSEWriter, data string) bool {
 			return converter.ConvertChatChunkToResponsesSSE(w, state, data)
-		})
+		}, "responses")
 		h.recordStreamUsageFromState(c, state.Model, state.InputTokens, state.OutputTokens)
 		h.logLLMRequest(model, providerStr, upstreamURL, latency, true, chatBody, content)
 		return
@@ -738,7 +780,7 @@ func (h *Handler) anthropicViaChat(c *gin.Context, result *router.RouteResult, r
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
 		h.logLLMRequest(model, providerStr, upstreamURL, latency, isStreaming, chatBody, string(respBody))
-		h.writeUpstreamError(c, resp)
+		h.writeConvertedError(c, resp, "anthropic")
 		return
 	}
 
@@ -746,7 +788,7 @@ func (h *Handler) anthropicViaChat(c *gin.Context, result *router.RouteResult, r
 		state := &converter.AnthropicStreamState{Model: model, ThinkTag: result.ThinkTag}
 		content := h.streamChatToClient(c, resp, func(w converter.SSEWriter, data string) bool {
 			return converter.ConvertChatChunkToAnthropicSSE(w, state, data)
-		})
+		}, "anthropic")
 		h.recordStreamUsageFromState(c, state.Model, state.InputTokens, state.OutputTokens)
 		h.logLLMRequest(model, providerStr, upstreamURL, latency, true, chatBody, content)
 		return
@@ -794,7 +836,7 @@ func (h *Handler) chatViaAnthropic(c *gin.Context, result *router.RouteResult, c
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
 		h.logLLMRequest(chatReq.Model, providerStr, upstreamURL, latency, isStreaming, anthBody, string(respBody))
-		h.writeUpstreamError(c, resp)
+		h.writeConvertedError(c, resp, "chat")
 		return
 	}
 
@@ -845,7 +887,7 @@ func (h *Handler) chatViaResponses(c *gin.Context, result *router.RouteResult, c
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
 		h.logLLMRequest(chatReq.Model, providerStr, upstreamURL, latency, isStreaming, respBodyData, string(respBody))
-		h.writeUpstreamError(c, resp)
+		h.writeConvertedError(c, resp, "chat")
 		return
 	}
 
@@ -896,7 +938,7 @@ func (h *Handler) responsesViaChatToAnthropic(c *gin.Context, result *router.Rou
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
 		h.logLLMRequest(model, providerStr, upstreamURL, latency, isStreaming, anthBody, string(respBody))
-		h.writeUpstreamError(c, resp)
+		h.writeConvertedError(c, resp, "responses")
 		return
 	}
 
@@ -954,7 +996,7 @@ func (h *Handler) anthropicViaChatToResponses(c *gin.Context, result *router.Rou
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
 		h.logLLMRequest(model, providerStr, upstreamURL, latency, isStreaming, chatBody, string(respBody))
-		h.writeUpstreamError(c, resp)
+		h.writeConvertedError(c, resp, "anthropic")
 		return
 	}
 
