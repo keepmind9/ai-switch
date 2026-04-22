@@ -142,7 +142,47 @@ func TestConvertAnthropicLineToResponses_MessageStopFallback(t *testing.T) {
 	w := &testSSEWriter{}
 	state := &AnthropicToResponsesState{Model: "test"}
 
-	// If no item was sent, message_stop returns true but doesn't emit
+	// message_stop without prior content should still emit response.completed
 	done := ConvertAnthropicLineToResponses(w, state, `data: {"type":"message_stop"}`)
-	assert.False(t, done)
+	assert.True(t, done)
+	assert.True(t, state.CompletedSent)
+	output := w.buf.String()
+	assert.Contains(t, output, "response.output_item.added")
+	assert.Contains(t, output, "response.content_part.added")
+	assert.Contains(t, output, "response.completed")
+}
+
+func TestEmitCompleted_Idempotent(t *testing.T) {
+	w := &testSSEWriter{}
+	state := &AnthropicToResponsesState{Model: "test", CreatedSent: true}
+
+	EmitCompleted(w, state)
+	assert.True(t, state.CompletedSent)
+	first := w.buf.String()
+	assert.Contains(t, first, "response.completed")
+
+	// Second call should not emit anything
+	w.buf.Reset()
+	EmitCompleted(w, state)
+	assert.Empty(t, w.buf.String())
+}
+
+func TestConvertAnthropicLineToResponses_MessageStopAfterMessageDelta(t *testing.T) {
+	w := &testSSEWriter{}
+	state := &AnthropicToResponsesState{Model: "test"}
+
+	// message_delta emits response.completed
+	ConvertAnthropicLineToResponses(w, state, `data: {"type":"message_start","message":{"id":"msg_1","model":"test","usage":{"input_tokens":5}}}`)
+	w.buf.Reset()
+
+	done := ConvertAnthropicLineToResponses(w, state, `data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}`)
+	assert.True(t, done)
+	assert.True(t, state.CompletedSent)
+
+	w.buf.Reset()
+
+	// message_stop after completion should not emit again
+	done = ConvertAnthropicLineToResponses(w, state, `data: {"type":"message_stop"}`)
+	assert.True(t, done)
+	assert.Empty(t, w.buf.String())
 }

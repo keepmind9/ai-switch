@@ -3,29 +3,138 @@ package converter
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 )
 
 // AnthropicToResponsesState tracks state when converting Anthropic SSE to Responses SSE.
 type AnthropicToResponsesState struct {
-	ResponseID   string
-	ItemID       string
-	Model        string
-	Created      int64
-	AccText      string
-	CreatedSent  bool
-	ItemSent     bool
-	SeqNum       int
-	InputTokens  int
-	OutputTokens int
-	ThinkTag     string
-	TagState     ThinkTagState
+	ResponseID    string
+	ItemID        string
+	Model         string
+	Created       int64
+	AccText       string
+	CreatedSent   bool
+	ItemSent      bool
+	CompletedSent bool
+	SeqNum        int
+	InputTokens   int
+	OutputTokens  int
+	ThinkTag      string
+	TagState      ThinkTagState
 }
 
-func (s *AnthropicToResponsesState) nextSeq() int {
+func (s *AnthropicToResponsesState) NextSeq() int {
 	s.SeqNum++
 	return s.SeqNum
+}
+
+// EmitCompleted emits all terminal Responses API events and marks the stream as done.
+// Idempotent: safe to call multiple times — only emits once.
+func EmitCompleted(w SSEWriter, state *AnthropicToResponsesState) {
+	if state.CompletedSent {
+		return
+	}
+	state.CompletedSent = true
+
+	if state.ItemID == "" {
+		state.ItemID = fmt.Sprintf("item_%d", time.Now().UnixNano())
+	}
+
+	// Emit item/part added events if we never saw content_block_start
+	if !state.ItemSent {
+		state.ItemSent = true
+
+		w.WriteEvent("response.output_item.added", map[string]any{
+			"type":            "response.output_item.added",
+			"sequence_number": state.NextSeq(),
+			"output_index":    0,
+			"item": map[string]any{
+				"id":      state.ItemID,
+				"type":    "message",
+				"status":  "in_progress",
+				"role":    "assistant",
+				"content": []any{},
+			},
+		})
+		w.WriteEvent("response.content_part.added", map[string]any{
+			"type":            "response.content_part.added",
+			"sequence_number": state.NextSeq(),
+			"output_index":    0,
+			"content_index":   0,
+			"item_id":         state.ItemID,
+			"part": map[string]any{
+				"type": "output_text",
+				"text": "",
+			},
+		})
+	}
+
+	// Emit text done events if we have accumulated text
+	if state.AccText != "" {
+		w.WriteEvent("response.output_text.done", map[string]any{
+			"type":            "response.output_text.done",
+			"sequence_number": state.NextSeq(),
+			"output_index":    0,
+			"content_index":   0,
+			"item_id":         state.ItemID,
+			"text":            state.AccText,
+		})
+		w.WriteEvent("response.content_part.done", map[string]any{
+			"type":            "response.content_part.done",
+			"sequence_number": state.NextSeq(),
+			"output_index":    0,
+			"content_index":   0,
+			"item_id":         state.ItemID,
+			"part": map[string]any{
+				"type": "output_text",
+				"text": state.AccText,
+			},
+		})
+		w.WriteEvent("response.output_item.done", map[string]any{
+			"type":            "response.output_item.done",
+			"sequence_number": state.NextSeq(),
+			"output_index":    0,
+			"item": map[string]any{
+				"id":     state.ItemID,
+				"type":   "message",
+				"status": "completed",
+				"role":   "assistant",
+				"content": []map[string]any{
+					{"type": "output_text", "text": state.AccText},
+				},
+			},
+		})
+	}
+
+	w.WriteEvent("response.completed", map[string]any{
+		"type":            "response.completed",
+		"sequence_number": state.NextSeq(),
+		"response": map[string]any{
+			"id":         state.ResponseID,
+			"object":     "response",
+			"created_at": state.Created,
+			"model":      state.Model,
+			"status":     "completed",
+			"output": []map[string]any{
+				{
+					"id":     state.ItemID,
+					"type":   "message",
+					"status": "completed",
+					"role":   "assistant",
+					"content": []map[string]any{
+						{"type": "output_text", "text": state.AccText},
+					},
+				},
+			},
+			"usage": map[string]any{
+				"input_tokens":  state.InputTokens,
+				"output_tokens": state.OutputTokens,
+				"total_tokens":  state.InputTokens + state.OutputTokens,
+			},
+		},
+	})
 }
 
 // ConvertAnthropicLineToResponses processes a raw Anthropic SSE line and writes
@@ -62,7 +171,7 @@ func ConvertAnthropicLineToResponses(w SSEWriter, state *AnthropicToResponsesSta
 
 		w.WriteEvent("response.created", map[string]any{
 			"type":            "response.created",
-			"sequence_number": state.nextSeq(),
+			"sequence_number": state.NextSeq(),
 			"response": map[string]any{
 				"id":         state.ResponseID,
 				"object":     "response",
@@ -75,14 +184,13 @@ func ConvertAnthropicLineToResponses(w SSEWriter, state *AnthropicToResponsesSta
 		})
 
 	case "content_block_start":
-		// Emit output_item.added and content_part.added on first content block
 		if !state.ItemSent {
 			state.ItemSent = true
 			state.ItemID = fmt.Sprintf("item_%d", time.Now().UnixNano())
 
 			w.WriteEvent("response.output_item.added", map[string]any{
 				"type":            "response.output_item.added",
-				"sequence_number": state.nextSeq(),
+				"sequence_number": state.NextSeq(),
 				"output_index":    0,
 				"item": map[string]any{
 					"id":      state.ItemID,
@@ -92,10 +200,9 @@ func ConvertAnthropicLineToResponses(w SSEWriter, state *AnthropicToResponsesSta
 					"content": []any{},
 				},
 			})
-
 			w.WriteEvent("response.content_part.added", map[string]any{
 				"type":            "response.content_part.added",
-				"sequence_number": state.nextSeq(),
+				"sequence_number": state.NextSeq(),
 				"output_index":    0,
 				"content_index":   0,
 				"item_id":         state.ItemID,
@@ -124,7 +231,7 @@ func ConvertAnthropicLineToResponses(w SSEWriter, state *AnthropicToResponsesSta
 
 		w.WriteEvent("response.output_text.delta", map[string]any{
 			"type":            "response.output_text.delta",
-			"sequence_number": state.nextSeq(),
+			"sequence_number": state.NextSeq(),
 			"output_index":    0,
 			"content_index":   0,
 			"item_id":         state.ItemID,
@@ -142,80 +249,15 @@ func ConvertAnthropicLineToResponses(w SSEWriter, state *AnthropicToResponsesSta
 				state.InputTokens = in
 			}
 		}
-
-		// Emit text done events if we have accumulated text
-		if state.AccText != "" {
-			w.WriteEvent("response.output_text.done", map[string]any{
-				"type":            "response.output_text.done",
-				"sequence_number": state.nextSeq(),
-				"output_index":    0,
-				"content_index":   0,
-				"item_id":         state.ItemID,
-				"text":            state.AccText,
-			})
-
-			w.WriteEvent("response.content_part.done", map[string]any{
-				"type":            "response.content_part.done",
-				"sequence_number": state.nextSeq(),
-				"output_index":    0,
-				"content_index":   0,
-				"item_id":         state.ItemID,
-				"part": map[string]any{
-					"type": "output_text",
-					"text": state.AccText,
-				},
-			})
-
-			w.WriteEvent("response.output_item.done", map[string]any{
-				"type":            "response.output_item.done",
-				"sequence_number": state.nextSeq(),
-				"output_index":    0,
-				"item": map[string]any{
-					"id":     state.ItemID,
-					"type":   "message",
-					"status": "completed",
-					"role":   "assistant",
-					"content": []map[string]any{
-						{"type": "output_text", "text": state.AccText},
-					},
-				},
-			})
-		}
-
-		w.WriteEvent("response.completed", map[string]any{
-			"type":            "response.completed",
-			"sequence_number": state.nextSeq(),
-			"response": map[string]any{
-				"id":         state.ResponseID,
-				"object":     "response",
-				"created_at": state.Created,
-				"model":      state.Model,
-				"status":     "completed",
-				"output": []map[string]any{
-					{
-						"id":     state.ItemID,
-						"type":   "message",
-						"status": "completed",
-						"role":   "assistant",
-						"content": []map[string]any{
-							{"type": "output_text", "text": state.AccText},
-						},
-					},
-				},
-				"usage": map[string]any{
-					"input_tokens":  state.InputTokens,
-					"output_tokens": state.OutputTokens,
-					"total_tokens":  state.InputTokens + state.OutputTokens,
-				},
-			},
-		})
+		EmitCompleted(w, state)
 		return true
 
 	case "message_stop":
-		// Already handled in message_delta, but emit completed if not yet done
-		if state.ItemSent {
-			return true
-		}
+		EmitCompleted(w, state)
+		return true
+
+	default:
+		slog.Debug("anthropic→responses: unhandled event type", "type", eventType)
 	}
 
 	return false
