@@ -496,6 +496,37 @@ func TestHandleChat_ConvertedToResponses(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 }
 
+func TestHandleCountTokens(t *testing.T) {
+	r, _ := setupRouter(t, "chat", func(w http.ResponseWriter, r *http.Request) {})
+
+	w := doRequest(r, "POST", "/v1/messages/count_tokens", `{
+		"model": "claude-sonnet-4-5",
+		"messages": [
+			{"role": "user", "content": "Hello, how are you doing today?"}
+		],
+		"system": "You are a helpful assistant."
+	}`)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	tokens := int(resp["input_tokens"].(float64))
+	assert.Greater(t, tokens, 0)
+}
+
+func TestHandleCountTokens_EmptyBody(t *testing.T) {
+	r, _ := setupRouter(t, "chat", func(w http.ResponseWriter, r *http.Request) {})
+
+	w := doRequest(r, "POST", "/v1/messages/count_tokens", `{}`)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, float64(0), resp["input_tokens"])
+}
+
 func TestHandleHealth(t *testing.T) {
 	r, _ := setupRouter(t, "chat", func(w http.ResponseWriter, r *http.Request) {})
 

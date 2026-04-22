@@ -20,10 +20,10 @@ func getEncoder() (*tiktoken.Tiktoken, error) {
 	return enc, encErr
 }
 
-// countTokens counts the approximate token count of an Anthropic request body.
+// CountTokens counts the approximate token count of an Anthropic request body.
 // It extracts text from messages, system prompts, and tools.
 // Returns 0 if encoding fails or body is invalid JSON.
-func countTokens(body []byte) int {
+func CountTokens(body []byte) int {
 	e, err := getEncoder()
 	if err != nil {
 		return 0

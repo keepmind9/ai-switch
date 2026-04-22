@@ -51,6 +51,7 @@ func NewHandler(provider *config.Provider, usageStore *store.UsageStore, r route
 func (h *Handler) RegisterRoutes(r *gin.Engine) {
 	r.POST("/v1/responses", h.handleResponses)
 	r.POST("/v1/messages", h.handleAnthropic)
+	r.POST("/v1/messages/count_tokens", h.handleCountTokens)
 	r.POST("/v1/chat/completions", h.handleChat)
 	r.POST("/api/reload", h.handleReload)
 	r.GET("/api/status", h.handleAPIStatus)
@@ -437,6 +438,18 @@ func (h *Handler) handleResponses(c *gin.Context) {
 }
 
 // handleAnthropic handles /v1/messages endpoint (Claude Code, Anthropic Messages API).
+// handleCountTokens implements POST /v1/messages/count_tokens.
+// It counts tokens for an Anthropic-format request body without calling the model.
+func (h *Handler) handleCountTokens(c *gin.Context) {
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"type": "invalid_request_error", "message": "failed to read request body"}})
+		return
+	}
+	count := router.CountTokens(body)
+	c.JSON(http.StatusOK, gin.H{"input_tokens": count})
+}
+
 func (h *Handler) handleAnthropic(c *gin.Context) {
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {

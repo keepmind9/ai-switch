@@ -42,7 +42,7 @@ func DetectScene(body []byte, cfg SceneConfig) string {
 
 	// Priority 1: longContext
 	if cfg.LongContextThreshold > 0 {
-		tokenCount := countTokens(body)
+		tokenCount := CountTokens(body)
 		if tokenCount > cfg.LongContextThreshold {
 			return SceneLongContext
 		}
