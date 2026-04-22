@@ -33,15 +33,17 @@ type Handler struct {
 	client     *http.Client
 	usageStore *store.UsageStore
 	router     router.Router
+	llmLogger  *slog.Logger
 }
 
-func NewHandler(provider *config.Provider, usageStore *store.UsageStore, r router.Router) *Handler {
+func NewHandler(provider *config.Provider, usageStore *store.UsageStore, r router.Router, llmLogger *slog.Logger) *Handler {
 	return &Handler{
 		provider:   provider,
 		converter:  converter.NewConverter(),
 		client:     &http.Client{},
 		usageStore: usageStore,
 		router:     r,
+		llmLogger:  llmLogger,
 	}
 }
 
@@ -126,15 +128,15 @@ func buildUpstreamURL(result *router.RouteResult) string {
 	return router.BuildUpstreamURL(result.BaseURL, path)
 }
 
-// forwardRequest sends a request to the upstream API and returns the response.
-func (h *Handler) forwardRequest(result *router.RouteResult, path string, body []byte) (*http.Response, error) {
+// forwardRequest sends a request to the upstream API and returns the response with latency.
+func (h *Handler) forwardRequest(result *router.RouteResult, path string, body []byte) (*http.Response, time.Duration, error) {
 	if result.Path != "" {
 		path = result.Path
 	}
 	upstreamURL := router.BuildUpstreamURL(result.BaseURL, path)
 	req, err := http.NewRequest("POST", upstreamURL, bytes.NewReader(body))
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	req.Header.Set("Content-Type", "application/json")
@@ -147,7 +149,12 @@ func (h *Handler) forwardRequest(result *router.RouteResult, path string, body [
 		req.Header.Set("Authorization", "Bearer "+result.APIKey)
 	}
 
-	return h.client.Do(req)
+	start := time.Now()
+	resp, err := h.client.Do(req)
+	if err != nil {
+		return nil, 0, err
+	}
+	return resp, time.Since(start), nil
 }
 
 // writeUpstreamError forwards an upstream error response to the client.
@@ -157,8 +164,8 @@ func (h *Handler) writeUpstreamError(c *gin.Context, resp *http.Response) {
 }
 
 // streamChatToClient reads Chat SSE from upstream and converts to the target
-// client format using the provided converter function.
-func (h *Handler) streamChatToClient(c *gin.Context, resp *http.Response, convertFn func(w converter.SSEWriter, data string) bool) {
+// client format using the provided converter function. Returns accumulated upstream content.
+func (h *Handler) streamChatToClient(c *gin.Context, resp *http.Response, convertFn func(w converter.SSEWriter, data string) bool) string {
 	c.Header("Content-Type", "text/event-stream")
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Connection", "keep-alive")
@@ -170,9 +177,11 @@ func (h *Handler) streamChatToClient(c *gin.Context, resp *http.Response, conver
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
+	var buf bytes.Buffer
 	done := false
 	for scanner.Scan() {
 		line := scanner.Text()
+		buf.WriteString(line + "\n")
 		data := converter.ParseSSEDataLine(line)
 		if data == "" {
 			continue
@@ -185,6 +194,23 @@ func (h *Handler) streamChatToClient(c *gin.Context, resp *http.Response, conver
 	if !done {
 		convertFn(ginWriter, "[DONE]")
 	}
+	return buf.String()
+}
+
+// logLLMRequest writes a structured LLM log entry with request/response details.
+func (h *Handler) logLLMRequest(model, provider, url string, latency time.Duration, stream bool, reqBody []byte, respBody string) {
+	if h.llmLogger == nil {
+		return
+	}
+	h.llmLogger.Info("llm request",
+		slog.String("model", model),
+		slog.String("provider", provider),
+		slog.String("url", url),
+		slog.Int64("latency_ms", latency.Milliseconds()),
+		slog.Bool("stream", stream),
+		slog.String("request", string(reqBody)),
+		slog.String("response", respBody),
+	)
 }
 
 // recordStreamUsage records token usage for a streaming response.
@@ -216,8 +242,8 @@ func (h *Handler) recordStreamUsageFromState(c *gin.Context, model string, input
 	h.recordStreamUsage(model, providerStr, inputTokens, outputTokens)
 }
 
-// streamPassthrough forwards upstream SSE directly to the client.
-func (h *Handler) streamPassthrough(c *gin.Context, resp *http.Response, format string) {
+// streamPassthrough forwards upstream SSE directly to the client. Returns accumulated upstream content.
+func (h *Handler) streamPassthrough(c *gin.Context, resp *http.Response, format string) string {
 	c.Header("Content-Type", "text/event-stream")
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Connection", "keep-alive")
@@ -232,8 +258,10 @@ func (h *Handler) streamPassthrough(c *gin.Context, resp *http.Response, format 
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
+	var buf bytes.Buffer
 	for scanner.Scan() {
 		line := scanner.Text()
+		buf.WriteString(line + "\n")
 		c.Writer.WriteString(line + "\n")
 
 		data := converter.ParseSSEDataLine(line)
@@ -245,11 +273,13 @@ func (h *Handler) streamPassthrough(c *gin.Context, resp *http.Response, format 
 	}
 
 	h.recordStreamUsage(acc.Model, providerStr, int(acc.InputTokens), int(acc.OutputTokens))
+	return buf.String()
 }
 
 // streamToChatSSE reads upstream SSE (any format) and converts to Chat SSE output.
 // convertFn returns a *types.ChatStreamResponse, "[DONE]" string, or nil.
-func (h *Handler) streamToChatSSE(c *gin.Context, resp *http.Response, convertFn func(state any, line string) any, initialState any) {
+// Returns accumulated upstream content.
+func (h *Handler) streamToChatSSE(c *gin.Context, resp *http.Response, convertFn func(state any, line string) any, initialState any) string {
 	c.Header("Content-Type", "text/event-stream")
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Connection", "keep-alive")
@@ -260,8 +290,10 @@ func (h *Handler) streamToChatSSE(c *gin.Context, resp *http.Response, convertFn
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
+	var buf bytes.Buffer
 	for scanner.Scan() {
 		line := scanner.Text()
+		buf.WriteString(line + "\n")
 		result := convertFn(initialState, line)
 
 		switch v := result.(type) {
@@ -274,7 +306,7 @@ func (h *Handler) streamToChatSSE(c *gin.Context, resp *http.Response, convertFn
 				if canFlush {
 					flusher.Flush()
 				}
-				return
+				return buf.String()
 			}
 		}
 
@@ -282,10 +314,12 @@ func (h *Handler) streamToChatSSE(c *gin.Context, resp *http.Response, convertFn
 			flusher.Flush()
 		}
 	}
+	return buf.String()
 }
 
 // streamAnthropicToResponsesSSE reads Anthropic SSE from resp and writes Responses API SSE to client.
-func (h *Handler) streamAnthropicToResponsesSSE(c *gin.Context, resp *http.Response, state *converter.AnthropicToResponsesState) {
+// Returns accumulated upstream content.
+func (h *Handler) streamAnthropicToResponsesSSE(c *gin.Context, resp *http.Response, state *converter.AnthropicToResponsesState) string {
 	c.Header("Content-Type", "text/event-stream")
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Connection", "keep-alive")
@@ -297,18 +331,21 @@ func (h *Handler) streamAnthropicToResponsesSSE(c *gin.Context, resp *http.Respo
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
+	var buf bytes.Buffer
 	for scanner.Scan() {
 		line := scanner.Text()
+		buf.WriteString(line + "\n")
 		if converter.ConvertAnthropicLineToResponses(w, state, line) {
 			if canFlush {
 				flusher.Flush()
 			}
-			return
+			return buf.String()
 		}
 		if canFlush {
 			flusher.Flush()
 		}
 	}
+	return buf.String()
 }
 
 // handleResponses handles /v1/responses endpoint (Codex CLI, OpenAI Responses API).
@@ -442,29 +479,38 @@ func (h *Handler) handleChat(c *gin.Context) {
 // passthroughRequest forwards the request body directly to upstream.
 func (h *Handler) passthroughRequest(c *gin.Context, result *router.RouteResult, body []byte, isStreaming bool) {
 	var raw map[string]any
+	originalBody := body
 	if json.Unmarshal(body, &raw) == nil && result.Model != "" {
 		raw["model"] = result.Model
 		body, _ = json.Marshal(raw)
 	}
 
-	resp, err := h.forwardRequest(result, formatToPath(result.Format), body)
+	resp, latency, err := h.forwardRequest(result, formatToPath(result.Format), body)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": gin.H{"code": "upstream_error", "message": "failed to call upstream: " + err.Error()}})
 		return
 	}
 	defer resp.Body.Close()
 
+	upstreamURL := buildUpstreamURL(result)
+	provider, _ := c.Get(ctxProviderKey)
+	providerStr, _ := provider.(string)
+
 	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		h.logLLMRequest(result.Model, providerStr, upstreamURL, latency, isStreaming, originalBody, string(respBody))
 		h.writeUpstreamError(c, resp)
 		return
 	}
 
 	if isStreaming {
-		h.streamPassthrough(c, resp, result.Format)
+		content := h.streamPassthrough(c, resp, result.Format)
+		h.logLLMRequest(result.Model, providerStr, upstreamURL, latency, true, originalBody, content)
 		return
 	}
 
 	respBody, _ := io.ReadAll(resp.Body)
+	h.logLLMRequest(result.Model, providerStr, upstreamURL, latency, false, originalBody, string(respBody))
 	c.Data(http.StatusOK, "application/json", respBody)
 }
 
@@ -483,28 +529,36 @@ func (h *Handler) responsesViaChat(c *gin.Context, result *router.RouteResult, r
 	}
 
 	chatBody, _ := json.Marshal(chatReq)
-	resp, err := h.forwardRequest(result, PathChat, chatBody)
+	resp, latency, err := h.forwardRequest(result, PathChat, chatBody)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": gin.H{"code": "upstream_error", "message": err.Error()}})
 		return
 	}
 	defer resp.Body.Close()
 
+	upstreamURL := buildUpstreamURL(result)
+	provider, _ := c.Get(ctxProviderKey)
+	providerStr, _ := provider.(string)
+
 	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		h.logLLMRequest(model, providerStr, upstreamURL, latency, isStreaming, chatBody, string(respBody))
 		h.writeUpstreamError(c, resp)
 		return
 	}
 
 	if isStreaming {
 		state := &converter.ResponsesStreamState{Created: time.Now().Unix(), Model: model, ThinkTag: result.ThinkTag}
-		h.streamChatToClient(c, resp, func(w converter.SSEWriter, data string) bool {
+		content := h.streamChatToClient(c, resp, func(w converter.SSEWriter, data string) bool {
 			return converter.ConvertChatChunkToResponsesSSE(w, state, data)
 		})
 		h.recordStreamUsageFromState(c, state.Model, state.InputTokens, state.OutputTokens)
+		h.logLLMRequest(model, providerStr, upstreamURL, latency, true, chatBody, content)
 		return
 	}
 
 	respBody, _ := io.ReadAll(resp.Body)
+	h.logLLMRequest(model, providerStr, upstreamURL, latency, false, chatBody, string(respBody))
 	var chatResp types.ChatResponse
 	if err := json.Unmarshal(respBody, &chatResp); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": "conversion_error", "message": "failed to parse chat response"}})
@@ -535,28 +589,36 @@ func (h *Handler) anthropicViaChat(c *gin.Context, result *router.RouteResult, r
 	}
 
 	chatBody, _ := json.Marshal(chatReq)
-	resp, err := h.forwardRequest(result, PathChat, chatBody)
+	resp, latency, err := h.forwardRequest(result, PathChat, chatBody)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": gin.H{"code": "upstream_error", "message": err.Error()}})
 		return
 	}
 	defer resp.Body.Close()
 
+	upstreamURL := buildUpstreamURL(result)
+	provider, _ := c.Get(ctxProviderKey)
+	providerStr, _ := provider.(string)
+
 	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		h.logLLMRequest(model, providerStr, upstreamURL, latency, isStreaming, chatBody, string(respBody))
 		h.writeUpstreamError(c, resp)
 		return
 	}
 
 	if isStreaming {
 		state := &converter.AnthropicStreamState{Model: model, ThinkTag: result.ThinkTag}
-		h.streamChatToClient(c, resp, func(w converter.SSEWriter, data string) bool {
+		content := h.streamChatToClient(c, resp, func(w converter.SSEWriter, data string) bool {
 			return converter.ConvertChatChunkToAnthropicSSE(w, state, data)
 		})
 		h.recordStreamUsageFromState(c, state.Model, state.InputTokens, state.OutputTokens)
+		h.logLLMRequest(model, providerStr, upstreamURL, latency, true, chatBody, content)
 		return
 	}
 
 	respBody, _ := io.ReadAll(resp.Body)
+	h.logLLMRequest(model, providerStr, upstreamURL, latency, false, chatBody, string(respBody))
 	var chatResp types.ChatResponse
 	if err := json.Unmarshal(respBody, &chatResp); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": "conversion_error", "message": "failed to parse chat response"}})
@@ -583,28 +645,36 @@ func (h *Handler) chatViaAnthropic(c *gin.Context, result *router.RouteResult, c
 	anthReq.Stream = isStreaming
 	anthBody, _ := json.Marshal(anthReq)
 
-	resp, err := h.forwardRequest(result, PathMessages, anthBody)
+	resp, latency, err := h.forwardRequest(result, PathMessages, anthBody)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": gin.H{"code": "upstream_error", "message": err.Error()}})
 		return
 	}
 	defer resp.Body.Close()
 
+	upstreamURL := buildUpstreamURL(result)
+	provider, _ := c.Get(ctxProviderKey)
+	providerStr, _ := provider.(string)
+
 	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		h.logLLMRequest(chatReq.Model, providerStr, upstreamURL, latency, isStreaming, anthBody, string(respBody))
 		h.writeUpstreamError(c, resp)
 		return
 	}
 
 	if isStreaming {
 		state := &converter.AnthropicToChatState{}
-		h.streamToChatSSE(c, resp, func(s any, line string) any {
+		content := h.streamToChatSSE(c, resp, func(s any, line string) any {
 			return converter.ConvertAnthropicLineToChat(s.(*converter.AnthropicToChatState), line)
 		}, state)
 		h.recordStreamUsageFromState(c, state.Model, state.InputTokens, state.OutputTokens)
+		h.logLLMRequest(chatReq.Model, providerStr, upstreamURL, latency, true, anthBody, content)
 		return
 	}
 
 	respBody, _ := io.ReadAll(resp.Body)
+	h.logLLMRequest(chatReq.Model, providerStr, upstreamURL, latency, false, anthBody, string(respBody))
 	var anthResp converter.AnthropicResponse
 	if err := json.Unmarshal(respBody, &anthResp); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": "conversion_error", "message": "failed to parse anthropic response"}})
@@ -625,29 +695,37 @@ func (h *Handler) chatViaResponses(c *gin.Context, result *router.RouteResult, c
 	respReq := converter.BuildResponsesFromChat(chatReq, isStreaming)
 	respReq.Model = result.Model
 
-	respBody, _ := json.Marshal(respReq)
-	resp, err := h.forwardRequest(result, PathResponses, respBody)
+	respBodyData, _ := json.Marshal(respReq)
+	resp, latency, err := h.forwardRequest(result, PathResponses, respBodyData)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": gin.H{"code": "upstream_error", "message": err.Error()}})
 		return
 	}
 	defer resp.Body.Close()
 
+	upstreamURL := buildUpstreamURL(result)
+	provider, _ := c.Get(ctxProviderKey)
+	providerStr, _ := provider.(string)
+
 	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		h.logLLMRequest(chatReq.Model, providerStr, upstreamURL, latency, isStreaming, respBodyData, string(respBody))
 		h.writeUpstreamError(c, resp)
 		return
 	}
 
 	if isStreaming {
 		state := &converter.ResponsesToChatState{}
-		h.streamToChatSSE(c, resp, func(s any, line string) any {
+		content := h.streamToChatSSE(c, resp, func(s any, line string) any {
 			return converter.ConvertResponsesLineToChat(s.(*converter.ResponsesToChatState), line)
 		}, state)
 		h.recordStreamUsageFromState(c, state.Model, state.InputTokens, state.OutputTokens)
+		h.logLLMRequest(chatReq.Model, providerStr, upstreamURL, latency, true, respBodyData, content)
 		return
 	}
 
 	respData, _ := io.ReadAll(resp.Body)
+	h.logLLMRequest(chatReq.Model, providerStr, upstreamURL, latency, false, respBodyData, string(respData))
 	c.Data(http.StatusOK, "application/json", respData)
 }
 
@@ -668,27 +746,35 @@ func (h *Handler) responsesViaChatToAnthropic(c *gin.Context, result *router.Rou
 	anthReq.Stream = isStreaming
 	anthBody, _ := json.Marshal(anthReq)
 
-	resp, err := h.forwardRequest(result, PathMessages, anthBody)
+	resp, latency, err := h.forwardRequest(result, PathMessages, anthBody)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": gin.H{"code": "upstream_error", "message": err.Error()}})
 		return
 	}
 	defer resp.Body.Close()
 
+	upstreamURL := buildUpstreamURL(result)
+	provider, _ := c.Get(ctxProviderKey)
+	providerStr, _ := provider.(string)
+
 	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		h.logLLMRequest(model, providerStr, upstreamURL, latency, isStreaming, anthBody, string(respBody))
 		h.writeUpstreamError(c, resp)
 		return
 	}
 
 	if isStreaming {
 		state := &converter.AnthropicToResponsesState{ThinkTag: result.ThinkTag}
-		h.streamAnthropicToResponsesSSE(c, resp, state)
+		content := h.streamAnthropicToResponsesSSE(c, resp, state)
 		h.recordStreamUsageFromState(c, state.Model, state.InputTokens, state.OutputTokens)
+		h.logLLMRequest(model, providerStr, upstreamURL, latency, true, anthBody, content)
 		return
 	}
 
 	// Non-streaming: convert Anthropic response → Chat response → Responses response
 	respBody, _ := io.ReadAll(resp.Body)
+	h.logLLMRequest(model, providerStr, upstreamURL, latency, false, anthBody, string(respBody))
 	var anthResp converter.AnthropicResponse
 	if err := json.Unmarshal(respBody, &anthResp); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": "conversion_error", "message": "failed to parse anthropic response"}})
@@ -718,28 +804,36 @@ func (h *Handler) anthropicViaChatToResponses(c *gin.Context, result *router.Rou
 	chatReq.Stream = isStreaming
 
 	chatBody, _ := json.Marshal(chatReq)
-	resp, err := h.forwardRequest(result, PathResponses, chatBody)
+	resp, latency, err := h.forwardRequest(result, PathResponses, chatBody)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": gin.H{"code": "upstream_error", "message": err.Error()}})
 		return
 	}
 	defer resp.Body.Close()
 
+	upstreamURL := buildUpstreamURL(result)
+	provider, _ := c.Get(ctxProviderKey)
+	providerStr, _ := provider.(string)
+
 	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		h.logLLMRequest(model, providerStr, upstreamURL, latency, isStreaming, chatBody, string(respBody))
 		h.writeUpstreamError(c, resp)
 		return
 	}
 
 	if isStreaming {
 		state := &converter.ResponsesToChatState{}
-		h.streamToChatSSE(c, resp, func(s any, line string) any {
+		content := h.streamToChatSSE(c, resp, func(s any, line string) any {
 			return converter.ConvertResponsesLineToChat(s.(*converter.ResponsesToChatState), line)
 		}, state)
 		h.recordStreamUsageFromState(c, state.Model, state.InputTokens, state.OutputTokens)
+		h.logLLMRequest(model, providerStr, upstreamURL, latency, true, chatBody, content)
 		return
 	}
 
 	respBody, _ := io.ReadAll(resp.Body)
+	h.logLLMRequest(model, providerStr, upstreamURL, latency, false, chatBody, string(respBody))
 	c.Data(http.StatusOK, "application/json", respBody)
 }
 

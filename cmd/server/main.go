@@ -16,6 +16,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/keepmind9/ai-switch/internal/config"
 	"github.com/keepmind9/ai-switch/internal/handler"
+	"github.com/keepmind9/ai-switch/internal/log"
 	"github.com/keepmind9/ai-switch/internal/middleware"
 	"github.com/keepmind9/ai-switch/internal/router"
 	"github.com/keepmind9/ai-switch/internal/store"
@@ -82,6 +83,15 @@ func runServe(_ *cobra.Command, _ []string) {
 		slog.Warn("failed to create data directory", "error", err)
 	}
 
+	if err := log.SetupDefaultLogger(dataDir); err != nil {
+		slog.Warn("failed to setup file logger", "error", err)
+	}
+
+	llmLogger, err := log.NewLLMLogger(dataDir)
+	if err != nil {
+		slog.Warn("failed to setup LLM logger", "error", err)
+	}
+
 	resolvedPath, err := config.DefaultConfigPath(configPath)
 	if err != nil {
 		slog.Error("failed to resolve config path", "error", err)
@@ -114,7 +124,7 @@ func runServe(_ *cobra.Command, _ []string) {
 	}
 
 	cfgRouter := router.NewConfigRouter(provider)
-	h := handler.NewHandler(provider, usageStore, cfgRouter)
+	h := handler.NewHandler(provider, usageStore, cfgRouter, llmLogger)
 	h.RegisterRoutes(r)
 
 	adminH := handler.NewAdminHandler(provider)

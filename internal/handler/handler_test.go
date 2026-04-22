@@ -54,14 +54,14 @@ func TestForwardRequest_DefaultPath(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	h := NewHandler(nil, nil, nil)
+	h := NewHandler(nil, nil, nil, nil)
 	result := &router.RouteResult{
 		BaseURL: ts.URL,
 		APIKey:  "test-key",
 		Format:  "chat",
 	}
 
-	resp, err := h.forwardRequest(result, PathChat, []byte(`{}`))
+	resp, _, err := h.forwardRequest(result, PathChat, []byte(`{}`))
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
@@ -78,7 +78,7 @@ func TestForwardRequest_PathOverride(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	h := NewHandler(nil, nil, nil)
+	h := NewHandler(nil, nil, nil, nil)
 	result := &router.RouteResult{
 		BaseURL: ts.URL,
 		Path:    "/proxy/v1/chat/completions",
@@ -86,7 +86,7 @@ func TestForwardRequest_PathOverride(t *testing.T) {
 		Format:  "chat",
 	}
 
-	resp, err := h.forwardRequest(result, PathChat, []byte(`{}`))
+	resp, _, err := h.forwardRequest(result, PathChat, []byte(`{}`))
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
@@ -102,14 +102,14 @@ func TestForwardRequest_TrailingSlash(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	h := NewHandler(nil, nil, nil)
+	h := NewHandler(nil, nil, nil, nil)
 	result := &router.RouteResult{
 		BaseURL: ts.URL + "/",
 		APIKey:  "test-key",
 		Format:  "chat",
 	}
 
-	resp, err := h.forwardRequest(result, PathChat, []byte(`{}`))
+	resp, _, err := h.forwardRequest(result, PathChat, []byte(`{}`))
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
@@ -126,14 +126,14 @@ func TestForwardRequest_AnthropicHeaders(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	h := NewHandler(nil, nil, nil)
+	h := NewHandler(nil, nil, nil, nil)
 	result := &router.RouteResult{
 		BaseURL: ts.URL,
 		APIKey:  "anth-key",
 		Format:  "anthropic",
 	}
 
-	resp, err := h.forwardRequest(result, PathMessages, []byte(`{}`))
+	resp, _, err := h.forwardRequest(result, PathMessages, []byte(`{}`))
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
@@ -150,14 +150,14 @@ func TestForwardRequest_ChatBearerHeader(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	h := NewHandler(nil, nil, nil)
+	h := NewHandler(nil, nil, nil, nil)
 	result := &router.RouteResult{
 		BaseURL: ts.URL,
 		APIKey:  "bearer-key",
 		Format:  "chat",
 	}
 
-	resp, err := h.forwardRequest(result, PathChat, []byte(`{}`))
+	resp, _, err := h.forwardRequest(result, PathChat, []byte(`{}`))
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
@@ -171,14 +171,14 @@ func TestForwardRequest_UpstreamError(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	h := NewHandler(nil, nil, nil)
+	h := NewHandler(nil, nil, nil, nil)
 	result := &router.RouteResult{
 		BaseURL: ts.URL,
 		APIKey:  "key",
 		Format:  "chat",
 	}
 
-	resp, err := h.forwardRequest(result, PathChat, []byte(`{}`))
+	resp, _, err := h.forwardRequest(result, PathChat, []byte(`{}`))
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
@@ -214,7 +214,7 @@ func setupRouter(t *testing.T, upstreamFormat string, upstreamHandler http.Handl
 
 	provider := config.NewProvider(newTestConfig(ts.URL, upstreamFormat, "test-model"), "")
 	r := router.NewConfigRouter(provider)
-	h := NewHandler(provider, nil, r)
+	h := NewHandler(provider, nil, r, nil)
 	engine := gin.New()
 	h.RegisterRoutes(engine)
 
@@ -321,7 +321,7 @@ func TestHandleChat_DefaultModel(t *testing.T) {
 
 	provider := config.NewProvider(newTestConfig(ts.URL, "chat", "default-model"), "")
 	rt := router.NewConfigRouter(provider)
-	h := NewHandler(provider, nil, rt)
+	h := NewHandler(provider, nil, rt, nil)
 	engine := gin.New()
 	h.RegisterRoutes(engine)
 
