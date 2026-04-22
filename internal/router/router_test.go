@@ -394,3 +394,86 @@ func TestBuildUpstreamURL(t *testing.T) {
 		})
 	}
 }
+
+func TestFormatToPath(t *testing.T) {
+	tests := []struct {
+		format   string
+		expected string
+	}{
+		{"chat", "/v1/chat/completions"},
+		{"", "/v1/chat/completions"},
+		{"anthropic", "/v1/messages"},
+		{"responses", "/v1/responses"},
+		{"unknown", "/v1/chat/completions"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.format, func(t *testing.T) {
+			assert.Equal(t, tt.expected, FormatToPath(tt.format))
+		})
+	}
+}
+
+func TestConfigRouter_PathResolution(t *testing.T) {
+	t.Run("path derived from format when config path empty", func(t *testing.T) {
+		cfg := &config.Config{
+			DefaultRoute: "gw-default",
+			Providers: map[string]config.ProviderConfig{
+				"chat-provider": {
+					BaseURL: "https://api.example.com",
+					APIKey:  "key",
+					Format:  "chat",
+				},
+				"anthropic-provider": {
+					BaseURL: "https://api.anthropic.com",
+					APIKey:  "key",
+					Format:  "anthropic",
+				},
+				"responses-provider": {
+					BaseURL: "https://api.openai.com",
+					APIKey:  "key",
+					Format:  "responses",
+				},
+			},
+			Routes: map[string]config.RouteRule{
+				"gw-default": {Provider: "chat-provider", DefaultModel: "model"},
+				"gw-anth":    {Provider: "anthropic-provider", DefaultModel: "model"},
+				"gw-resp":    {Provider: "responses-provider", DefaultModel: "model"},
+			},
+		}
+		r := NewConfigRouter(config.NewProvider(cfg, ""))
+
+		result, err := r.Route("chat", "gw-default", []byte(`{}`))
+		require.NoError(t, err)
+		assert.Equal(t, "/v1/chat/completions", result.Path)
+
+		result, err = r.Route("anthropic", "gw-anth", []byte(`{}`))
+		require.NoError(t, err)
+		assert.Equal(t, "/v1/messages", result.Path)
+
+		result, err = r.Route("responses", "gw-resp", []byte(`{}`))
+		require.NoError(t, err)
+		assert.Equal(t, "/v1/responses", result.Path)
+	})
+
+	t.Run("config path overrides format-derived path", func(t *testing.T) {
+		cfg := &config.Config{
+			DefaultRoute: "gw-default",
+			Providers: map[string]config.ProviderConfig{
+				"custom": {
+					BaseURL: "https://api.custom.com",
+					APIKey:  "key",
+					Format:  "chat",
+					Path:    "/custom/v1/chat",
+				},
+			},
+			Routes: map[string]config.RouteRule{
+				"gw-default": {Provider: "custom", DefaultModel: "model"},
+			},
+		}
+		r := NewConfigRouter(config.NewProvider(cfg, ""))
+
+		result, err := r.Route("chat", "gw-default", []byte(`{}`))
+		require.NoError(t, err)
+		assert.Equal(t, "/custom/v1/chat", result.Path)
+	})
+}

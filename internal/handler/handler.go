@@ -123,19 +123,12 @@ func extractClientAPIKey(c *gin.Context) string {
 }
 
 func buildUpstreamURL(result *router.RouteResult) string {
-	path := formatToPath(result.Format)
-	if result.Path != "" {
-		path = result.Path
-	}
-	return router.BuildUpstreamURL(result.BaseURL, path)
+	return router.BuildUpstreamURL(result.BaseURL, result.Path)
 }
 
 // forwardRequest sends a request to the upstream API and returns the response with latency.
-func (h *Handler) forwardRequest(result *router.RouteResult, path string, body []byte) (*http.Response, time.Duration, error) {
-	if result.Path != "" {
-		path = result.Path
-	}
-	upstreamURL := router.BuildUpstreamURL(result.BaseURL, path)
+func (h *Handler) forwardRequest(result *router.RouteResult, body []byte) (*http.Response, time.Duration, error) {
+	upstreamURL := buildUpstreamURL(result)
 	req, err := http.NewRequest("POST", upstreamURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, 0, err
@@ -666,7 +659,7 @@ func (h *Handler) passthroughRequest(c *gin.Context, result *router.RouteResult,
 		body, _ = json.Marshal(raw)
 	}
 
-	resp, latency, err := h.forwardRequest(result, formatToPath(result.Format), body)
+	resp, latency, err := h.forwardRequest(result, body)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": gin.H{"code": "upstream_error", "message": "failed to call upstream: " + err.Error()}})
 		return
@@ -711,7 +704,7 @@ func (h *Handler) responsesViaChat(c *gin.Context, result *router.RouteResult, r
 	}
 
 	chatBody, _ := json.Marshal(chatReq)
-	resp, latency, err := h.forwardRequest(result, PathChat, chatBody)
+	resp, latency, err := h.forwardRequest(result, chatBody)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": gin.H{"code": "upstream_error", "message": err.Error()}})
 		return
@@ -771,7 +764,7 @@ func (h *Handler) anthropicViaChat(c *gin.Context, result *router.RouteResult, r
 	}
 
 	chatBody, _ := json.Marshal(chatReq)
-	resp, latency, err := h.forwardRequest(result, PathChat, chatBody)
+	resp, latency, err := h.forwardRequest(result, chatBody)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": gin.H{"code": "upstream_error", "message": err.Error()}})
 		return
@@ -827,7 +820,7 @@ func (h *Handler) chatViaAnthropic(c *gin.Context, result *router.RouteResult, c
 	anthReq.Stream = isStreaming
 	anthBody, _ := json.Marshal(anthReq)
 
-	resp, latency, err := h.forwardRequest(result, PathMessages, anthBody)
+	resp, latency, err := h.forwardRequest(result, anthBody)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": gin.H{"code": "upstream_error", "message": err.Error()}})
 		return
@@ -878,7 +871,7 @@ func (h *Handler) chatViaResponses(c *gin.Context, result *router.RouteResult, c
 	respReq.Model = result.Model
 
 	respBodyData, _ := json.Marshal(respReq)
-	resp, latency, err := h.forwardRequest(result, PathResponses, respBodyData)
+	resp, latency, err := h.forwardRequest(result, respBodyData)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": gin.H{"code": "upstream_error", "message": err.Error()}})
 		return
@@ -929,7 +922,7 @@ func (h *Handler) responsesViaChatToAnthropic(c *gin.Context, result *router.Rou
 	anthReq.Stream = isStreaming
 	anthBody, _ := json.Marshal(anthReq)
 
-	resp, latency, err := h.forwardRequest(result, PathMessages, anthBody)
+	resp, latency, err := h.forwardRequest(result, anthBody)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": gin.H{"code": "upstream_error", "message": err.Error()}})
 		return
@@ -987,7 +980,7 @@ func (h *Handler) anthropicViaChatToResponses(c *gin.Context, result *router.Rou
 	chatReq.Stream = isStreaming
 
 	chatBody, _ := json.Marshal(chatReq)
-	resp, latency, err := h.forwardRequest(result, PathResponses, chatBody)
+	resp, latency, err := h.forwardRequest(result, chatBody)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": gin.H{"code": "upstream_error", "message": err.Error()}})
 		return
@@ -1022,25 +1015,6 @@ func (h *Handler) anthropicViaChatToResponses(c *gin.Context, result *router.Rou
 }
 
 // Upstream API paths. BuildUpstreamURL handles /v1 deduplication
-// so base_url can be configured with or without /v1.
-const (
-	PathChat      = "/v1/chat/completions"
-	PathMessages  = "/v1/messages"
-	PathResponses = "/v1/responses"
-)
-
-// formatToPath returns the upstream API path based on format.
-func formatToPath(format string) string {
-	switch format {
-	case "anthropic":
-		return PathMessages
-	case "responses":
-		return PathResponses
-	default:
-		return PathChat
-	}
-}
-
 // ginSSEWriter adapts gin.Context to the SSEWriter interface.
 type ginSSEWriter struct {
 	c *gin.Context

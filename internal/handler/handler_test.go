@@ -43,7 +43,7 @@ func newTestConfig(tsURL, format, model string) *config.Config {
 	}
 }
 
-// --- Unit tests for forwardRequest and formatToPath ---
+// --- Unit tests for forwardRequest ---
 
 func TestForwardRequest_DefaultPath(t *testing.T) {
 	var requestedPath string
@@ -59,9 +59,10 @@ func TestForwardRequest_DefaultPath(t *testing.T) {
 		BaseURL: ts.URL,
 		APIKey:  "test-key",
 		Format:  "chat",
+		Path:    "/v1/chat/completions",
 	}
 
-	resp, _, err := h.forwardRequest(result, PathChat, []byte(`{}`))
+	resp, _, err := h.forwardRequest(result, []byte(`{}`))
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
@@ -86,7 +87,7 @@ func TestForwardRequest_PathOverride(t *testing.T) {
 		Format:  "chat",
 	}
 
-	resp, _, err := h.forwardRequest(result, PathChat, []byte(`{}`))
+	resp, _, err := h.forwardRequest(result, []byte(`{}`))
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
@@ -107,9 +108,10 @@ func TestForwardRequest_TrailingSlash(t *testing.T) {
 		BaseURL: ts.URL + "/",
 		APIKey:  "test-key",
 		Format:  "chat",
+		Path:    "/v1/chat/completions",
 	}
 
-	resp, _, err := h.forwardRequest(result, PathChat, []byte(`{}`))
+	resp, _, err := h.forwardRequest(result, []byte(`{}`))
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
@@ -131,9 +133,10 @@ func TestForwardRequest_AnthropicHeaders(t *testing.T) {
 		BaseURL: ts.URL,
 		APIKey:  "anth-key",
 		Format:  "anthropic",
+		Path:    "/v1/messages",
 	}
 
-	resp, _, err := h.forwardRequest(result, PathMessages, []byte(`{}`))
+	resp, _, err := h.forwardRequest(result, []byte(`{}`))
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
@@ -155,9 +158,10 @@ func TestForwardRequest_ChatBearerHeader(t *testing.T) {
 		BaseURL: ts.URL,
 		APIKey:  "bearer-key",
 		Format:  "chat",
+		Path:    "/v1/chat/completions",
 	}
 
-	resp, _, err := h.forwardRequest(result, PathChat, []byte(`{}`))
+	resp, _, err := h.forwardRequest(result, []byte(`{}`))
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
@@ -176,31 +180,14 @@ func TestForwardRequest_UpstreamError(t *testing.T) {
 		BaseURL: ts.URL,
 		APIKey:  "key",
 		Format:  "chat",
+		Path:    "/v1/chat/completions",
 	}
 
-	resp, _, err := h.forwardRequest(result, PathChat, []byte(`{}`))
+	resp, _, err := h.forwardRequest(result, []byte(`{}`))
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
 	assert.Equal(t, http.StatusTooManyRequests, resp.StatusCode)
-}
-
-func TestFormatToPath(t *testing.T) {
-	tests := []struct {
-		format   string
-		expected string
-	}{
-		{"chat", "/v1/chat/completions"},
-		{"", "/v1/chat/completions"},
-		{"anthropic", "/v1/messages"},
-		{"responses", "/v1/responses"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.format, func(t *testing.T) {
-			assert.Equal(t, tt.expected, formatToPath(tt.format))
-		})
-	}
 }
 
 // --- Integration tests for endpoint handlers ---

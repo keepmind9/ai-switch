@@ -52,9 +52,17 @@ func (r *ConfigRouter) resolveRoute(cfg *config.Config, rule config.RouteRule, c
 		APIKey:      prov.APIKey,
 		Format:      prov.Format,
 		Model:       modelName,
-		Path:        prov.Path,
+		Path:        resolvePath(prov),
 		ThinkTag:    prov.ThinkTag,
 	}, nil
+}
+
+// resolvePath returns the provider config path if set, otherwise derives from format.
+func resolvePath(prov config.ProviderConfig) string {
+	if prov.Path != "" {
+		return prov.Path
+	}
+	return FormatToPath(prov.Format)
 }
 
 func resolveModel(rule config.RouteRule, clientProtocol string, body []byte) string {

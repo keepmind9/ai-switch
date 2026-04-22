@@ -20,7 +20,6 @@ const (
 
 // ConvertedRequest holds the result of request conversion.
 type ConvertedRequest struct {
-	UpstreamPath string
 	UpstreamBody []byte
 	Model        string
 	IsStreaming  bool
@@ -64,7 +63,6 @@ func (c *Converter) ConvertRequest(clientFormat, upstreamFormat string, body []b
 		}
 
 		return &ConvertedRequest{
-			UpstreamPath: upstreamPath(upstreamFormat),
 			UpstreamBody: newBody,
 			Model:        model,
 			IsStreaming:  isStreaming,
@@ -107,7 +105,7 @@ func (c *Converter) convertResponsesRequest(upstreamFormat string, body []byte, 
 		if err != nil {
 			return nil, err
 		}
-		return &ConvertedRequest{UpstreamPath: "/chat/completions", UpstreamBody: chatBody, Model: model, IsStreaming: req.Stream}, nil
+		return &ConvertedRequest{UpstreamBody: chatBody, Model: model, IsStreaming: req.Stream}, nil
 
 	case FormatAnthropic:
 		anthReq, err := c.ChatRequestToAnthropic(chatReq)
@@ -120,7 +118,7 @@ func (c *Converter) convertResponsesRequest(upstreamFormat string, body []byte, 
 		if err != nil {
 			return nil, err
 		}
-		return &ConvertedRequest{UpstreamPath: "/v1/messages", UpstreamBody: anthBody, Model: model, IsStreaming: req.Stream}, nil
+		return &ConvertedRequest{UpstreamBody: anthBody, Model: model, IsStreaming: req.Stream}, nil
 
 	case FormatResponses:
 		// Passthrough handled above, shouldn't reach here
@@ -151,7 +149,7 @@ func (c *Converter) convertAnthropicRequest(upstreamFormat string, body []byte, 
 		if err != nil {
 			return nil, err
 		}
-		return &ConvertedRequest{UpstreamPath: "/chat/completions", UpstreamBody: chatBody, Model: model, IsStreaming: req.Stream}, nil
+		return &ConvertedRequest{UpstreamBody: chatBody, Model: model, IsStreaming: req.Stream}, nil
 
 	case FormatResponses:
 		chatReq, err := c.AnthropicToChat(&req)
@@ -164,7 +162,7 @@ func (c *Converter) convertAnthropicRequest(upstreamFormat string, body []byte, 
 		if err != nil {
 			return nil, err
 		}
-		return &ConvertedRequest{UpstreamPath: "/v1/responses", UpstreamBody: respBody, Model: model, IsStreaming: req.Stream}, nil
+		return &ConvertedRequest{UpstreamBody: respBody, Model: model, IsStreaming: req.Stream}, nil
 
 	case FormatAnthropic:
 		// Passthrough handled above
@@ -196,7 +194,7 @@ func (c *Converter) convertChatRequest(upstreamFormat string, body []byte, defau
 		if err != nil {
 			return nil, err
 		}
-		return &ConvertedRequest{UpstreamPath: "/v1/messages", UpstreamBody: anthBody, Model: model, IsStreaming: req.Stream}, nil
+		return &ConvertedRequest{UpstreamBody: anthBody, Model: model, IsStreaming: req.Stream}, nil
 
 	case FormatChat, "":
 	case FormatResponses:
@@ -224,17 +222,6 @@ func BuildResponsesFromChat(chatReq *types.ChatRequest, stream bool) *types.Resp
 		MaxTokens:    chatReq.MaxTokens,
 		Temperature:  chatReq.Temperature,
 		TopP:         chatReq.TopP,
-	}
-}
-
-func upstreamPath(format string) string {
-	switch format {
-	case FormatAnthropic:
-		return "/v1/messages"
-	case FormatResponses:
-		return "/v1/responses"
-	default:
-		return "/v1/chat/completions"
 	}
 }
 

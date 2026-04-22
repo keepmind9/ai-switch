@@ -9,8 +9,20 @@ type RouteResult struct {
 	APIKey      string // upstream api_key
 	Format      string // upstream format (chat/anthropic/responses)
 	Model       string // resolved model name to send upstream
-	Path        string // optional path override
+	Path        string // upstream API path (resolved from format or overridden by config)
 	ThinkTag    string // optional: strip <tag>...</tag> from responses
+}
+
+// FormatToPath returns the default upstream API path for a given protocol format.
+func FormatToPath(format string) string {
+	switch format {
+	case "anthropic":
+		return "/v1/messages"
+	case "responses":
+		return "/v1/responses"
+	default:
+		return "/v1/chat/completions"
+	}
 }
 
 // Router resolves a request to an upstream provider + model.
