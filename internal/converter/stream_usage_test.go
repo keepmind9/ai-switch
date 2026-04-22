@@ -77,6 +77,26 @@ func TestConvertAnthropicLineToResponses_CapturesUsage(t *testing.T) {
 	assert.Equal(t, 60, state.OutputTokens)
 }
 
+func TestConvertChatChunkToAnthropicSSE_CapturesUsage(t *testing.T) {
+	w := &mockSSEWriter{}
+	state := &AnthropicStreamState{Model: "test-model"}
+
+	// First chunk with role
+	done := ConvertChatChunkToAnthropicSSE(w, state, `{"id":"chatcmpl-1","model":"gpt-4o","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":""}]}`)
+	assert.False(t, done)
+
+	// Content chunk
+	done = ConvertChatChunkToAnthropicSSE(w, state, `{"id":"chatcmpl-1","model":"gpt-4o","choices":[{"index":0,"delta":{"content":"hello"},"finish_reason":""}]}`)
+	assert.False(t, done)
+
+	// Final chunk with usage from stream_options.include_usage
+	done = ConvertChatChunkToAnthropicSSE(w, state, `{"id":"chatcmpl-1","model":"gpt-4o","choices":[],"usage":{"prompt_tokens":100,"completion_tokens":50,"total_tokens":150}}`)
+	assert.False(t, done)
+
+	assert.Equal(t, 100, state.InputTokens)
+	assert.Equal(t, 50, state.OutputTokens)
+}
+
 func TestConvertChatChunkToAnthropicSSE_OutputTokenTracking(t *testing.T) {
 	w := &mockSSEWriter{}
 	state := &AnthropicStreamState{Model: "test-model"}

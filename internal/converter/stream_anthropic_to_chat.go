@@ -95,6 +95,9 @@ func ConvertAnthropicLineToChat(state *AnthropicToChatState, line string) any {
 		}
 		if usage, ok := raw["usage"].(map[string]any); ok {
 			state.OutputTokens = int(toFloat64(usage["output_tokens"]))
+			if in := int(toFloat64(usage["input_tokens"])); in > 0 {
+				state.InputTokens = in
+			}
 		}
 
 		return &types.ChatStreamResponse{

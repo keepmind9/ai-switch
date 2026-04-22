@@ -187,6 +187,9 @@ func sniffAnthropicUsage(a *StreamUsageAccumulator, raw map[string]any) {
 	case "message_delta":
 		if usage, ok := raw["usage"].(map[string]any); ok {
 			a.OutputTokens = int64(toFloat(usage["output_tokens"]))
+			if in := int64(toFloat(usage["input_tokens"])); in > 0 {
+				a.InputTokens = in
+			}
 		}
 	}
 }

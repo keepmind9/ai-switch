@@ -138,6 +138,9 @@ func ConvertAnthropicLineToResponses(w SSEWriter, state *AnthropicToResponsesSta
 		}
 		if usage, ok := raw["usage"].(map[string]any); ok {
 			state.OutputTokens = int(toFloat64(usage["output_tokens"]))
+			if in := int(toFloat64(usage["input_tokens"])); in > 0 {
+				state.InputTokens = in
+			}
 		}
 
 		// Emit text done events if we have accumulated text

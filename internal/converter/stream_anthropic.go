@@ -114,6 +114,12 @@ func ConvertChatChunkToAnthropicSSE(w SSEWriter, state *AnthropicStreamState, da
 		}
 	}
 
+	// Capture usage from final chunk (when upstream sends stream_options.include_usage)
+	if chunk.Usage != nil {
+		state.InputTokens = chunk.Usage.PromptTokens
+		state.OutputTokens = chunk.Usage.CompletionTokens
+	}
+
 	return false
 }
 
