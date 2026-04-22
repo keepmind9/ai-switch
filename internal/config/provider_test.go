@@ -46,7 +46,7 @@ func TestProvider_Get(t *testing.T) {
 	require.NotNil(t, cfg)
 	assert.Equal(t, "gw-default", cfg.DefaultRoute)
 
-	dr := cfg.DefaultRouteConfig()
+	dr := cfg.DefaultRouteConfig("")
 	require.NotNil(t, dr)
 	assert.Equal(t, "default", dr.Provider)
 	assert.Equal(t, "initial-model", dr.DefaultModel)
@@ -80,7 +80,7 @@ routes:
 	cfg := p.Get()
 	assert.Equal(t, 9999, cfg.Server.Port)
 
-	dr := cfg.DefaultRouteConfig()
+	dr := cfg.DefaultRouteConfig("")
 	require.NotNil(t, dr)
 	assert.Equal(t, "default", dr.Provider)
 	assert.Equal(t, "new-model", dr.DefaultModel)
@@ -98,7 +98,7 @@ func TestProvider_Reload_InvalidFile(t *testing.T) {
 
 	// Old config should still be accessible
 	cfg := p.Get()
-	dr := cfg.DefaultRouteConfig()
+	dr := cfg.DefaultRouteConfig("")
 	require.NotNil(t, dr)
 	assert.Equal(t, "default", dr.Provider)
 }

@@ -3,6 +3,10 @@ server:
   port: 12345
 
 default_route: "gw-default"
+# Protocol-specific defaults (optional, override default_route per protocol)
+# default_anthropic_route: "gw-zhipu"    # /v1/messages (Claude Code)
+# default_responses_route: "gw-default"  # /v1/responses (Codex CLI)
+# default_chat_route: "gw-default"       # /v1/chat/completions
 
 providers:
   minimax:

@@ -15,3 +15,9 @@ export const updateRoute = (key: string, data: Partial<Route>) => client.put<{ w
 export const deleteRoute = (key: string) => client.delete(`/admin/routes/${key}`)
 export const generateKey = () => client.post<{ data: { key: string } }>('/admin/routes/generate-key')
 export const revealRouteKey = (key: string) => client.get(`/admin/apikeys/route/${key}?reveal=true`)
+export const updateDefaultRoutes = (data: {
+  default_route?: string
+  default_anthropic_route?: string
+  default_responses_route?: string
+  default_chat_route?: string
+}) => client.put('/admin/default-routes', data)

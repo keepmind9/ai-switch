@@ -18,10 +18,13 @@ const (
 )
 
 type Config struct {
-	Server       ServerConfig              `mapstructure:"server" yaml:"server"`
-	DefaultRoute string                    `mapstructure:"default_route" yaml:"default_route"`
-	Providers    map[string]ProviderConfig `mapstructure:"providers" yaml:"providers"`
-	Routes       map[string]RouteRule      `mapstructure:"routes" yaml:"routes"`
+	Server                ServerConfig              `mapstructure:"server" yaml:"server"`
+	DefaultRoute          string                    `mapstructure:"default_route" yaml:"default_route,omitempty"`
+	DefaultAnthropicRoute string                    `mapstructure:"default_anthropic_route" yaml:"default_anthropic_route,omitempty"`
+	DefaultResponsesRoute string                    `mapstructure:"default_responses_route" yaml:"default_responses_route,omitempty"`
+	DefaultChatRoute      string                    `mapstructure:"default_chat_route" yaml:"default_chat_route,omitempty"`
+	Providers             map[string]ProviderConfig `mapstructure:"providers" yaml:"providers"`
+	Routes                map[string]RouteRule      `mapstructure:"routes" yaml:"routes"`
 }
 
 type RouteRule struct {
@@ -93,6 +96,21 @@ func Load(path string) (*Config, error) {
 			return nil, fmt.Errorf("default_route %q not found in routes", cfg.DefaultRoute)
 		}
 	}
+	if cfg.DefaultAnthropicRoute != "" {
+		if _, ok := cfg.Routes[cfg.DefaultAnthropicRoute]; !ok {
+			return nil, fmt.Errorf("default_anthropic_route %q not found in routes", cfg.DefaultAnthropicRoute)
+		}
+	}
+	if cfg.DefaultResponsesRoute != "" {
+		if _, ok := cfg.Routes[cfg.DefaultResponsesRoute]; !ok {
+			return nil, fmt.Errorf("default_responses_route %q not found in routes", cfg.DefaultResponsesRoute)
+		}
+	}
+	if cfg.DefaultChatRoute != "" {
+		if _, ok := cfg.Routes[cfg.DefaultChatRoute]; !ok {
+			return nil, fmt.Errorf("default_chat_route %q not found in routes", cfg.DefaultChatRoute)
+		}
+	}
 
 	// Set defaults and expand env vars for all providers
 	for k, p := range cfg.Providers {
@@ -111,12 +129,25 @@ func Load(path string) (*Config, error) {
 	return &cfg, nil
 }
 
-// DefaultRouteConfig returns the default route rule, or nil if not set.
-func (c *Config) DefaultRouteConfig() *RouteRule {
-	if c.DefaultRoute == "" {
+// DefaultRouteConfig returns the default route rule for the given protocol,
+// falling back to the global default_route. Returns nil if none configured.
+func (c *Config) DefaultRouteConfig(protocol string) *RouteRule {
+	var key string
+	switch protocol {
+	case "anthropic":
+		key = c.DefaultAnthropicRoute
+	case "responses":
+		key = c.DefaultResponsesRoute
+	case "chat":
+		key = c.DefaultChatRoute
+	}
+	if key == "" {
+		key = c.DefaultRoute
+	}
+	if key == "" {
 		return nil
 	}
-	r, ok := c.Routes[c.DefaultRoute]
+	r, ok := c.Routes[key]
 	if !ok {
 		return nil
 	}

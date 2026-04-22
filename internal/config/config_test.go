@@ -492,7 +492,7 @@ func TestDefaultRouteConfig(t *testing.T) {
 				DefaultRoute: tt.defaultRoute,
 				Routes:       tt.routes,
 			}
-			result := cfg.DefaultRouteConfig()
+			result := cfg.DefaultRouteConfig("")
 			if tt.expectNil {
 				assert.Nil(t, result)
 			} else {
@@ -501,6 +501,47 @@ func TestDefaultRouteConfig(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("protocol-specific default", func(t *testing.T) {
+		routes := map[string]RouteRule{
+			"gw-anth":   {Provider: "anth-provider"},
+			"gw-resp":   {Provider: "resp-provider"},
+			"gw-chat":   {Provider: "chat-provider"},
+			"gw-global": {Provider: "global-provider"},
+		}
+
+		cfg := &Config{
+			DefaultRoute:          "gw-global",
+			DefaultAnthropicRoute: "gw-anth",
+			DefaultResponsesRoute: "gw-resp",
+			DefaultChatRoute:      "gw-chat",
+			Routes:                routes,
+		}
+
+		r := cfg.DefaultRouteConfig("anthropic")
+		require.NotNil(t, r)
+		assert.Equal(t, "anth-provider", r.Provider)
+
+		r = cfg.DefaultRouteConfig("responses")
+		require.NotNil(t, r)
+		assert.Equal(t, "resp-provider", r.Provider)
+
+		r = cfg.DefaultRouteConfig("chat")
+		require.NotNil(t, r)
+		assert.Equal(t, "chat-provider", r.Provider)
+
+		r = cfg.DefaultRouteConfig("")
+		require.NotNil(t, r)
+		assert.Equal(t, "global-provider", r.Provider)
+
+		cfg2 := &Config{
+			DefaultRoute: "gw-global",
+			Routes:       routes,
+		}
+		r = cfg2.DefaultRouteConfig("anthropic")
+		require.NotNil(t, r)
+		assert.Equal(t, "global-provider", r.Provider)
+	})
 }
 
 func TestExpandEnv(t *testing.T) {

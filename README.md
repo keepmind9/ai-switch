@@ -160,6 +160,21 @@ routes:
 
 Priority: `longContext` > `background` > `websearch` > `think` > `image` > `default`
 
+### Default Routes
+
+Control which route is used when a request has no matching API key:
+
+```yaml
+default_route: "gw-default"              # global fallback
+default_anthropic_route: "gw-zhipu"      # /v1/messages (Claude Code)
+default_responses_route: "gw-default"    # /v1/responses (Codex CLI)
+default_chat_route: "gw-default"         # /v1/chat/completions
+```
+
+**Routing priority:** route key match > protocol-specific default > global `default_route`
+
+All fields are optional. Protocol-specific defaults fall back to `default_route` when not set.
+
 ### Model Map
 
 Map client model names to upstream models:

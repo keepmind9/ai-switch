@@ -31,6 +31,7 @@ func (a *AdminHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.PUT("/admin/routes/:key", a.updateRoute)
 	r.DELETE("/admin/routes/:key", a.deleteRoute)
 	r.POST("/admin/routes/generate-key", a.generateKey)
+	r.PUT("/admin/default-routes", a.updateDefaultRoutes)
 
 	r.GET("/admin/presets", a.listPresets)
 	r.GET("/admin/status", a.adminStatus)
@@ -211,10 +212,12 @@ func (a *AdminHandler) deleteProvider(c *gin.Context) {
 
 	delete(cfg.Providers, key)
 
-	// Clear default_route if it references a route whose provider was deleted
-	if cfg.DefaultRoute != "" {
-		if dr, ok := cfg.Routes[cfg.DefaultRoute]; ok && dr.Provider == key {
-			cfg.DefaultRoute = ""
+	// Clear default routes if they reference a route whose provider was deleted
+	for _, dk := range []*string{&cfg.DefaultRoute, &cfg.DefaultAnthropicRoute, &cfg.DefaultResponsesRoute, &cfg.DefaultChatRoute} {
+		if *dk != "" {
+			if dr, ok := cfg.Routes[*dk]; ok && dr.Provider == key {
+				*dk = ""
+			}
 		}
 	}
 
@@ -385,6 +388,15 @@ func (a *AdminHandler) deleteRoute(c *gin.Context) {
 	if cfg.DefaultRoute == key {
 		cfg.DefaultRoute = ""
 	}
+	if cfg.DefaultAnthropicRoute == key {
+		cfg.DefaultAnthropicRoute = ""
+	}
+	if cfg.DefaultResponsesRoute == key {
+		cfg.DefaultResponsesRoute = ""
+	}
+	if cfg.DefaultChatRoute == key {
+		cfg.DefaultChatRoute = ""
+	}
 
 	if err := a.writeAndReload(cfg); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -404,6 +416,76 @@ func (a *AdminHandler) generateKey(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": gin.H{"key": key}})
 }
 
+func (a *AdminHandler) updateDefaultRoutes(c *gin.Context) {
+	var req struct {
+		DefaultRoute          *string `json:"default_route"`
+		DefaultAnthropicRoute *string `json:"default_anthropic_route"`
+		DefaultResponsesRoute *string `json:"default_responses_route"`
+		DefaultChatRoute      *string `json:"default_chat_route"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	cfg := copyConfig(a.provider.Get())
+
+	type field struct {
+		name string
+		val  string
+	}
+	fields := []field{}
+	if req.DefaultRoute != nil {
+		fields = append(fields, field{"default_route", *req.DefaultRoute})
+	}
+	if req.DefaultAnthropicRoute != nil {
+		fields = append(fields, field{"default_anthropic_route", *req.DefaultAnthropicRoute})
+	}
+	if req.DefaultResponsesRoute != nil {
+		fields = append(fields, field{"default_responses_route", *req.DefaultResponsesRoute})
+	}
+	if req.DefaultChatRoute != nil {
+		fields = append(fields, field{"default_chat_route", *req.DefaultChatRoute})
+	}
+
+	for _, f := range fields {
+		if f.val != "" {
+			if _, ok := cfg.Routes[f.val]; !ok {
+				c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("route %q not found", f.val)})
+				return
+			}
+		}
+	}
+
+	if req.DefaultRoute != nil {
+		cfg.DefaultRoute = *req.DefaultRoute
+	}
+	if req.DefaultAnthropicRoute != nil {
+		cfg.DefaultAnthropicRoute = *req.DefaultAnthropicRoute
+	}
+	if req.DefaultResponsesRoute != nil {
+		cfg.DefaultResponsesRoute = *req.DefaultResponsesRoute
+	}
+	if req.DefaultChatRoute != nil {
+		cfg.DefaultChatRoute = *req.DefaultChatRoute
+	}
+
+	if err := a.writeAndReload(cfg); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": gin.H{
+		"default_route":           cfg.DefaultRoute,
+		"default_anthropic_route": cfg.DefaultAnthropicRoute,
+		"default_responses_route": cfg.DefaultResponsesRoute,
+		"default_chat_route":      cfg.DefaultChatRoute,
+	}})
+}
+
 func (a *AdminHandler) listPresets(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": config.ProviderPresets})
 }
@@ -411,10 +493,13 @@ func (a *AdminHandler) listPresets(c *gin.Context) {
 func (a *AdminHandler) adminStatus(c *gin.Context) {
 	cfg := a.provider.Get()
 	c.JSON(http.StatusOK, gin.H{
-		"server":         cfg.Server,
-		"default_route":  cfg.DefaultRoute,
-		"provider_count": len(cfg.Providers),
-		"route_count":    len(cfg.Routes),
+		"server":                  cfg.Server,
+		"default_route":           cfg.DefaultRoute,
+		"default_anthropic_route": cfg.DefaultAnthropicRoute,
+		"default_responses_route": cfg.DefaultResponsesRoute,
+		"default_chat_route":      cfg.DefaultChatRoute,
+		"provider_count":          len(cfg.Providers),
+		"route_count":             len(cfg.Routes),
 	})
 }
 
@@ -466,10 +551,13 @@ func maskKey(s string) string {
 
 func copyConfig(cfg *config.Config) *config.Config {
 	cp := &config.Config{
-		Server:       cfg.Server,
-		DefaultRoute: cfg.DefaultRoute,
-		Providers:    make(map[string]config.ProviderConfig, len(cfg.Providers)),
-		Routes:       make(map[string]config.RouteRule, len(cfg.Routes)),
+		Server:                cfg.Server,
+		DefaultRoute:          cfg.DefaultRoute,
+		DefaultAnthropicRoute: cfg.DefaultAnthropicRoute,
+		DefaultResponsesRoute: cfg.DefaultResponsesRoute,
+		DefaultChatRoute:      cfg.DefaultChatRoute,
+		Providers:             make(map[string]config.ProviderConfig, len(cfg.Providers)),
+		Routes:                make(map[string]config.RouteRule, len(cfg.Routes)),
 	}
 	for k, v := range cfg.Providers {
 		cp.Providers[k] = v

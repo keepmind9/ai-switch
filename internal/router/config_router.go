@@ -29,8 +29,8 @@ func (r *ConfigRouter) Route(clientProtocol, apiKey string, body []byte) (*Route
 		}
 	}
 
-	// 2. Fallback to default_route
-	dr := cfg.DefaultRouteConfig()
+	// 2. Fallback to default_route (protocol-specific first, then global)
+	dr := cfg.DefaultRouteConfig(clientProtocol)
 	if dr == nil {
 		return nil, fmt.Errorf("no matching route and default_route not configured")
 	}

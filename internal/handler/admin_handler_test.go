@@ -349,3 +349,88 @@ func TestListPresets(t *testing.T) {
 	data := resp["data"].([]any)
 	assert.NotEmpty(t, data)
 }
+
+func TestUpdateDefaultRoutes(t *testing.T) {
+	t.Run("set all protocol defaults", func(t *testing.T) {
+		r, cfgPath := setupAdminTest(t)
+
+		body, _ := json.Marshal(map[string]any{
+			"default_route":           "gw-test",
+			"default_anthropic_route": "gw-test",
+			"default_responses_route": "gw-test",
+			"default_chat_route":      "gw-test",
+		})
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPut, "/api/admin/default-routes", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		r.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+
+		loaded, err := config.Load(cfgPath)
+		require.NoError(t, err)
+		assert.Equal(t, "gw-test", loaded.DefaultRoute)
+		assert.Equal(t, "gw-test", loaded.DefaultAnthropicRoute)
+		assert.Equal(t, "gw-test", loaded.DefaultResponsesRoute)
+		assert.Equal(t, "gw-test", loaded.DefaultChatRoute)
+	})
+
+	t.Run("clear protocol defaults", func(t *testing.T) {
+		r, _ := setupAdminTest(t)
+
+		body, _ := json.Marshal(map[string]any{
+			"default_anthropic_route": "",
+			"default_responses_route": "",
+		})
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPut, "/api/admin/default-routes", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		r.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+	})
+
+	t.Run("nonexistent route returns error", func(t *testing.T) {
+		r, _ := setupAdminTest(t)
+
+		body, _ := json.Marshal(map[string]any{
+			"default_anthropic_route": "nonexistent",
+		})
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPut, "/api/admin/default-routes", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		r.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+	})
+
+	t.Run("partial update preserves other fields", func(t *testing.T) {
+		r, cfgPath := setupAdminTest(t)
+
+		body, _ := json.Marshal(map[string]any{
+			"default_route":           "gw-test",
+			"default_anthropic_route": "gw-test",
+			"default_responses_route": "gw-test",
+		})
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPut, "/api/admin/default-routes", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		r.ServeHTTP(w, req)
+		require.Equal(t, http.StatusOK, w.Code)
+
+		body, _ = json.Marshal(map[string]any{
+			"default_anthropic_route": "",
+		})
+		w = httptest.NewRecorder()
+		req = httptest.NewRequest(http.MethodPut, "/api/admin/default-routes", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		r.ServeHTTP(w, req)
+		require.Equal(t, http.StatusOK, w.Code)
+
+		loaded, err := config.Load(cfgPath)
+		require.NoError(t, err)
+		assert.Equal(t, "", loaded.DefaultAnthropicRoute)
+		assert.Equal(t, "gw-test", loaded.DefaultRoute)
+		assert.Equal(t, "gw-test", loaded.DefaultResponsesRoute)
+	})
+}

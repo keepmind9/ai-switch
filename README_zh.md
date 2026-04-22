@@ -161,6 +161,21 @@ routes:
 
 优先级：`longContext` > `background` > `websearch` > `think` > `image` > `default`
 
+### 默认路由（Default Routes）
+
+控制请求没有匹配 API Key 时使用哪条路由：
+
+```yaml
+default_route: "gw-default"              # 全局兜底
+default_anthropic_route: "gw-zhipu"      # /v1/messages（Claude Code）
+default_responses_route: "gw-default"    # /v1/responses（Codex CLI）
+default_chat_route: "gw-default"         # /v1/chat/completions
+```
+
+**路由优先级：** route key 匹配 > 协议级默认 > 全局 `default_route`
+
+所有字段均可选。未设置的协议级默认会回退到 `default_route`。
+
 ### 模型映射（Model Map）
 
 将客户端模型名映射为上游模型：

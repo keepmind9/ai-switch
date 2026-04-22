@@ -893,7 +893,10 @@ func (h *Handler) handleAPIStatus(c *gin.Context) {
 			"host": cfg.Server.Host,
 			"port": cfg.Server.Port,
 		},
-		"default_route": cfg.DefaultRoute,
+		"default_route":           cfg.DefaultRoute,
+		"default_anthropic_route": cfg.DefaultAnthropicRoute,
+		"default_responses_route": cfg.DefaultResponsesRoute,
+		"default_chat_route":      cfg.DefaultChatRoute,
 	}
 
 	providers := make([]gin.H, 0)

@@ -136,6 +136,21 @@ func Validate(cfg *Config) *ValidationResult {
 		}
 	}
 
+	for field, key := range map[string]string{
+		"default_anthropic_route": cfg.DefaultAnthropicRoute,
+		"default_responses_route": cfg.DefaultResponsesRoute,
+		"default_chat_route":      cfg.DefaultChatRoute,
+	} {
+		if key != "" {
+			if _, ok := cfg.Routes[key]; !ok {
+				result.Errors = append(result.Errors, ValidationIssue{
+					Severity: SeverityError,
+					Message:  fmt.Sprintf("%s %q not found in routes", field, key),
+				})
+			}
+		}
+	}
+
 	for provKey, routeKeys := range providerUsedByRoute {
 		prov, ok := cfg.Providers[provKey]
 		if ok && prov.APIKey == "" {
