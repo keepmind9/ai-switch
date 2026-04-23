@@ -21,6 +21,7 @@ HANDOFF.md
 
 # Config with secrets
 config.yaml
+tests/e2e/testdata/config.yaml
 .env
 
 # Data

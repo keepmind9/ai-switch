@@ -6,7 +6,12 @@ This document describes how an AI agent (Claude Code, Copilot CLI, etc.) can aut
 
 ### 1. Fill in Provider Credentials
 
-Edit `tests/e2e/testdata/config.real.yaml` — replace all `<FILL>` placeholders:
+Copy the example config and fill in real values:
+
+```bash
+cp tests/e2e/testdata/config.example.yaml tests/e2e/testdata/config.yaml
+# Edit tests/e2e/testdata/config.yaml — replace all <FILL> placeholders
+```
 
 ```yaml
 providers:
@@ -86,10 +91,10 @@ Verify: `/tmp/ai-switch-e2e version` should print version info.
 E2E_PORT=$(python3 -c "import socket; s=socket.socket(); s.bind(('',0)); print(s.getsockname()[1]); s.close()")
 
 # Update config port
-sed -i "s/port: 0/port: $E2E_PORT/" tests/e2e/testdata/config.real.yaml
+sed -i "s/port: 0/port: $E2E_PORT/" tests/e2e/testdata/config.yaml
 
 # Start server
-/tmp/ai-switch-e2e -c tests/e2e/testdata/config.real.yaml &
+/tmp/ai-switch-e2e -c tests/e2e/testdata/config.yaml &
 SERVER_PID=$!
 ```
 
@@ -174,7 +179,7 @@ done
 ```bash
 kill $SERVER_PID 2>/dev/null
 # Restore config port
-sed -i "s/port: $E2E_PORT/port: 0/" tests/e2e/testdata/config.real.yaml
+sed -i "s/port: $E2E_PORT/port: 0/" tests/e2e/testdata/config.yaml
 ```
 
 ## Full Test Matrix
@@ -200,7 +205,7 @@ Total: 3 CLIs × 4 providers = **12 test scenarios**.
 
 ### ai-switch won't start
 - Check port conflict: `ss -tlnp | grep $E2E_PORT`
-- Check config syntax: `/tmp/ai-switch-e2e check -c tests/e2e/testdata/config.real.yaml`
+- Check config syntax: `/tmp/ai-switch-e2e check -c tests/e2e/testdata/config.yaml`
 - Check logs in terminal output
 
 ### CLI connection refused

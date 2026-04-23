@@ -81,14 +81,14 @@ type cliTestEnv struct {
 	tmpDir     string
 }
 
-// setupCLITest builds and starts ai-switch as a subprocess using config.real.yaml.
+// setupCLITest builds and starts ai-switch as a subprocess using config.example.yaml.
 func setupCLITest(t *testing.T) *cliTestEnv {
 	t.Helper()
 
-	// Find config.real.yaml
-	configPath := filepath.Join("testdata", "config.real.yaml")
+	// Find config.example.yaml
+	configPath := filepath.Join("testdata", "config.example.yaml")
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		t.Skip("testdata/config.real.yaml not found — fill in the template first")
+		t.Skip("testdata/config.example.yaml not found — fill in the template first")
 	}
 
 	// Check if config has been filled in
@@ -101,7 +101,7 @@ func setupCLITest(t *testing.T) *cliTestEnv {
 				for _, p := range providers {
 					if prov, ok := p.(map[string]any); ok {
 						if url, _ := prov["base_url"].(string); url == "<FILL>" {
-							t.Skip("testdata/config.real.yaml contains <FILL> placeholders — fill in real values first")
+							t.Skip("testdata/config.example.yaml contains <FILL> placeholders — fill in real values first")
 						}
 					}
 				}
@@ -168,7 +168,7 @@ func (e *cliTestEnv) teardown() {
 	}
 }
 
-// routeKeys returns all route keys from config.real.yaml for matrix testing.
+// routeKeys returns all route keys from config.example.yaml for matrix testing.
 func (e *cliTestEnv) routeKeys() []string {
 	data, err := os.ReadFile(e.configPath)
 	if err != nil {
