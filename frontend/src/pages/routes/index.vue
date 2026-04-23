@@ -226,16 +226,15 @@ onMounted(load)
       </div>
     </div>
 
-    <!-- Default Routing Strategy Panel -->
     <el-card shadow="never" :class="['mb-6 border-slate-200! transition-all duration-300 shadow-sm!', isDirty ? 'bg-orange-50! border-orange-300!' : 'bg-slate-50/50!']">
       <template #header>
         <div class="flex items-center justify-between">
-          <div class="flex items-center gap-2">
-            <span class="text-sm font-bold text-slate-800">{{ $t('routes.strategy.title') }}</span>
-            <el-tooltip :content="$t('routes.strategy.tip')">
-              <el-icon class="text-slate-500 cursor-help"><QuestionFilled /></el-icon>
-            </el-tooltip>
-            <el-tag v-if="isDirty" size="small" type="warning" effect="dark" class="animate-pulse border-none!">{{ $t('routes.strategy.pending') }}</el-tag>
+          <div class="flex flex-col gap-1">
+            <div class="flex items-center gap-2">
+              <span class="text-sm font-bold text-slate-800">{{ $t('routes.strategy.title') }}</span>
+              <el-tag v-if="isDirty" size="small" type="warning" effect="dark" class="animate-pulse border-none!">{{ $t('routes.strategy.pending') }}</el-tag>
+            </div>
+            <div class="text-[12px] text-slate-500 font-normal">{{ $t('routes.strategy.tip') }}</div>
           </div>
           <el-button 
             :type="isDirty ? 'warning' : 'primary'" 
