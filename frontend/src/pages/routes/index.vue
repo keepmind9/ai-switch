@@ -358,6 +358,16 @@ onMounted(load)
       destroy-on-close
     >
       <div class="px-2 pb-10">
+        <div class="logic-flow mb-8 w-full!">
+          <span class="logic-title">{{ $t('routes.logic.title') }}:</span>
+          <div class="logic-steps">
+            <span class="logic-step">{{ $t('routes.logic.aliases') }}</span>
+            <el-icon class="logic-arrow"><Right /></el-icon>
+            <span class="logic-step">{{ $t('routes.logic.scenes') }}</span>
+            <el-icon class="logic-arrow"><Right /></el-icon>
+            <span class="logic-step logic-step--final">{{ $t('routes.logic.default') }}</span>
+          </div>
+        </div>
         <el-form :model="form" label-position="top" class="custom-form">
           <el-form-item :label="$t('routes.drawer.form.key')" required>
             <div class="flex gap-2 w-full">
@@ -442,6 +452,70 @@ onMounted(load)
 </template>
 
 <style lang="scss" scoped>
+.logic-flow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background-color: #fbfaf8;
+  padding: 10px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--el-border-color-light);
+}
+
+.logic-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #a39e93;
+  letter-spacing: 0.05em;
+}
+
+.logic-steps {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.logic-step {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+  background: #ffffff;
+  padding: 2px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--el-border-color);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+
+.logic-step--final {
+  color: var(--el-color-primary);
+  border-color: var(--el-color-primary-light-7);
+  background: var(--el-color-primary-light-9);
+}
+
+.logic-arrow {
+  color: #d1d1d1;
+  font-size: 14px;
+}
+
+html.dark {
+  .logic-flow {
+    background-color: #1e293b;
+    border-color: #334155;
+  }
+  .logic-step {
+    background: #0f172a;
+    border-color: #334155;
+    color: #f1f5f9;
+  }
+  .logic-step--final {
+    background: rgba(217, 119, 87, 0.1);
+    border-color: rgba(217, 119, 87, 0.4);
+    color: var(--el-color-primary);
+  }
+}
+
 .custom-form {
   :deep(.el-form-item__label) {
     font-weight: 600;

@@ -69,6 +69,12 @@
   "routes": {
     "title": "Access Routes",
     "desc": "Configure API keys and model routing logic for your clients.",
+    "logic": {
+      "title": "Resolution Order",
+      "aliases": "Model Aliases",
+      "scenes": "Scene Mappings",
+      "default": "Default Model"
+    },
     "search": "Search routes...",
     "add": "Add Route",
     "strategy": {

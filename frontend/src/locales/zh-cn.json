@@ -69,6 +69,12 @@
   "routes": {
     "title": "路由密钥",
     "desc": "为您的客户端配置 API 密钥和模型路由逻辑。",
+    "logic": {
+      "title": "匹配优先级",
+      "aliases": "模型别名",
+      "scenes": "场景映射",
+      "default": "默认模型"
+    },
     "search": "搜索路由...",
     "add": "添加路由",
     "strategy": {
