@@ -6,6 +6,7 @@ import (
 
 	"github.com/keepmind9/ai-switch/internal/types"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func anthropicEventJSON(eventType string, extra map[string]any) string {
@@ -123,7 +124,7 @@ func TestConvertAnthropicLineToChat_StopReasonMapping(t *testing.T) {
 	}{
 		{"end_turn → stop", "end_turn", "stop"},
 		{"max_tokens → length", "max_tokens", "length"},
-		{"tool_use passthrough", "tool_use", "tool_use"},
+		{"tool_use → tool_calls", "tool_use", "tool_calls"},
 		{"stop_sequence passthrough", "stop_sequence", "stop_sequence"},
 		{"empty → empty", "", ""},
 	}
@@ -159,4 +160,187 @@ func TestToFloat64(t *testing.T) {
 			assert.Equal(t, tt.expected, toFloat64(tt.input))
 		})
 	}
+}
+
+// --- Tool use streaming tests ---
+
+func TestConvertAnthropicLineToChat_ToolUseBlockStart(t *testing.T) {
+	state := &AnthropicToChatState{}
+
+	// message_start first
+	ConvertAnthropicLineToChat(state, anthropicEventJSON("message_start", map[string]any{
+		"message": map[string]any{"id": "msg-1", "model": "test"},
+	}))
+
+	// tool_use content_block_start
+	result := ConvertAnthropicLineToChat(state, anthropicEventJSON("content_block_start", map[string]any{
+		"index": float64(1),
+		"content_block": map[string]any{
+			"type": "tool_use",
+			"id":   "toolu_abc",
+			"name": "get_weather",
+		},
+	}))
+
+	chunk := assertChatChunk(t, result)
+	require.Len(t, chunk.Choices, 1)
+	require.Len(t, chunk.Choices[0].Delta.ToolCalls, 1)
+	tc := chunk.Choices[0].Delta.ToolCalls[0]
+	assert.Equal(t, 0, tc.Index) // first tool call
+	assert.Equal(t, "toolu_abc", tc.ID)
+	assert.Equal(t, "function", tc.Type)
+	assert.Equal(t, "get_weather", tc.Function.Name)
+}
+
+func TestConvertAnthropicLineToChat_InputJsonDelta(t *testing.T) {
+	state := &AnthropicToChatState{}
+
+	// Setup: message_start + tool block
+	ConvertAnthropicLineToChat(state, anthropicEventJSON("message_start", map[string]any{
+		"message": map[string]any{"id": "msg-1", "model": "test"},
+	}))
+	ConvertAnthropicLineToChat(state, anthropicEventJSON("content_block_start", map[string]any{
+		"index": float64(1),
+		"content_block": map[string]any{
+			"type": "tool_use",
+			"id":   "toolu_abc",
+			"name": "get_weather",
+		},
+	}))
+
+	// input_json_delta
+	result := ConvertAnthropicLineToChat(state, anthropicEventJSON("content_block_delta", map[string]any{
+		"index": float64(1),
+		"delta": map[string]any{
+			"type":         "input_json_delta",
+			"partial_json": `{"location":`,
+		},
+	}))
+
+	chunk := assertChatChunk(t, result)
+	require.Len(t, chunk.Choices[0].Delta.ToolCalls, 1)
+	tc := chunk.Choices[0].Delta.ToolCalls[0]
+	assert.Equal(t, 0, tc.Index)
+	assert.Equal(t, `{"location":`, tc.Function.Arguments)
+}
+
+func TestConvertAnthropicLineToChat_FullToolUseStream(t *testing.T) {
+	state := &AnthropicToChatState{}
+
+	// message_start
+	ConvertAnthropicLineToChat(state, anthropicEventJSON("message_start", map[string]any{
+		"message": map[string]any{"id": "msg-tool", "model": "claude-3", "usage": map[string]any{"input_tokens": 50}},
+	}))
+
+	// text content_block_delta
+	result := ConvertAnthropicLineToChat(state, anthropicEventJSON("content_block_delta", map[string]any{
+		"delta": map[string]any{"text": "Checking..."},
+	}))
+	chunk := assertChatChunk(t, result)
+	assert.Equal(t, "Checking...", chunk.Choices[0].Delta.Content)
+
+	// tool_use content_block_start
+	result = ConvertAnthropicLineToChat(state, anthropicEventJSON("content_block_start", map[string]any{
+		"index": float64(1),
+		"content_block": map[string]any{
+			"type": "tool_use",
+			"id":   "toolu_1",
+			"name": "get_weather",
+		},
+	}))
+	chunk = assertChatChunk(t, result)
+	assert.Equal(t, "toolu_1", chunk.Choices[0].Delta.ToolCalls[0].ID)
+
+	// input_json_delta
+	result = ConvertAnthropicLineToChat(state, anthropicEventJSON("content_block_delta", map[string]any{
+		"index": float64(1),
+		"delta": map[string]any{
+			"type":         "input_json_delta",
+			"partial_json": `{"location":"SF"}`,
+		},
+	}))
+	chunk = assertChatChunk(t, result)
+	assert.Equal(t, `{"location":"SF"}`, chunk.Choices[0].Delta.ToolCalls[0].Function.Arguments)
+
+	// message_delta with tool_use stop
+	result = ConvertAnthropicLineToChat(state, anthropicEventJSON("message_delta", map[string]any{
+		"delta": map[string]any{"stop_reason": "tool_use"},
+		"usage": map[string]any{"output_tokens": 20},
+	}))
+	chunk = assertChatChunk(t, result)
+	assert.Equal(t, "tool_calls", chunk.Choices[0].FinishReason)
+
+	// message_stop
+	result = ConvertAnthropicLineToChat(state, anthropicEventJSON("message_stop", nil))
+	assert.Equal(t, "[DONE]", result)
+}
+
+func TestConvertAnthropicLineToChat_MultipleToolUseBlocks(t *testing.T) {
+	state := &AnthropicToChatState{}
+
+	ConvertAnthropicLineToChat(state, anthropicEventJSON("message_start", map[string]any{
+		"message": map[string]any{"id": "msg-multi", "model": "test"},
+	}))
+
+	// First tool
+	result := ConvertAnthropicLineToChat(state, anthropicEventJSON("content_block_start", map[string]any{
+		"index": float64(0),
+		"content_block": map[string]any{
+			"type": "tool_use",
+			"id":   "toolu_1",
+			"name": "get_weather",
+		},
+	}))
+	chunk := assertChatChunk(t, result)
+	assert.Equal(t, 0, chunk.Choices[0].Delta.ToolCalls[0].Index)
+
+	// Second tool
+	result = ConvertAnthropicLineToChat(state, anthropicEventJSON("content_block_start", map[string]any{
+		"index": float64(1),
+		"content_block": map[string]any{
+			"type": "tool_use",
+			"id":   "toolu_2",
+			"name": "get_time",
+		},
+	}))
+	chunk = assertChatChunk(t, result)
+	assert.Equal(t, 1, chunk.Choices[0].Delta.ToolCalls[0].Index)
+	assert.Equal(t, "toolu_2", chunk.Choices[0].Delta.ToolCalls[0].ID)
+
+	// Arguments for first tool
+	result = ConvertAnthropicLineToChat(state, anthropicEventJSON("content_block_delta", map[string]any{
+		"index": float64(0),
+		"delta": map[string]any{
+			"type":         "input_json_delta",
+			"partial_json": `{"loc":"SF"}`,
+		},
+	}))
+	chunk = assertChatChunk(t, result)
+	assert.Equal(t, 0, chunk.Choices[0].Delta.ToolCalls[0].Index)
+	assert.Equal(t, `{"loc":"SF"}`, chunk.Choices[0].Delta.ToolCalls[0].Function.Arguments)
+
+	// Arguments for second tool
+	result = ConvertAnthropicLineToChat(state, anthropicEventJSON("content_block_delta", map[string]any{
+		"index": float64(1),
+		"delta": map[string]any{
+			"type":         "input_json_delta",
+			"partial_json": `{"tz":"PST"}`,
+		},
+	}))
+	chunk = assertChatChunk(t, result)
+	assert.Equal(t, 1, chunk.Choices[0].Delta.ToolCalls[0].Index)
+	assert.Equal(t, `{"tz":"PST"}`, chunk.Choices[0].Delta.ToolCalls[0].Function.Arguments)
+}
+
+func TestConvertAnthropicLineToChat_SkipsUnknownBlockTypes(t *testing.T) {
+	state := &AnthropicToChatState{}
+
+	// content_block_start with unknown type should be nil
+	result := ConvertAnthropicLineToChat(state, anthropicEventJSON("content_block_start", map[string]any{
+		"index": float64(0),
+		"content_block": map[string]any{
+			"type": "thinking",
+		},
+	}))
+	assert.Nil(t, result)
 }

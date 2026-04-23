@@ -29,17 +29,27 @@ func (s *ResponsesStreamState) nextSeq() int {
 
 // AnthropicStreamState tracks state across SSE chunks for Anthropic conversion.
 type AnthropicStreamState struct {
-	MessageID    string
-	Model        string
-	BlockIndex   int
-	ContentSent  bool
-	AccText      string
-	InputTokens  int
-	OutputTokens int
-	ThinkTag     string
-	TagState     ThinkTagState
-	FinishReason string
-	DeltaSent    bool
+	MessageID       string
+	Model           string
+	BlockIndex      int
+	ContentSent     bool
+	AccText         string
+	InputTokens     int
+	OutputTokens    int
+	ThinkTag        string
+	TagState        ThinkTagState
+	FinishReason    string
+	DeltaSent       bool
+	TextBlockClosed bool
+	ToolBlocks      map[int]*toolBlockState
+}
+
+type toolBlockState struct {
+	AnthropicIndex int
+	ID             string
+	Name           string
+	Started        bool
+	Stopped        bool
 }
 
 func (s *AnthropicStreamState) nextBlockIndex() int {

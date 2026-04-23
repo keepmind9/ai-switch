@@ -61,6 +61,24 @@ func chatChunkWithUsage(id string, promptTokens, completionTokens int) string {
 	return string(data)
 }
 
+func chatChunkWithToolCalls(id string, toolCalls []types.ToolCall, finishReason string) string {
+	chunk := types.ChatStreamResponse{
+		ID:      id,
+		Object:  "chat.completion.chunk",
+		Created: 1234567890,
+		Model:   "test-model",
+		Choices: []types.StreamChoice{
+			{
+				Index:        0,
+				Delta:        types.ChatMessage{ToolCalls: toolCalls},
+				FinishReason: finishReason,
+			},
+		},
+	}
+	data, _ := json.Marshal(chunk)
+	return string(data)
+}
+
 // --- Chat → Responses SSE ---
 
 func TestConvertChatChunkToResponsesSSE_FullStream(t *testing.T) {
@@ -405,4 +423,182 @@ func TestConvertChatChunkToAnthropicSSE_MessageStartHasCacheFields(t *testing.T)
 	require.True(t, ok)
 	assert.Contains(t, usage, "cache_creation_input_tokens")
 	assert.Contains(t, usage, "cache_read_input_tokens")
+}
+
+// --- Chat → Anthropic SSE: Tool calls ---
+
+func TestConvertChatChunkToAnthropicSSE_ToolCallsStream(t *testing.T) {
+	w := &mockSSEWriter{}
+	state := &AnthropicStreamState{}
+
+	// message_start + text block
+	ConvertChatChunkToAnthropicSSE(w, state, chatChunkJSON("id", "assistant", "", ""))
+	// text delta
+	ConvertChatChunkToAnthropicSSE(w, state, chatChunkJSON("id", "", "Let me check.", ""))
+	// tool call start (closes text block, starts tool block)
+	ConvertChatChunkToAnthropicSSE(w, state, chatChunkWithToolCalls("id", []types.ToolCall{
+		{Index: 0, ID: "call_1", Type: "function", Function: types.FunctionCall{Name: "get_weather"}},
+	}, ""))
+	// tool arguments delta
+	ConvertChatChunkToAnthropicSSE(w, state, chatChunkWithToolCalls("id", []types.ToolCall{
+		{Index: 0, Function: types.FunctionCall{Arguments: `{"location":"SF"}`}},
+	}, ""))
+	// finish
+	ConvertChatChunkToAnthropicSSE(w, state, chatChunkJSON("id", "", "", "tool_calls"))
+	// usage
+	ConvertChatChunkToAnthropicSSE(w, state, chatChunkWithUsage("id", 100, 50))
+
+	events := w.eventTypes()
+	assert.Contains(t, events, "message_start")
+	assert.Contains(t, events, "content_block_start")
+	assert.Contains(t, events, "content_block_delta")
+	assert.Contains(t, events, "content_block_stop")
+	assert.Contains(t, events, "message_delta")
+	assert.Contains(t, events, "message_stop")
+
+	// Find the tool_use content_block_start
+	var toolStartEvent *sseEvent
+	for i := range w.events {
+		if w.events[i].eventType == "content_block_start" {
+			data, _ := w.events[i].data.(map[string]any)
+			block, _ := data["content_block"].(map[string]any)
+			if block != nil && block["type"] == "tool_use" {
+				toolStartEvent = &w.events[i]
+				break
+			}
+		}
+	}
+	require.NotNil(t, toolStartEvent, "should have tool_use content_block_start")
+	data, _ := toolStartEvent.data.(map[string]any)
+	block, _ := data["content_block"].(map[string]any)
+	assert.Equal(t, "call_1", block["id"])
+	assert.Equal(t, "get_weather", block["name"])
+
+	// Find input_json_delta
+	var jsonDeltaEvent *sseEvent
+	for i := range w.events {
+		if w.events[i].eventType == "content_block_delta" {
+			evData, _ := w.events[i].data.(map[string]any)
+			delta, _ := evData["delta"].(map[string]any)
+			if delta != nil && delta["type"] == "input_json_delta" {
+				jsonDeltaEvent = &w.events[i]
+				break
+			}
+		}
+	}
+	require.NotNil(t, jsonDeltaEvent, "should have input_json_delta")
+	evData, _ := jsonDeltaEvent.data.(map[string]any)
+	delta, _ := evData["delta"].(map[string]any)
+	assert.Equal(t, `{"location":"SF"}`, delta["partial_json"])
+
+	// Stop reason should be tool_use
+	var deltaEvent *sseEvent
+	for i := range w.events {
+		if w.events[i].eventType == "message_delta" {
+			deltaEvent = &w.events[i]
+			break
+		}
+	}
+	require.NotNil(t, deltaEvent)
+	deltaData, _ := deltaEvent.data.(map[string]any)
+	deltaMap, _ := deltaData["delta"].(map[string]any)
+	assert.Equal(t, "tool_use", deltaMap["stop_reason"])
+}
+
+func TestConvertChatChunkToAnthropicSSE_ToolCallsOnlyNoText(t *testing.T) {
+	w := &mockSSEWriter{}
+	state := &AnthropicStreamState{}
+
+	// Tool call arrives without prior text
+	ConvertChatChunkToAnthropicSSE(w, state, chatChunkWithToolCalls("id", []types.ToolCall{
+		{Index: 0, ID: "call_1", Type: "function", Function: types.FunctionCall{Name: "calc"}},
+	}, ""))
+
+	assert.True(t, state.ContentSent)
+	require.NotNil(t, state.ToolBlocks)
+	assert.Len(t, state.ToolBlocks, 1)
+
+	events := w.eventTypes()
+	assert.Contains(t, events, "message_start")
+	assert.Contains(t, events, "content_block_start")
+	// text block should have been opened and closed
+	assert.Contains(t, events, "content_block_stop")
+}
+
+func TestConvertChatChunkToAnthropicSSE_MultipleToolCalls(t *testing.T) {
+	w := &mockSSEWriter{}
+	state := &AnthropicStreamState{}
+
+	// Start stream
+	ConvertChatChunkToAnthropicSSE(w, state, chatChunkJSON("id", "assistant", "", ""))
+	// First tool call
+	ConvertChatChunkToAnthropicSSE(w, state, chatChunkWithToolCalls("id", []types.ToolCall{
+		{Index: 0, ID: "call_1", Type: "function", Function: types.FunctionCall{Name: "get_weather"}},
+	}, ""))
+	// Second tool call
+	ConvertChatChunkToAnthropicSSE(w, state, chatChunkWithToolCalls("id", []types.ToolCall{
+		{Index: 1, ID: "call_2", Type: "function", Function: types.FunctionCall{Name: "get_time"}},
+	}, ""))
+	// Arguments for both
+	ConvertChatChunkToAnthropicSSE(w, state, chatChunkWithToolCalls("id", []types.ToolCall{
+		{Index: 0, Function: types.FunctionCall{Arguments: `{"loc":"SF"}`}},
+		{Index: 1, Function: types.FunctionCall{Arguments: `{"tz":"PST"}`}},
+	}, ""))
+	// Finish + usage
+	ConvertChatChunkToAnthropicSSE(w, state, chatChunkJSON("id", "", "", "tool_calls"))
+	ConvertChatChunkToAnthropicSSE(w, state, chatChunkWithUsage("id", 50, 20))
+
+	// Count tool_use content_block_start events
+	toolStartCount := 0
+	for _, e := range w.events {
+		if e.eventType == "content_block_start" {
+			data, _ := e.data.(map[string]any)
+			block, _ := data["content_block"].(map[string]any)
+			if block != nil && block["type"] == "tool_use" {
+				toolStartCount++
+			}
+		}
+	}
+	assert.Equal(t, 2, toolStartCount)
+
+	// Both tool blocks should be closed
+	for _, tbs := range state.ToolBlocks {
+		assert.True(t, tbs.Stopped)
+	}
+}
+
+func TestConvertChatChunkToAnthropicSSE_ToolCallsFinishReason(t *testing.T) {
+	tests := []struct {
+		name         string
+		finishReason string
+		expected     string
+	}{
+		{"tool_calls → tool_use", "tool_calls", "tool_use"},
+		{"stop → end_turn", "stop", "end_turn"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			w := &mockSSEWriter{}
+			state := &AnthropicStreamState{}
+
+			ConvertChatChunkToAnthropicSSE(w, state, chatChunkWithToolCalls("id", []types.ToolCall{
+				{Index: 0, ID: "call_1", Type: "function", Function: types.FunctionCall{Name: "test"}},
+			}, ""))
+			ConvertChatChunkToAnthropicSSE(w, state, chatChunkJSON("id", "", "", tt.finishReason))
+			ConvertChatChunkToAnthropicSSE(w, state, chatChunkWithUsage("id", 10, 5))
+
+			var deltaEvent *sseEvent
+			for i := range w.events {
+				if w.events[i].eventType == "message_delta" {
+					deltaEvent = &w.events[i]
+					break
+				}
+			}
+			require.NotNil(t, deltaEvent)
+			dataMap, _ := deltaEvent.data.(map[string]any)
+			delta, _ := dataMap["delta"].(map[string]any)
+			assert.Equal(t, tt.expected, delta["stop_reason"])
+		})
+	}
 }

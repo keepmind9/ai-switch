@@ -19,6 +19,16 @@ type AnthropicToChatState struct {
 	InputTokens  int
 	OutputTokens int
 	Started      bool
+
+	// Tool use tracking: Anthropic block index → tool block info
+	ToolBlocks      map[int]*anthropicToolBlock
+	ToolCallCounter int
+}
+
+type anthropicToolBlock struct {
+	ChatIndex int
+	ID        string
+	Name      string
 }
 
 // ChatStreamUsage returns token usage for the final Chat SSE usage chunk.
@@ -69,11 +79,92 @@ func ConvertAnthropicLineToChat(state *AnthropicToChatState, line string) any {
 			},
 		}
 
+	case "content_block_start":
+		block, _ := raw["content_block"].(map[string]any)
+		if block == nil {
+			return nil
+		}
+		blockType, _ := block["type"].(string)
+		blockIdx := int(toFloat64(raw["index"]))
+
+		if blockType == "tool_use" {
+			if state.ToolBlocks == nil {
+				state.ToolBlocks = make(map[int]*anthropicToolBlock)
+			}
+			id, _ := block["id"].(string)
+			name, _ := block["name"].(string)
+			chatIdx := state.ToolCallCounter
+			state.ToolCallCounter++
+
+			state.ToolBlocks[blockIdx] = &anthropicToolBlock{
+				ChatIndex: chatIdx,
+				ID:        id,
+				Name:      name,
+			}
+
+			return &types.ChatStreamResponse{
+				ID:      state.ID,
+				Object:  "chat.completion.chunk",
+				Created: state.Created,
+				Model:   state.Model,
+				Choices: []types.StreamChoice{
+					{
+						Index: 0,
+						Delta: types.ChatMessage{
+							ToolCalls: []types.ToolCall{
+								{
+									Index:    chatIdx,
+									ID:       id,
+									Type:     "function",
+									Function: types.FunctionCall{Name: name},
+								},
+							},
+						},
+						FinishReason: "",
+					},
+				},
+			}
+		}
+		return nil
+
 	case "content_block_delta":
 		delta, _ := raw["delta"].(map[string]any)
 		if delta == nil {
 			return nil
 		}
+		deltaType, _ := delta["type"].(string)
+
+		if deltaType == "input_json_delta" {
+			blockIdx := int(toFloat64(raw["index"]))
+			partialJSON, _ := delta["partial_json"].(string)
+			tb := state.ToolBlocks[blockIdx]
+			if tb == nil {
+				return nil
+			}
+
+			return &types.ChatStreamResponse{
+				ID:      state.ID,
+				Object:  "chat.completion.chunk",
+				Created: state.Created,
+				Model:   state.Model,
+				Choices: []types.StreamChoice{
+					{
+						Index: 0,
+						Delta: types.ChatMessage{
+							ToolCalls: []types.ToolCall{
+								{
+									Index:    tb.ChatIndex,
+									Function: types.FunctionCall{Arguments: partialJSON},
+								},
+							},
+						},
+						FinishReason: "",
+					},
+				},
+			}
+		}
+
+		// text delta
 		text, _ := delta["text"].(string)
 		if text == "" {
 			return nil

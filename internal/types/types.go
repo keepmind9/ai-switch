@@ -55,6 +55,8 @@ type ChatRequest struct {
 	Stream        bool           `json:"stream,omitempty"`
 	StreamOptions *StreamOptions `json:"stream_options,omitempty"`
 	N             int            `json:"n,omitempty"`
+	Tools         []Tool         `json:"tools,omitempty"`
+	ToolChoice    any            `json:"tool_choice,omitempty"`
 }
 
 type StreamOptions struct {
@@ -62,8 +64,10 @@ type StreamOptions struct {
 }
 
 type ChatMessage struct {
-	Role    string `json:"role,omitempty"`
-	Content string `json:"content,omitempty"`
+	Role       string     `json:"role,omitempty"`
+	Content    string     `json:"content,omitempty"`
+	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
+	ToolCallID string     `json:"tool_call_id,omitempty"`
 }
 
 type ChatResponse struct {
@@ -102,4 +106,29 @@ type ChatStreamResponse struct {
 	Model   string         `json:"model"`
 	Choices []StreamChoice `json:"choices"`
 	Usage   *ChatUsage     `json:"usage,omitempty"`
+}
+
+// Tool types for Chat Completions API
+
+type Tool struct {
+	Type     string      `json:"type"`
+	Function FunctionDef `json:"function"`
+}
+
+type FunctionDef struct {
+	Name        string         `json:"name"`
+	Description string         `json:"description,omitempty"`
+	Parameters  map[string]any `json:"parameters,omitempty"`
+}
+
+type ToolCall struct {
+	Index    int          `json:"index,omitempty"`
+	ID       string       `json:"id,omitempty"`
+	Type     string       `json:"type,omitempty"`
+	Function FunctionCall `json:"function,omitempty"`
+}
+
+type FunctionCall struct {
+	Name      string `json:"name,omitempty"`
+	Arguments string `json:"arguments,omitempty"`
 }
