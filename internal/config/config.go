@@ -15,6 +15,7 @@ const (
 	DataDirName             = ".ai-switch"
 	UsageDBName             = "usage.db"
 	ConfigFile              = "config.yaml"
+	PidFileName             = "ai-switch.pid"
 	DefaultLogRetentionDays = 30
 )
 

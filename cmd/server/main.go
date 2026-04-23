@@ -6,9 +6,11 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -25,17 +27,18 @@ import (
 
 var (
 	configPath string
+	asDaemon   bool
 	version    = "dev"
 	gitCommit  = "none"
 	buildTime  = "unknown"
 )
 
 var versionTmpl = `Version:    %s
-Git commit: %s
-Built:      %s
-Go version: %s
-OS/Arch:    %s/%s
-`
+	Git commit: %s
+	Built:      %s
+	Go version: %s
+	OS/Arch:    %s/%s
+	`
 
 func main() {
 	rootCmd := &cobra.Command{
@@ -48,6 +51,13 @@ func main() {
 		Use:   "serve",
 		Short: "Start the gateway server",
 		Run:   runServe,
+	}
+	serveCmd.Flags().BoolVarP(&asDaemon, "daemon", "d", false, "run as background daemon")
+
+	stopCmd := &cobra.Command{
+		Use:   "stop",
+		Short: "Stop the background daemon",
+		Run:   runStop,
 	}
 
 	checkCmd := &cobra.Command{
@@ -64,7 +74,7 @@ func main() {
 		},
 	}
 
-	rootCmd.AddCommand(serveCmd, checkCmd, versionCmd)
+	rootCmd.AddCommand(serveCmd, stopCmd, checkCmd, versionCmd)
 
 	// Default to serve when no subcommand is given
 	if len(os.Args) == 1 || (len(os.Args) > 1 && os.Args[1][0] == '-') {
@@ -78,6 +88,11 @@ func main() {
 }
 
 func runServe(_ *cobra.Command, _ []string) {
+	if asDaemon {
+		startDaemon()
+		return
+	}
+
 	dataDir, err := config.EnsureDataDir()
 	if err != nil {
 		slog.Warn("failed to create data directory", "error", err)
@@ -139,6 +154,10 @@ func runServe(_ *cobra.Command, _ []string) {
 		Handler: r,
 	}
 
+	// Write PID file
+	writePIDFile(dataDir)
+	defer removePIDFile(dataDir)
+
 	go func() {
 		slog.Info("starting server", "addr", addr, "config", resolvedPath, "data_dir", dataDir)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -157,8 +176,7 @@ func runServe(_ *cobra.Command, _ []string) {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
-	sighup := make(chan os.Signal, 1)
-	signal.Notify(sighup, syscall.SIGHUP)
+	sighup := setupReloadSignal()
 
 	for {
 		select {
@@ -184,6 +202,121 @@ func runServe(_ *cobra.Command, _ []string) {
 			}
 		}
 	}
+}
+
+func startDaemon() {
+	dataDir, err := config.EnsureDataDir()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to create data directory: %s\n", err)
+		os.Exit(1)
+	}
+
+	pidPath := filepath.Join(dataDir, config.PidFileName)
+	if pidData, err := os.ReadFile(pidPath); err == nil {
+		if pid, err := strconv.Atoi(strings.TrimSpace(string(pidData))); err == nil {
+			if proc, err := os.FindProcess(pid); err == nil {
+				if proc.Signal(syscall.Signal(0)) == nil {
+					fmt.Fprintf(os.Stderr, "ai-switch is already running (PID %d)\n", pid)
+					os.Exit(1)
+				}
+			}
+		}
+	}
+
+	resolvedPath, _ := config.DefaultConfigPath(configPath)
+
+	execPath, err := os.Executable()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to get executable path: %s\n", err)
+		os.Exit(1)
+	}
+
+	// Build args without -d/--daemon
+	args := []string{"serve"}
+	for i := 1; i < len(os.Args); i++ {
+		switch os.Args[i] {
+		case "-d", "--daemon":
+			// skip
+		case "-c":
+			args = append(args, "-c", os.Args[i+1])
+			i++
+		case "--config":
+			args = append(args, "--config", os.Args[i+1])
+			i++
+		default:
+			args = append(args, os.Args[i])
+		}
+	}
+
+	cmd := exec.Command(execPath, args...)
+	cmd.Stdout = nil
+	cmd.Stderr = nil
+	cmd.Stdin = nil
+
+	setDaemonSysProcAttr(cmd)
+
+	if err := cmd.Start(); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to start daemon: %s\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Println("  _   _  _     ___  _       _")
+	fmt.Println(" / \\ | || |   / __|| |_    / |")
+	fmt.Println("/  |_ | || |__ \\__ \\| ' \\  | |")
+	fmt.Println("\\__/ |_||____||___/|_||_| |_|")
+	fmt.Println()
+	fmt.Printf("  ai-switch started (PID %d)\n", cmd.Process.Pid)
+	fmt.Printf("  Config:  %s\n", resolvedPath)
+	fmt.Printf("  Data:    %s\n", dataDir)
+	fmt.Printf("  Logs:    %s\n", log.LogDir(dataDir))
+	fmt.Println()
+	fmt.Println("  Use 'ai-switch stop' to stop the daemon.")
+}
+
+func runStop(_ *cobra.Command, _ []string) {
+	dataDir, err := config.DataDir()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to get data directory: %s\n", err)
+		os.Exit(1)
+	}
+
+	pidPath := filepath.Join(dataDir, config.PidFileName)
+	pidData, err := os.ReadFile(pidPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ai-switch is not running (PID file not found)\n")
+		os.Exit(1)
+	}
+
+	pid, err := strconv.Atoi(strings.TrimSpace(string(pidData)))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "invalid PID file content\n")
+		os.Exit(1)
+	}
+
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to find process %d: %s\n", pid, err)
+		os.Exit(1)
+	}
+
+	if err := proc.Signal(syscall.SIGTERM); err != nil {
+		// Process may have exited, clean up stale PID file
+		removePIDFile(dataDir)
+		fmt.Fprintf(os.Stderr, "process %d not found, cleaned up stale PID file\n", pid)
+		os.Exit(1)
+	}
+
+	fmt.Printf("ai-switch stopped (PID %d)\n", pid)
+}
+
+func writePIDFile(dataDir string) {
+	pidPath := filepath.Join(dataDir, config.PidFileName)
+	_ = os.WriteFile(pidPath, []byte(strconv.Itoa(os.Getpid())), 0644)
+}
+
+func removePIDFile(dataDir string) {
+	pidPath := filepath.Join(dataDir, config.PidFileName)
+	_ = os.Remove(pidPath)
 }
 
 func runCheck(_ *cobra.Command, _ []string) {
