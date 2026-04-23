@@ -31,26 +31,23 @@ var (
 	version    = "dev"
 	gitCommit  = "none"
 	buildTime  = "unknown"
+	rootCmd    = &cobra.Command{Use: "ai-switch", Short: "AI provider switching proxy"}
 )
 
 var versionTmpl = `Version:    %s
-	Git commit: %s
-	Built:      %s
-	Go version: %s
-	OS/Arch:    %s/%s
-	`
+Git commit: %s
+Built:      %s
+Go version: %s
+OS/Arch:    %s/%s
+`
 
 func main() {
-	rootCmd := &cobra.Command{
-		Use:   "ai-switch",
-		Short: "AI provider switching proxy",
-	}
 	rootCmd.PersistentFlags().StringVarP(&configPath, "config", "c", "", "path to config file")
 
 	serveCmd := &cobra.Command{
 		Use:   "serve",
-		Short: "Start the gateway server",
-		Run:   runServe,
+		Short: "Start the ai-switch proxy server",
+		RunE:  runServe,
 	}
 	serveCmd.Flags().BoolVarP(&asDaemon, "daemon", "d", false, "run as background daemon")
 
@@ -76,21 +73,15 @@ func main() {
 
 	rootCmd.AddCommand(serveCmd, stopCmd, checkCmd, versionCmd)
 
-	// Default to serve when no subcommand is given
-	if len(os.Args) == 1 || (len(os.Args) > 1 && os.Args[1][0] == '-') {
-		args := append([]string{"serve"}, os.Args[1:]...)
-		rootCmd.SetArgs(args)
-	}
-
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}
 }
 
-func runServe(_ *cobra.Command, _ []string) {
+func runServe(_ *cobra.Command, _ []string) error {
 	if asDaemon {
 		startDaemon()
-		return
+		return nil
 	}
 
 	dataDir, err := config.EnsureDataDir()
@@ -191,7 +182,7 @@ func runServe(_ *cobra.Command, _ []string) {
 				slog.Error("forced shutdown", "error", err)
 			}
 			slog.Info("server exited")
-			return
+			return nil
 
 		case <-sighup:
 			slog.Info("reloading config via SIGHUP")
@@ -241,23 +232,14 @@ func startDaemon() {
 		os.Exit(1)
 	}
 
-	// Build args without -d/--daemon
+	// Strip -d/--daemon from args, prepend "serve"
 	args := []string{"serve"}
 	for i := 1; i < len(os.Args); i++ {
-		switch os.Args[i] {
-		case "-d", "--daemon":
-			// skip
-		case "-c":
-			args = append(args, "-c", os.Args[i+1])
-			i++
-		case "--config":
-			args = append(args, "--config", os.Args[i+1])
-			i++
-		default:
-			args = append(args, os.Args[i])
+		if os.Args[i] == "-d" || os.Args[i] == "--daemon" {
+			continue
 		}
+		args = append(args, os.Args[i])
 	}
-
 	cmd := exec.Command(execPath, args...)
 	cmd.Stdout = nil
 	cmd.Stderr = nil
