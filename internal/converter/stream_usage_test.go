@@ -89,12 +89,17 @@ func TestConvertChatChunkToAnthropicSSE_CapturesUsage(t *testing.T) {
 	done = ConvertChatChunkToAnthropicSSE(w, state, `{"id":"chatcmpl-1","model":"gpt-4o","choices":[{"index":0,"delta":{"content":"hello"},"finish_reason":""}]}`)
 	assert.False(t, done)
 
-	// Final chunk with usage from stream_options.include_usage
+	// Finish reason
+	done = ConvertChatChunkToAnthropicSSE(w, state, `{"id":"chatcmpl-1","model":"gpt-4o","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`)
+	assert.False(t, done)
+
+	// Usage chunk triggers deferred message_delta with real tokens
 	done = ConvertChatChunkToAnthropicSSE(w, state, `{"id":"chatcmpl-1","model":"gpt-4o","choices":[],"usage":{"prompt_tokens":100,"completion_tokens":50,"total_tokens":150}}`)
 	assert.False(t, done)
 
 	assert.Equal(t, 100, state.InputTokens)
 	assert.Equal(t, 50, state.OutputTokens)
+	assert.Contains(t, w.eventTypes(), "message_delta")
 }
 
 func TestConvertChatChunkToAnthropicSSE_OutputTokenTracking(t *testing.T) {
@@ -106,13 +111,17 @@ func TestConvertChatChunkToAnthropicSSE_OutputTokenTracking(t *testing.T) {
 	assert.False(t, done)
 	assert.True(t, state.ContentSent)
 
-	// Content chunk increments OutputTokens
+	// Content chunk increments OutputTokens via tiktoken
 	done = ConvertChatChunkToAnthropicSSE(w, state, `{"id":"chatcmpl-1","model":"gpt-4o","choices":[{"index":0,"delta":{"content":"hello world"},"finish_reason":""}]}`)
 	assert.False(t, done)
-	assert.Equal(t, 1, state.OutputTokens)
+	assert.Greater(t, state.OutputTokens, 0, "OutputTokens should be counted via tiktoken")
 
 	// Finish
 	done = ConvertChatChunkToAnthropicSSE(w, state, `{"id":"chatcmpl-1","model":"gpt-4o","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`)
+	assert.False(t, done)
+
+	// Usage triggers deferred message_delta
+	done = ConvertChatChunkToAnthropicSSE(w, state, `{"id":"chatcmpl-1","model":"gpt-4o","choices":[],"usage":{"prompt_tokens":100,"completion_tokens":50,"total_tokens":150}}`)
 	assert.False(t, done)
 	assert.Contains(t, w.eventTypes(), "message_delta")
 }

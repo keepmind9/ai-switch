@@ -49,6 +49,18 @@ func chatChunkJSON(id string, role, content, finishReason string) string {
 	return string(data)
 }
 
+func chatChunkWithUsage(id string, promptTokens, completionTokens int) string {
+	chunk := types.ChatStreamResponse{
+		ID:      id,
+		Object:  "chat.completion.chunk",
+		Created: 1234567890,
+		Model:   "test-model",
+		Usage:   &types.ChatUsage{PromptTokens: promptTokens, CompletionTokens: completionTokens, TotalTokens: promptTokens + completionTokens},
+	}
+	data, _ := json.Marshal(chunk)
+	return string(data)
+}
+
 // --- Chat → Responses SSE ---
 
 func TestConvertChatChunkToResponsesSSE_FullStream(t *testing.T) {
@@ -122,9 +134,7 @@ func TestConvertChatChunkToResponsesSSE_SingleChunkWithFinish(t *testing.T) {
 
 func TestConvertChatChunkToAnthropicSSE_FullStream(t *testing.T) {
 	w := &mockSSEWriter{}
-	state := &AnthropicStreamState{
-		InputTokens: 25,
-	}
+	state := &AnthropicStreamState{}
 
 	// Chunk 1: role announcement
 	done := ConvertChatChunkToAnthropicSSE(w, state, chatChunkJSON("chatcmpl-a", "assistant", "", ""))
@@ -143,6 +153,10 @@ func TestConvertChatChunkToAnthropicSSE_FullStream(t *testing.T) {
 	// Chunk 4: finish
 	done = ConvertChatChunkToAnthropicSSE(w, state, chatChunkJSON("chatcmpl-a", "", "", "stop"))
 	assert.False(t, done)
+
+	// Chunk 5: usage — triggers deferred message_delta
+	done = ConvertChatChunkToAnthropicSSE(w, state, chatChunkWithUsage("chatcmpl-a", 25, 2))
+	assert.False(t, done)
 	assert.Contains(t, w.eventTypes(), "content_block_stop")
 	assert.Contains(t, w.eventTypes(), "message_delta")
 
@@ -156,7 +170,7 @@ func TestConvertChatChunkToAnthropicSSE_FullStream(t *testing.T) {
 
 func TestConvertChatChunkToAnthropicSSE_ContentWithoutRole(t *testing.T) {
 	w := &mockSSEWriter{}
-	state := &AnthropicStreamState{InputTokens: 10}
+	state := &AnthropicStreamState{}
 
 	// Content arrives without explicit role chunk
 	done := ConvertChatChunkToAnthropicSSE(w, state, chatChunkJSON("id-x", "", "Direct content", ""))
@@ -186,6 +200,7 @@ func TestConvertChatChunkToAnthropicSSE_FinishReasonMapping(t *testing.T) {
 			ConvertChatChunkToAnthropicSSE(w, state, chatChunkJSON("id", "assistant", "", ""))
 			ConvertChatChunkToAnthropicSSE(w, state, chatChunkJSON("id", "", "text", ""))
 			ConvertChatChunkToAnthropicSSE(w, state, chatChunkJSON("id", "", "", tt.finishReason))
+			ConvertChatChunkToAnthropicSSE(w, state, chatChunkWithUsage("id", 10, 5))
 
 			// Find message_delta event
 			var deltaEvent *sseEvent
@@ -259,7 +274,7 @@ func TestFormatSSEEvent(t *testing.T) {
 
 func TestConvertChatChunkToAnthropicSSE_MessageStartStructure(t *testing.T) {
 	w := &mockSSEWriter{}
-	state := &AnthropicStreamState{InputTokens: 50}
+	state := &AnthropicStreamState{}
 
 	ConvertChatChunkToAnthropicSSE(w, state, chatChunkJSON("msg-123", "assistant", "", ""))
 
@@ -275,7 +290,7 @@ func TestConvertChatChunkToAnthropicSSE_MessageStartStructure(t *testing.T) {
 
 	usage, ok := msg["usage"].(map[string]any)
 	require.True(t, ok)
-	assert.Equal(t, 50, usage["input_tokens"])
+	assert.Equal(t, 0, usage["input_tokens"])
 }
 
 func TestConvertChatChunkToAnthropicSSE_ContentBlockDeltaStructure(t *testing.T) {
@@ -301,4 +316,93 @@ func TestConvertChatChunkToAnthropicSSE_ContentBlockDeltaStructure(t *testing.T)
 	require.True(t, ok)
 	assert.Equal(t, "text_delta", delta["type"])
 	assert.Equal(t, "delta text", delta["text"])
+}
+
+func TestConvertChatChunkToAnthropicSSE_DeferredDeltaWithUsage(t *testing.T) {
+	w := &mockSSEWriter{}
+	state := &AnthropicStreamState{}
+
+	ConvertChatChunkToAnthropicSSE(w, state, chatChunkJSON("id", "assistant", "", ""))
+	ConvertChatChunkToAnthropicSSE(w, state, chatChunkJSON("id", "", "Hello", ""))
+	ConvertChatChunkToAnthropicSSE(w, state, chatChunkJSON("id", "", "", "stop"))
+
+	// finish_reason should emit content_block_stop but NOT message_delta yet
+	assert.Contains(t, w.eventTypes(), "content_block_stop")
+	assert.NotContains(t, w.eventTypes(), "message_delta")
+
+	// Usage chunk triggers message_delta with real tokens
+	ConvertChatChunkToAnthropicSSE(w, state, chatChunkWithUsage("id", 1500, 42))
+	assert.Contains(t, w.eventTypes(), "message_delta")
+	assert.Contains(t, w.eventTypes(), "message_stop")
+
+	// Verify usage in message_delta
+	var deltaEvent *sseEvent
+	for i := range w.events {
+		if w.events[i].eventType == "message_delta" {
+			deltaEvent = &w.events[i]
+			break
+		}
+	}
+	require.NotNil(t, deltaEvent)
+	dataMap, ok := deltaEvent.data.(map[string]any)
+	require.True(t, ok)
+	delta, ok := dataMap["delta"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "end_turn", delta["stop_reason"])
+	usage, ok := dataMap["usage"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, 1500, usage["input_tokens"], "message_delta should include real input_tokens from upstream")
+	assert.Equal(t, 42, usage["output_tokens"])
+
+	// [DONE] should not emit duplicate events
+	ConvertChatChunkToAnthropicSSE(w, state, "[DONE]")
+	deltaCount := 0
+	for _, e := range w.events {
+		if e.eventType == "message_delta" {
+			deltaCount++
+		}
+	}
+	assert.Equal(t, 1, deltaCount, "message_delta should only be emitted once")
+}
+
+func TestConvertChatChunkToAnthropicSSE_DeferredDeltaFallbackOnDone(t *testing.T) {
+	w := &mockSSEWriter{}
+	state := &AnthropicStreamState{}
+
+	ConvertChatChunkToAnthropicSSE(w, state, chatChunkJSON("id", "assistant", "", ""))
+	ConvertChatChunkToAnthropicSSE(w, state, chatChunkJSON("id", "", "text", ""))
+	ConvertChatChunkToAnthropicSSE(w, state, chatChunkJSON("id", "", "", "stop"))
+
+	// No usage chunk — [DONE] triggers fallback
+	assert.NotContains(t, w.eventTypes(), "message_delta")
+	done := ConvertChatChunkToAnthropicSSE(w, state, "[DONE]")
+	assert.True(t, done)
+	assert.Contains(t, w.eventTypes(), "message_delta")
+	assert.Contains(t, w.eventTypes(), "message_stop")
+}
+
+func TestConvertChatChunkToAnthropicSSE_MessageStartHasCacheFields(t *testing.T) {
+	w := &mockSSEWriter{}
+	state := &AnthropicStreamState{}
+
+	// Content without role triggers fallback message_start
+	ConvertChatChunkToAnthropicSSE(w, state, chatChunkJSON("id", "", "direct", ""))
+
+	var startEvent *sseEvent
+	for i := range w.events {
+		if w.events[i].eventType == "message_start" {
+			startEvent = &w.events[i]
+			break
+		}
+	}
+	require.NotNil(t, startEvent)
+
+	data, ok := startEvent.data.(map[string]any)
+	require.True(t, ok)
+	msg, ok := data["message"].(map[string]any)
+	require.True(t, ok)
+	usage, ok := msg["usage"].(map[string]any)
+	require.True(t, ok)
+	assert.Contains(t, usage, "cache_creation_input_tokens")
+	assert.Contains(t, usage, "cache_read_input_tokens")
 }

@@ -38,6 +38,8 @@ type AnthropicStreamState struct {
 	OutputTokens int
 	ThinkTag     string
 	TagState     ThinkTagState
+	FinishReason string
+	DeltaSent    bool
 }
 
 func (s *AnthropicStreamState) nextBlockIndex() int {

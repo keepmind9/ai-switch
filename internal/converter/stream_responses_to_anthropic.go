@@ -19,7 +19,9 @@ type ResponsesToAnthropicState struct {
 func ConvertResponsesEventToAnthropicSSE(w SSEWriter, state *ResponsesToAnthropicState, data string) bool {
 	if data == "[DONE]" {
 		if state.ContentSent {
-			emitAnthropicMessageStop(w, &AnthropicStreamState{})
+			w.WriteEvent("message_stop", map[string]any{
+				"type": "message_stop",
+			})
 		}
 		return true
 	}
@@ -109,7 +111,9 @@ func ConvertResponsesEventToAnthropicSSE(w SSEWriter, state *ResponsesToAnthropi
 				},
 			})
 
-			emitAnthropicMessageStop(w, &AnthropicStreamState{})
+			w.WriteEvent("message_stop", map[string]any{
+				"type": "message_stop",
+			})
 		}
 		return true
 

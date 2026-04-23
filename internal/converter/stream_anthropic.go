@@ -2,17 +2,20 @@ package converter
 
 import (
 	"encoding/json"
+	"log/slog"
 
 	"github.com/keepmind9/ai-switch/internal/types"
 )
 
 // ConvertChatChunkToAnthropicSSE processes a single Chat SSE data line and emits
 // corresponding Anthropic Messages SSE events. Returns true when stream is done.
+//
+// message_start uses input_tokens: 0 as placeholder.
+// message_delta is deferred until upstream usage arrives (or [DONE] as fallback),
+// and includes both input_tokens and output_tokens from real upstream data.
 func ConvertChatChunkToAnthropicSSE(w SSEWriter, state *AnthropicStreamState, data string) bool {
 	if data == "[DONE]" {
-		if state.ContentSent {
-			emitAnthropicMessageStop(w, state)
-		}
+		emitAnthropicFinalEvents(w, state)
 		return true
 	}
 
@@ -38,7 +41,7 @@ func ConvertChatChunkToAnthropicSSE(w SSEWriter, state *AnthropicStreamState, da
 					"model":       chunk.Model,
 					"stop_reason": nil,
 					"usage": map[string]any{
-						"input_tokens":                state.InputTokens,
+						"input_tokens":                0,
 						"output_tokens":               0,
 						"cache_creation_input_tokens": 0,
 						"cache_read_input_tokens":     0,
@@ -46,7 +49,6 @@ func ConvertChatChunkToAnthropicSSE(w SSEWriter, state *AnthropicStreamState, da
 				},
 			})
 
-			// Emit content_block_start for first text block
 			w.WriteEvent("content_block_start", map[string]any{
 				"type":  "content_block_start",
 				"index": state.nextBlockIndex(),
@@ -79,8 +81,10 @@ func ConvertChatChunkToAnthropicSSE(w SSEWriter, state *AnthropicStreamState, da
 						"model":       chunk.Model,
 						"stop_reason": nil,
 						"usage": map[string]any{
-							"input_tokens":  state.InputTokens,
-							"output_tokens": 0,
+							"input_tokens":                0,
+							"output_tokens":               0,
+							"cache_creation_input_tokens": 0,
+							"cache_read_input_tokens":     0,
 						},
 					},
 				})
@@ -108,44 +112,57 @@ func ConvertChatChunkToAnthropicSSE(w SSEWriter, state *AnthropicStreamState, da
 			})
 		}
 
-		// Finish reason
+		// Finish reason: only emit content_block_stop, defer message_delta
 		if choice.FinishReason != "" && choice.FinishReason != "null" {
-			emitAnthropicStop(w, state, choice.FinishReason)
+			state.FinishReason = chatStopToAnthropic(choice.FinishReason)
+
+			w.WriteEvent("content_block_stop", map[string]any{
+				"type":  "content_block_stop",
+				"index": 0,
+			})
 		}
 	}
 
-	// Capture usage from final chunk (when upstream sends stream_options.include_usage)
+	// Usage chunk arrives after finish_reason: emit deferred message_delta + message_stop
 	if chunk.Usage != nil {
 		state.InputTokens = chunk.Usage.PromptTokens
 		state.OutputTokens = chunk.Usage.CompletionTokens
+		slog.Debug("anthropic stream: upstream usage",
+			"prompt_tokens", chunk.Usage.PromptTokens,
+			"completion_tokens", chunk.Usage.CompletionTokens,
+		)
+		emitAnthropicDeltaAndStop(w, state)
 	}
 
 	return false
 }
 
-func emitAnthropicStop(w SSEWriter, state *AnthropicStreamState, finishReason string) {
-	stopReason := chatStopToAnthropic(finishReason)
+// emitAnthropicDeltaAndStop emits message_delta (with real token counts) + message_stop.
+func emitAnthropicDeltaAndStop(w SSEWriter, state *AnthropicStreamState) {
+	if state.DeltaSent {
+		return
+	}
+	state.DeltaSent = true
 
-	// content_block_stop
-	w.WriteEvent("content_block_stop", map[string]any{
-		"type":  "content_block_stop",
-		"index": 0,
-	})
-
-	// message_delta with stop_reason
 	w.WriteEvent("message_delta", map[string]any{
 		"type": "message_delta",
 		"delta": map[string]any{
-			"stop_reason": stopReason,
+			"stop_reason": state.FinishReason,
 		},
 		"usage": map[string]any{
+			"input_tokens":  state.InputTokens,
 			"output_tokens": state.OutputTokens,
 		},
 	})
-}
 
-func emitAnthropicMessageStop(w SSEWriter, state *AnthropicStreamState) {
 	w.WriteEvent("message_stop", map[string]any{
 		"type": "message_stop",
 	})
+}
+
+// emitAnthropicFinalEvents handles [DONE]: emit deferred events if not yet sent.
+func emitAnthropicFinalEvents(w SSEWriter, state *AnthropicStreamState) {
+	if state.ContentSent {
+		emitAnthropicDeltaAndStop(w, state)
+	}
 }
