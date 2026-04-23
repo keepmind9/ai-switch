@@ -165,7 +165,7 @@ onMounted(load)
         
         <el-table-column prop="format" :label="$t('providers.table.format')" width="120">
           <template #default="{ row }">
-            <el-tag :type="row.format === 'chat' ? 'primary' : 'warning'" size="small" effect="light" class="capitalize">
+            <el-tag :type="row.format === 'chat' ? 'primary' : 'warning'" size="small" effect="light">
               {{ row.format }}
             </el-tag>
           </template>
