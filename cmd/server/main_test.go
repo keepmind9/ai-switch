@@ -78,6 +78,11 @@ func TestServeDaemonFlagDefaults(t *testing.T) {
 	assert.Equal(t, "d", daemonFlag.Shorthand)
 }
 
+func TestServeCommandHasStartAlias(t *testing.T) {
+	cmd := newServeCmd("")
+	assert.Equal(t, []string{"start"}, cmd.Aliases)
+}
+
 // --- behavioral tests ---
 
 func TestVersionCommandOutput(t *testing.T) {

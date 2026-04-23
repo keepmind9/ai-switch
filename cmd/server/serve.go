@@ -28,8 +28,9 @@ func newServeCmd(configPath string) *cobra.Command {
 	var asDaemon bool
 
 	cmd := &cobra.Command{
-		Use:   "serve",
-		Short: "Start the ai-switch proxy server",
+		Use:     "serve",
+		Aliases: []string{"start"},
+		Short:   "Start the ai-switch proxy server",
 		RunE: func(_ *cobra.Command, _ []string) error {
 			if asDaemon {
 				return startDaemon(configPath)
