@@ -1,0 +1,59 @@
+# E2E CLI Integration Test Configuration
+# Fill in all <FILL> placeholders, then run:
+#   go test ./tests/e2e/ -v -run TestCLI
+# api_key supports ${ENV_VAR} format for environment variable substitution.
+
+server:
+  host: "127.0.0.1"
+  port: 0
+
+default_route: "e2e-minimax-chat"
+
+providers:
+  # ── MiniMax ──
+  minimax-chat:
+    name: "MiniMax (Chat)"
+    base_url: "<FILL>"          # MiniMax OpenAI Chat compatible API URL
+    api_key: "<FILL>"           # MiniMax API key (or ${MINIMAX_API_KEY})
+    format: "chat"
+    models:
+      - "<FILL>"                # e.g. MiniMax-M2.5
+
+  minimax-anthropic:
+    name: "MiniMax (Anthropic)"
+    base_url: "<FILL>"          # MiniMax Anthropic compatible API URL
+    api_key: "<FILL>"           # same key or separate
+    format: "anthropic"
+    models:
+      - "<FILL>"                # supported model
+
+  # ── GLM (Zhipu) ──
+  glm-chat:
+    name: "GLM (Chat)"
+    base_url: "<FILL>"          # GLM OpenAI Chat compatible API URL
+    api_key: "<FILL>"           # GLM API key (or ${GLM_API_KEY})
+    format: "chat"
+    models:
+      - "<FILL>"                # e.g. glm-4.7
+
+  glm-anthropic:
+    name: "GLM (Anthropic)"
+    base_url: "<FILL>"          # GLM Anthropic compatible API URL
+    api_key: "<FILL>"           # same key or separate
+    format: "anthropic"
+    models:
+      - "<FILL>"                # e.g. glm-4.7
+
+routes:
+  "e2e-minimax-chat":
+    provider: "minimax-chat"
+    default_model: "<FILL>"     # e.g. MiniMax-M2.5
+  "e2e-minimax-anthropic":
+    provider: "minimax-anthropic"
+    default_model: "<FILL>"
+  "e2e-glm-chat":
+    provider: "glm-chat"
+    default_model: "<FILL>"     # e.g. glm-4.7
+  "e2e-glm-anthropic":
+    provider: "glm-anthropic"
+    default_model: "<FILL>"

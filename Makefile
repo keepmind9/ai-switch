@@ -1,4 +1,4 @@
-.PHONY: fmt vet lint build run clean test build-ui ui-dev build-all
+.PHONY: fmt vet lint build run clean test test-e2e build-ui ui-dev build-all
 
 fmt:
 	go fmt ./...
@@ -37,6 +37,14 @@ clean:
 test:
 	go test ./...
 
+test-e2e:
+	go test ./tests/e2e/ -v -short
+
+test-e2e-full:
+	go test ./tests/e2e/ -v
+
+test-all: test test-e2e
+
 help:
 	@echo "Usage: make [target]"
 	@echo ""
@@ -51,5 +59,8 @@ help:
 	@echo "  run         Build and run the server"
 	@echo "  dev         Run without building (go run)"
 	@echo "  clean       Remove the binary"
-	@echo "  test        Run tests"
+	@echo "  test        Run unit tests"
+	@echo "  test-e2e    Run E2E protocol tests (no real CLI needed)"
+	@echo "  test-e2e-full  Run all E2E tests including real CLI tests"
+	@echo "  test-all    Run unit + E2E tests"
 	@echo "  help        Show this help"
