@@ -423,6 +423,13 @@ func (h *Handler) streamToChatSSE(c *gin.Context, resp *http.Response, convertFn
 			flusher.Flush()
 		}
 	}
+	// Upstream stream ended without [DONE] sentinel (e.g. Responses format).
+	c.Writer.WriteString("data: [DONE]\n\n")
+	if canFlush {
+		flusher.Flush()
+		c.Writer.WriteString("data: [DONE]\n\n")
+		flusher.Flush()
+	}
 	return buf.String()
 }
 
@@ -1027,10 +1034,10 @@ func (h *Handler) anthropicViaChatToResponses(c *gin.Context, result *router.Rou
 	}
 
 	if isStreaming {
-		state := &converter.ResponsesToChatState{}
-		content := h.streamToChatSSE(c, resp, func(s any, line string) any {
-			return converter.ConvertResponsesLineToChat(s.(*converter.ResponsesToChatState), line)
-		}, state)
+		state := &converter.ResponsesToAnthropicState{}
+		content := h.streamChatToClient(c, resp, func(w converter.SSEWriter, data string) bool {
+			return converter.ConvertResponsesEventToAnthropicSSE(w, state, data)
+		}, "anthropic")
 		h.recordStreamUsageFromState(c, state.Model, state.InputTokens, state.OutputTokens)
 		h.logLLMRequest(model, providerStr, upstreamURL, latency, true, chatBody, content)
 		return
