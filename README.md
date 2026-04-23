@@ -72,7 +72,7 @@ export ANTHROPIC_API_KEY=<route-key>
 [model_providers.proxy]
 name = "ai-switch"
 base_url = "http://localhost:12345/v1"
-api_key = "gw-default"
+api_key = "ais-default"
 wire_api = "responses"
 ```
 
@@ -126,7 +126,7 @@ Routes map API keys to providers and models:
 
 ```yaml
 routes:
-  "gw-default":
+  "ais-default":
     provider: "deepseek"
     default_model: "deepseek-chat"
 ```
@@ -137,7 +137,7 @@ Route Claude Code requests to different models based on what it's doing:
 
 ```yaml
 routes:
-  "gw-claude":
+  "ais-claude":
     provider: "zhipu"
     default_model: "glm-5.1"
     long_context_threshold: 60000
@@ -165,15 +165,25 @@ Priority: `longContext` > `background` > `websearch` > `think` > `image` > `defa
 Control which route is used when a request has no matching API key:
 
 ```yaml
-default_route: "gw-default"              # global fallback
-default_anthropic_route: "gw-zhipu"      # /v1/messages (Claude Code)
-default_responses_route: "gw-default"    # /v1/responses (Codex CLI)
-default_chat_route: "gw-default"         # /v1/chat/completions
+default_route: "ais-default"              # global fallback
+default_anthropic_route: "ais-zhipu"      # /v1/messages (Claude Code)
+default_responses_route: "ais-default"    # /v1/responses (Codex CLI)
+default_chat_route: "ais-default"         # /v1/chat/completions
 ```
 
 **Routing priority:** route key match > protocol-specific default > global `default_route`
 
 All fields are optional. Protocol-specific defaults fall back to `default_route` when not set.
+
+### Log Retention
+
+Control how many days of log files to keep (default: 30):
+
+```yaml
+log_retention_days: 7
+```
+
+Logs are stored in `~/.ai-switch/logs/`.
 
 ### Model Map
 
@@ -181,7 +191,7 @@ Map client model names to upstream models:
 
 ```yaml
 routes:
-  "gw-default":
+  "ais-default":
     provider: "deepseek"
     default_model: "deepseek-chat"
     model_map:
@@ -195,7 +205,7 @@ Use `provider:model` to route to a different provider within the same route:
 
 ```yaml
 routes:
-  "gw-default":
+  "ais-default":
     provider: "minimax"
     default_model: "MiniMax-M2.5"
     scene_map:
@@ -213,8 +223,12 @@ routes:
 ## CLI
 
 ```bash
-ai-switch serve -c config.yaml    # Start the server
+ai-switch serve                   # Start in foreground
+ai-switch serve -d                # Start as background daemon
+ai-switch serve -c config.yaml    # Start with custom config
+ai-switch stop                    # Stop the background daemon
 ai-switch check -c config.yaml    # Validate config without starting
+ai-switch version                 # Print version info
 ```
 
 Running without a subcommand defaults to `serve`:
@@ -232,7 +246,7 @@ Checking config.yaml ...
 
   Providers: 3
   Routes:    3
-  Default:   gw-default
+  Default:   ais-default
 
 ✓ Config is valid.
 ```

@@ -72,7 +72,7 @@ export ANTHROPIC_API_KEY=<route-key>
 [model_providers.proxy]
 name = "ai-switch"
 base_url = "http://localhost:12345/v1"
-api_key = "gw-default"
+api_key = "ais-default"
 wire_api = "responses"
 ```
 
@@ -127,7 +127,7 @@ Route 将 API Key 映射到 Provider 和模型：
 
 ```yaml
 routes:
-  "gw-default":
+  "ais-default":
     provider: "deepseek"
     default_model: "deepseek-chat"
 ```
@@ -138,7 +138,7 @@ routes:
 
 ```yaml
 routes:
-  "gw-claude":
+  "ais-claude":
     provider: "zhipu"
     default_model: "glm-5.1"
     long_context_threshold: 60000
@@ -166,15 +166,25 @@ routes:
 控制请求没有匹配 API Key 时使用哪条路由：
 
 ```yaml
-default_route: "gw-default"              # 全局兜底
-default_anthropic_route: "gw-zhipu"      # /v1/messages（Claude Code）
-default_responses_route: "gw-default"    # /v1/responses（Codex CLI）
-default_chat_route: "gw-default"         # /v1/chat/completions
+default_route: "ais-default"              # 全局兜底
+default_anthropic_route: "ais-zhipu"      # /v1/messages（Claude Code）
+default_responses_route: "ais-default"    # /v1/responses（Codex CLI）
+default_chat_route: "ais-default"         # /v1/chat/completions
 ```
 
 **路由优先级：** route key 匹配 > 协议级默认 > 全局 `default_route`
 
 所有字段均可选。未设置的协议级默认会回退到 `default_route`。
+
+### 日志保留（Log Retention）
+
+控制日志文件保留天数（默认 30 天）：
+
+```yaml
+log_retention_days: 7
+```
+
+日志文件存储在 `~/.ai-switch/logs/`。
 
 ### 模型映射（Model Map）
 
@@ -182,7 +192,7 @@ default_chat_route: "gw-default"         # /v1/chat/completions
 
 ```yaml
 routes:
-  "gw-default":
+  "ais-default":
     provider: "deepseek"
     default_model: "deepseek-chat"
     model_map:
@@ -196,7 +206,7 @@ routes:
 
 ```yaml
 routes:
-  "gw-default":
+  "ais-default":
     provider: "minimax"
     default_model: "MiniMax-M2.5"
     scene_map:
@@ -214,7 +224,10 @@ routes:
 ## CLI 命令
 
 ```bash
-ai-switch serve -c config.yaml    # 启动服务
+ai-switch serve                   # 前台启动
+ai-switch serve -d                # 后台守护进程启动
+ai-switch serve -c config.yaml    # 指定配置文件启动
+ai-switch stop                    # 停止后台守护进程
 ai-switch check -c config.yaml    # 校验配置文件
 ai-switch version                 # 查看版本信息
 ```
@@ -234,7 +247,7 @@ Checking config.yaml ...
 
   Providers: 3
   Routes:    3
-  Default:   gw-default
+  Default:   ais-default
 
 ✓ Config is valid.
 ```

@@ -225,6 +225,16 @@ func startDaemon() {
 
 	resolvedPath, _ := config.DefaultConfigPath(configPath)
 
+	// Load config to get server address for display
+	displayAddr := "http://localhost:12345"
+	if cfg, err := config.Load(resolvedPath); err == nil {
+		host := cfg.Server.Host
+		if host == "0.0.0.0" {
+			host = "localhost"
+		}
+		displayAddr = fmt.Sprintf("http://%s:%d", host, cfg.Server.Port)
+	}
+
 	execPath, err := os.Executable()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to get executable path: %s\n", err)
@@ -266,9 +276,10 @@ func startDaemon() {
 	fmt.Println("\\__/ |_||____||___/|_||_| |_|")
 	fmt.Println()
 	fmt.Printf("  ai-switch started (PID %d)\n", cmd.Process.Pid)
-	fmt.Printf("  Config:  %s\n", resolvedPath)
-	fmt.Printf("  Data:    %s\n", dataDir)
-	fmt.Printf("  Logs:    %s\n", log.LogDir(dataDir))
+	fmt.Printf("  Config:   %s\n", resolvedPath)
+	fmt.Printf("  Data:     %s\n", dataDir)
+	fmt.Printf("  Logs:     %s\n", log.LogDir(dataDir))
+	fmt.Printf("  Admin UI: %s\n", displayAddr)
 	fmt.Println()
 	fmt.Println("  Use 'ai-switch stop' to stop the daemon.")
 }
