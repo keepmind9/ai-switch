@@ -330,8 +330,8 @@ func TestGenerateKey(t *testing.T) {
 
 	data := resp["data"].(map[string]any)
 	key := data["key"].(string)
-	assert.True(t, len(key) > 3 && key[:3] == "gw-")
-	assert.Len(t, key, 35) // gw- + 32 hex chars
+	assert.True(t, len(key) > 4 && key[:4] == "ais-")
+	assert.Len(t, key, 36) // ais- + 32 hex chars
 }
 
 func TestListPresets(t *testing.T) {

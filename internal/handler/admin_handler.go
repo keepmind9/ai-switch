@@ -412,7 +412,7 @@ func (a *AdminHandler) generateKey(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate key"})
 		return
 	}
-	key := "gw-" + hex.EncodeToString(b)
+	key := "ais-" + hex.EncodeToString(b)
 	c.JSON(http.StatusOK, gin.H{"data": gin.H{"key": key}})
 }
 
