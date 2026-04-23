@@ -11,6 +11,26 @@ import (
 	"github.com/keepmind9/ai-switch/internal/types"
 )
 
+// errorStatusMap maps common upstream error types to HTTP status codes.
+var errorStatusMap = map[string]int{
+	"rate_limit_error":      http.StatusTooManyRequests,
+	"authentication_error":  http.StatusUnauthorized,
+	"permission_error":      http.StatusForbidden,
+	"invalid_request_error": http.StatusBadRequest,
+	"overloaded_error":      http.StatusServiceUnavailable,
+	"server_error":          http.StatusInternalServerError,
+	"api_error":             http.StatusInternalServerError,
+}
+
+// errorTypeToStatus maps an upstream error type to an HTTP status code.
+// Returns http.StatusBadGateway for unknown types.
+func errorTypeToStatus(errType string) int {
+	if code, ok := errorStatusMap[errType]; ok {
+		return code
+	}
+	return http.StatusBadGateway
+}
+
 // parseUpstreamError extracts error message and type from an upstream error response.
 // Tries Chat format first, then Anthropic format.
 func parseUpstreamError(body []byte) (message, errType string) {

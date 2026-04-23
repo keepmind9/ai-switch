@@ -142,3 +142,25 @@ func TestIsSSEErrorData(t *testing.T) {
 	assert.False(t, isSSEErrorData(`{"type":"content_block_delta","delta":{"text":"error handling is important"}}`))
 	assert.False(t, isSSEErrorData(`not json at all "error"`))
 }
+
+func TestErrorTypeToStatus(t *testing.T) {
+	tests := []struct {
+		errType string
+		want    int
+	}{
+		{"rate_limit_error", http.StatusTooManyRequests},
+		{"authentication_error", http.StatusUnauthorized},
+		{"permission_error", http.StatusForbidden},
+		{"invalid_request_error", http.StatusBadRequest},
+		{"overloaded_error", http.StatusServiceUnavailable},
+		{"server_error", http.StatusInternalServerError},
+		{"api_error", http.StatusInternalServerError},
+		{"", http.StatusBadGateway},
+		{"unknown_error", http.StatusBadGateway},
+	}
+	for _, tt := range tests {
+		t.Run(tt.errType, func(t *testing.T) {
+			assert.Equal(t, tt.want, errorTypeToStatus(tt.errType))
+		})
+	}
+}

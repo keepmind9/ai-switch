@@ -183,10 +183,59 @@ func copyUpstreamHeaders(c *gin.Context, resp *http.Response) {
 	}
 }
 
-// writeUpstreamError forwards an upstream error response to the client (same-format passthrough).
-func (h *Handler) writeUpstreamError(c *gin.Context, resp *http.Response, respBody []byte) {
-	copyUpstreamHeaders(c, resp)
-	c.Data(resp.StatusCode, "application/json", respBody)
+// checkUpstreamStreamError checks if upstream response should be treated as error
+// before starting SSE stream. Handles two cases:
+//  1. Non-SSE response (JSON instead of expected SSE)
+//  2. SSE response where the first event is an error
+//
+// Returns (body, true) if error handled, ("", false) if stream is safe to start.
+func checkUpstreamStreamError(c *gin.Context, resp *http.Response, clientFormat string) (string, bool) {
+	// Case 1: non-SSE response
+	if !isSSEResponse(resp) {
+		respBody, _ := io.ReadAll(resp.Body)
+		slog.Warn("upstream returned non-SSE response in streaming path",
+			"content_type", resp.Header.Get("Content-Type"), "body_len", len(respBody))
+		msg, errType := parseUpstreamError(respBody)
+		writeStreamErrorJSON(c, resp.StatusCode, msg, errType, clientFormat)
+		return string(respBody), true
+	}
+
+	// Case 2: peek at first SSE event — only for non-Anthropic clients.
+	// Anthropic clients (Claude Code) handle SSE error events natively.
+	if clientFormat == "anthropic" {
+		return "", false
+	}
+
+	var buf bytes.Buffer
+	tee := io.TeeReader(resp.Body, &buf)
+	scanner := bufio.NewScanner(tee)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+
+	for scanner.Scan() {
+		data := converter.ParseSSEDataLine(scanner.Text())
+		if data == "" {
+			continue
+		}
+		if isSSEErrorData(data) {
+			msg, errType := parseUpstreamError([]byte(data))
+			slog.Warn("SSE error in first upstream event", "message", msg, "type", errType, "client_format", clientFormat)
+			writeStreamErrorJSON(c, errorTypeToStatus(errType), msg, errType, clientFormat)
+			return buf.String(), true
+		}
+		break
+	}
+
+	// Not an error — restore peeked data so the streaming function can read it
+	resp.Body = io.NopCloser(io.MultiReader(&buf, resp.Body))
+	return "", false
+}
+
+func writeSSEHeaders(c *gin.Context) {
+	c.Header("Content-Type", "text/event-stream")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Connection", "keep-alive")
+	c.Header("X-Accel-Buffering", "no")
+	c.Writer.WriteHeader(http.StatusOK)
 }
 
 // streamChatToClient reads Chat SSE from upstream and converts to the target
@@ -195,20 +244,11 @@ func (h *Handler) writeUpstreamError(c *gin.Context, resp *http.Response, respBo
 func (h *Handler) streamChatToClient(c *gin.Context, resp *http.Response, convertFn func(w converter.SSEWriter, data string) bool, clientFormat string) string {
 	copyUpstreamHeaders(c, resp)
 
-	// If upstream returned JSON instead of SSE, handle as error.
-	if !isSSEResponse(resp) {
-		respBody, _ := io.ReadAll(resp.Body)
-		slog.Warn("upstream returned non-SSE response in streaming path", "content_type", resp.Header.Get("Content-Type"), "body_len", len(respBody))
-		msg, errType := parseUpstreamError(respBody)
-		writeStreamErrorJSON(c, resp.StatusCode, msg, errType, clientFormat)
-		return string(respBody)
+	if body, handled := checkUpstreamStreamError(c, resp, clientFormat); handled {
+		return body
 	}
 
-	c.Header("Content-Type", "text/event-stream")
-	c.Header("Cache-Control", "no-cache")
-	c.Header("Connection", "keep-alive")
-	c.Header("X-Accel-Buffering", "no")
-	c.Writer.WriteHeader(http.StatusOK)
+	writeSSEHeaders(c)
 
 	ginWriter := &ginSSEWriter{c: c}
 	flusher, canFlush := c.Writer.(http.Flusher)
@@ -303,11 +343,12 @@ func (h *Handler) recordStreamUsageFromState(c *gin.Context, model string, input
 // streamPassthrough forwards upstream SSE directly to the client. Returns accumulated upstream content.
 func (h *Handler) streamPassthrough(c *gin.Context, resp *http.Response, format string) string {
 	copyUpstreamHeaders(c, resp)
-	c.Header("Content-Type", "text/event-stream")
-	c.Header("Cache-Control", "no-cache")
-	c.Header("Connection", "keep-alive")
-	c.Header("X-Accel-Buffering", "no")
-	c.Writer.WriteHeader(http.StatusOK)
+
+	if body, handled := checkUpstreamStreamError(c, resp, format); handled {
+		return body
+	}
+
+	writeSSEHeaders(c)
 
 	var acc middleware.StreamUsageAccumulator
 	provider, _ := c.Get(ctxProviderKey)
@@ -344,20 +385,11 @@ func (h *Handler) streamPassthrough(c *gin.Context, resp *http.Response, format 
 func (h *Handler) streamToChatSSE(c *gin.Context, resp *http.Response, convertFn func(state any, line string) any, initialState any) string {
 	copyUpstreamHeaders(c, resp)
 
-	// If upstream returned JSON instead of SSE, handle as error.
-	if !isSSEResponse(resp) {
-		respBody, _ := io.ReadAll(resp.Body)
-		slog.Warn("upstream returned non-SSE response in streaming path", "content_type", resp.Header.Get("Content-Type"), "body_len", len(respBody))
-		msg, errType := parseUpstreamError(respBody)
-		writeStreamErrorJSON(c, resp.StatusCode, msg, errType, "chat")
-		return string(respBody)
+	if body, handled := checkUpstreamStreamError(c, resp, "chat"); handled {
+		return body
 	}
 
-	c.Header("Content-Type", "text/event-stream")
-	c.Header("Cache-Control", "no-cache")
-	c.Header("Connection", "keep-alive")
-	c.Header("X-Accel-Buffering", "no")
-	c.Writer.WriteHeader(http.StatusOK)
+	writeSSEHeaders(c)
 
 	flusher, canFlush := c.Writer.(http.Flusher)
 	scanner := bufio.NewScanner(resp.Body)
@@ -437,25 +469,15 @@ func (h *Handler) streamToChatSSE(c *gin.Context, resp *http.Response, convertFn
 // Returns accumulated upstream content.
 func (h *Handler) streamAnthropicToResponsesSSE(c *gin.Context, resp *http.Response, state *converter.AnthropicToResponsesState) string {
 	copyUpstreamHeaders(c, resp)
-	c.Header("Content-Type", "text/event-stream")
-	c.Header("Cache-Control", "no-cache")
-	c.Header("Connection", "keep-alive")
-	c.Header("X-Accel-Buffering", "no")
-	c.Writer.WriteHeader(http.StatusOK)
+
+	if body, handled := checkUpstreamStreamError(c, resp, "responses"); handled {
+		return body
+	}
+
+	writeSSEHeaders(c)
 
 	w := &ginSSEWriter{c: c}
 	flusher, canFlush := c.Writer.(http.Flusher)
-
-	// If upstream returned JSON instead of SSE, handle as non-streaming.
-	if !isSSEResponse(resp) {
-		respBody, _ := io.ReadAll(resp.Body)
-		slog.Warn("upstream returned non-SSE response in streaming path", "content_type", resp.Header.Get("Content-Type"), "body_len", len(respBody))
-		h.convertAnthropicJSONToResponsesSSE(w, state, respBody)
-		if canFlush {
-			flusher.Flush()
-		}
-		return string(respBody)
-	}
 
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
@@ -464,6 +486,18 @@ func (h *Handler) streamAnthropicToResponsesSSE(c *gin.Context, resp *http.Respo
 	for scanner.Scan() {
 		line := scanner.Text()
 		buf.WriteString(line + "\n")
+
+		data := converter.ParseSSEDataLine(line)
+		if data != "" && isSSEErrorData(data) {
+			msg, errType := parseUpstreamError([]byte(data))
+			slog.Warn("SSE error event from upstream", "message", msg, "type", errType)
+			writeSSEErrorToClient(w, msg, errType, "responses")
+			if canFlush {
+				flusher.Flush()
+			}
+			return buf.String()
+		}
+
 		if converter.ConvertAnthropicLineToResponses(w, state, line) {
 			if canFlush {
 				flusher.Flush()
@@ -708,7 +742,7 @@ func (h *Handler) passthroughRequest(c *gin.Context, result *router.RouteResult,
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
 		h.logLLMRequest(result.Model, providerStr, upstreamURL, latency, isStreaming, originalBody, string(respBody))
-		h.writeUpstreamError(c, resp, respBody)
+		h.writeConvertedError(c, resp, respBody, result.Format)
 		return
 	}
 
