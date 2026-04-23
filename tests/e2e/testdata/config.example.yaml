@@ -57,3 +57,17 @@ routes:
   "e2e-glm-anthropic":
     provider: "glm-anthropic"
     default_model: "<FILL>"
+
+  # ── Error test routes (intentionally invalid model) ──
+  "e2e-err-minimax-chat":
+    provider: "minimax-chat"
+    default_model: "nonexistent-model-e2e-test"
+  "e2e-err-minimax-anthropic":
+    provider: "minimax-anthropic"
+    default_model: "nonexistent-model-e2e-test"
+  "e2e-err-glm-chat":
+    provider: "glm-chat"
+    default_model: "nonexistent-model-e2e-test"
+  "e2e-err-glm-anthropic":
+    provider: "glm-anthropic"
+    default_model: "nonexistent-model-e2e-test"

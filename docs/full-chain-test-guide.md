@@ -31,13 +31,13 @@ providers:
     base_url: "https://open.bigmodel.cn/api/paas/v1"
     api_key: "${GLM_API_KEY}"
     format: "chat"
-    models: ["glm-4-plus"]
+    models: ["glm-4.6"]
 
   glm-anthropic:
     base_url: "https://open.bigmodel.cn/api/anthropic"
     api_key: "${GLM_API_KEY}"
     format: "anthropic"
-    models: ["glm-4-plus"]
+    models: ["glm-4.6"]
 
 routes:
   "e2e-minimax-chat":
@@ -48,10 +48,10 @@ routes:
     default_model: "MiniMax-M2.5"
   "e2e-glm-chat":
     provider: "glm-chat"
-    default_model: "glm-4-plus"
+    default_model: "glm-4.6"
   "e2e-glm-anthropic":
     provider: "glm-anthropic"
-    default_model: "glm-4-plus"
+    default_model: "glm-4.6"
 ```
 
 Set environment variables:
@@ -174,7 +174,54 @@ done
 
 **Pass criteria**: Each output contains "PONG".
 
-### Step 4: Cleanup
+### Step 4: Error Handling Test (invalid model)
+
+Config already includes 4 error test routes with fake model names (`nonexistent-model-e2e-test`). Use their route keys to trigger upstream errors.
+
+#### Claude Code (Anthropic protocol)
+
+```bash
+for ROUTE in e2e-err-minimax-chat e2e-err-minimax-anthropic e2e-err-glm-chat e2e-err-glm-anthropic; do
+  echo "=== Error Test: Claude Code → $ROUTE ==="
+  ANTHROPIC_API_KEY="$ROUTE" \
+  ANTHROPIC_BASE_URL="http://127.0.0.1:$E2E_PORT" \
+  claude -p "Hello" --dangerously-skip-permissions --output-format json 2>&1 | head -5
+  echo ""
+done
+```
+
+#### Codex (Responses protocol)
+
+```bash
+for ROUTE in e2e-err-minimax-chat e2e-err-minimax-anthropic e2e-err-glm-chat e2e-err-glm-anthropic; do
+  echo "=== Error Test: Codex → $ROUTE ==="
+  OPENAI_API_KEY="$ROUTE" \
+  OPENAI_BASE_URL="http://127.0.0.1:$E2E_PORT/v1" \
+  codex exec "Hello" --full-auto 2>&1 | head -5
+  echo ""
+done
+```
+
+#### Chat (curl — verify raw error format)
+
+```bash
+for ROUTE in e2e-err-minimax-chat e2e-err-glm-chat; do
+  echo "=== Error Test: Chat → $ROUTE ==="
+  curl -s -X POST http://127.0.0.1:$E2E_PORT/v1/chat/completions \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $ROUTE" \
+    -d '{"model":"test","messages":[{"role":"user","content":"Hello"}]}' | python3 -m json.tool
+  echo ""
+done
+```
+
+**Pass criteria**:
+- Each response contains an `error` field with a descriptive message
+- HTTP status code is 4xx (typically 400 or 404 from upstream)
+- CLI does not hang — it receives the error and exits
+- Error is in the client's expected format (Anthropic/Chat/Responses respectively)
+
+### Step 5: Cleanup
 
 ```bash
 kill $SERVER_PID 2>/dev/null
@@ -199,7 +246,7 @@ sed -i "s/port: $E2E_PORT/port: 0/" tests/e2e/testdata/config.yaml
 | OpenCode | Chat | GLM Chat | e2e-glm-chat | Chat→Chat (passthrough) |
 | OpenCode | Chat | GLM Anthropic | e2e-glm-anthropic | Chat→Anthropic |
 
-Total: 3 CLIs × 4 providers = **12 test scenarios**.
+Total: 3 CLIs × 4 providers = **12 normal scenarios** + **3 CLIs × 4 error routes** = **24 tests**.
 
 ## Failure Diagnosis
 
