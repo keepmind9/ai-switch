@@ -292,9 +292,9 @@ onMounted(load)
             <el-col :span="12">
               <el-form-item :label="$t('providers.drawer.form.format')">
                 <el-select v-model="form.format" class="w-full">
-                  <el-option label="OpenAI Chat" value="chat" />
-                  <el-option label="Anthropic" value="anthropic" />
-                  <el-option label="Legacy Responses" value="responses" />
+                  <el-option label="chat" value="chat" />
+                  <el-option label="anthropic" value="anthropic" />
+                  <el-option label="responses" value="responses" />
                 </el-select>
               </el-form-item>
             </el-col>
