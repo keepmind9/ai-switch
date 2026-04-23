@@ -11,11 +11,24 @@ import (
 )
 
 const (
-	MaxLogRetentionDays = 30
-	LogSubDir           = "logs"
-	LLMLogFilePrefix    = "llm"
-	AppLogFilePrefix    = "app"
+	LogSubDir        = "logs"
+	LLMLogFilePrefix = "llm"
+	AppLogFilePrefix = "app"
 )
+
+// DefaultLogRetentionDays is the default number of days to keep log files.
+const DefaultLogRetentionDays = 30
+
+// logRetentionDays is the configured number of days to keep log files.
+var logRetentionDays = DefaultLogRetentionDays
+
+// SetRetentionDays configures how many days of log files to keep.
+// Must be called before creating any DailyRotateWriter.
+func SetRetentionDays(days int) {
+	if days > 0 {
+		logRetentionDays = days
+	}
+}
 
 // DailyRotateWriter writes log output to date-named files and rotates daily.
 // File naming: {prefix}-{YYYY-MM-DD}.log
@@ -88,7 +101,7 @@ func (w *DailyRotateWriter) rotate(now time.Time) error {
 }
 
 func (w *DailyRotateWriter) removeOldLogs(now time.Time) {
-	cutoff := now.AddDate(0, 0, -MaxLogRetentionDays).Format("2006-01-02")
+	cutoff := now.AddDate(0, 0, -logRetentionDays).Format("2006-01-02")
 
 	entries, err := os.ReadDir(w.dir)
 	if err != nil {

@@ -82,7 +82,7 @@ func TestDailyRotateWriter_RemovesOldFiles(t *testing.T) {
 	logDir := filepath.Join(tmpDir, LogSubDir)
 	require.NoError(t, os.MkdirAll(logDir, 0755))
 
-	cutoff := time.Now().AddDate(0, 0, -MaxLogRetentionDays)
+	cutoff := time.Now().AddDate(0, 0, -logRetentionDays)
 	oldDate := cutoff.Add(-24 * time.Hour).Format("2006-01-02")
 	recentDate := time.Now().Format("2006-01-02")
 
@@ -108,7 +108,7 @@ func TestDailyRotateWriter_DoesNotRemoveOtherPrefixes(t *testing.T) {
 	logDir := filepath.Join(tmpDir, LogSubDir)
 	require.NoError(t, os.MkdirAll(logDir, 0755))
 
-	oldDate := time.Now().AddDate(0, 0, -(MaxLogRetentionDays + 5)).Format("2006-01-02")
+	oldDate := time.Now().AddDate(0, 0, -(logRetentionDays + 5)).Format("2006-01-02")
 	otherFile := filepath.Join(logDir, "other-"+oldDate+".log")
 	require.NoError(t, os.WriteFile(otherFile, []byte("keep"), 0644))
 

@@ -545,6 +545,67 @@ func TestDefaultRouteConfig(t *testing.T) {
 	})
 }
 
+func TestLoad_LogRetentionDays(t *testing.T) {
+	t.Run("default value when not set", func(t *testing.T) {
+		dir := t.TempDir()
+		cfgPath := filepath.Join(dir, "config.yaml")
+		content := `
+server:
+  host: "0.0.0.0"
+  port: 12345
+providers:
+  test:
+    name: "Test"
+    base_url: "https://api.example.com/v1"
+    api_key: "key"
+`
+		require.NoError(t, os.WriteFile(cfgPath, []byte(content), 0644))
+		cfg, err := Load(cfgPath)
+		require.NoError(t, err)
+		assert.Equal(t, DefaultLogRetentionDays, cfg.LogRetentionDays)
+	})
+
+	t.Run("custom value", func(t *testing.T) {
+		dir := t.TempDir()
+		cfgPath := filepath.Join(dir, "config.yaml")
+		content := `
+server:
+  host: "0.0.0.0"
+  port: 12345
+log_retention_days: 7
+providers:
+  test:
+    name: "Test"
+    base_url: "https://api.example.com/v1"
+    api_key: "key"
+`
+		require.NoError(t, os.WriteFile(cfgPath, []byte(content), 0644))
+		cfg, err := Load(cfgPath)
+		require.NoError(t, err)
+		assert.Equal(t, 7, cfg.LogRetentionDays)
+	})
+
+	t.Run("invalid value falls back to default", func(t *testing.T) {
+		dir := t.TempDir()
+		cfgPath := filepath.Join(dir, "config.yaml")
+		content := `
+server:
+  host: "0.0.0.0"
+  port: 12345
+log_retention_days: -1
+providers:
+  test:
+    name: "Test"
+    base_url: "https://api.example.com/v1"
+    api_key: "key"
+`
+		require.NoError(t, os.WriteFile(cfgPath, []byte(content), 0644))
+		cfg, err := Load(cfgPath)
+		require.NoError(t, err)
+		assert.Equal(t, DefaultLogRetentionDays, cfg.LogRetentionDays)
+	})
+}
+
 func TestExpandEnv(t *testing.T) {
 	tests := []struct {
 		name     string

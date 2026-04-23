@@ -106,6 +106,8 @@ func runServe(_ *cobra.Command, _ []string) {
 		os.Exit(1)
 	}
 
+	log.SetRetentionDays(cfg.LogRetentionDays)
+
 	provider := config.NewProvider(cfg, resolvedPath)
 
 	dbPath := filepath.Join(dataDir, config.UsageDBName)

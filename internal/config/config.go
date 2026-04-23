@@ -10,15 +10,17 @@ import (
 )
 
 const (
-	DefaultHost = "127.0.0.1"
-	DefaultPort = 12345
-	DataDirName = ".ai-switch"
-	UsageDBName = "usage.db"
-	ConfigFile  = "config.yaml"
+	DefaultHost             = "127.0.0.1"
+	DefaultPort             = 12345
+	DataDirName             = ".ai-switch"
+	UsageDBName             = "usage.db"
+	ConfigFile              = "config.yaml"
+	DefaultLogRetentionDays = 30
 )
 
 type Config struct {
 	Server                ServerConfig              `mapstructure:"server" yaml:"server"`
+	LogRetentionDays      int                       `mapstructure:"log_retention_days" yaml:"log_retention_days,omitempty"`
 	DefaultRoute          string                    `mapstructure:"default_route" yaml:"default_route,omitempty"`
 	DefaultAnthropicRoute string                    `mapstructure:"default_anthropic_route" yaml:"default_anthropic_route,omitempty"`
 	DefaultResponsesRoute string                    `mapstructure:"default_responses_route" yaml:"default_responses_route,omitempty"`
@@ -69,6 +71,7 @@ func Load(path string) (*Config, error) {
 
 	v.SetDefault("server.host", DefaultHost)
 	v.SetDefault("server.port", DefaultPort)
+	v.SetDefault("log_retention_days", DefaultLogRetentionDays)
 
 	if err := v.ReadInConfig(); err != nil {
 		if os.IsNotExist(err) {
@@ -88,6 +91,10 @@ func Load(path string) (*Config, error) {
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, err
+	}
+
+	if cfg.LogRetentionDays <= 0 {
+		cfg.LogRetentionDays = DefaultLogRetentionDays
 	}
 
 	// Validate default_route references an existing route

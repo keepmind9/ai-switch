@@ -2,6 +2,9 @@ server:
   host: "0.0.0.0"
   port: 12345
 
+# Number of days to retain log files (default: 30)
+# log_retention_days: 30
+
 default_route: "gw-default"
 # Protocol-specific defaults (optional, override default_route per protocol)
 # default_anthropic_route: "gw-zhipu"    # /v1/messages (Claude Code)
