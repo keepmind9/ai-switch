@@ -310,9 +310,9 @@ onMounted(load)
           </template>
         </el-table-column>
         
-        <el-table-column prop="provider" :label="$t('routes.table.provider')" width="140">
+        <el-table-column prop="provider" :label="$t('routes.table.provider')" min-width="160">
           <template #default="{ row }">
-            <el-tag effect="plain" class="border-slate-200! text-slate-600! font-medium capitalize">{{ row.provider }}</el-tag>
+            <el-tag effect="plain" class="border-slate-200! text-slate-600! font-medium">{{ row.provider }}</el-tag>
           </template>
         </el-table-column>
         
