@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
 
 	"github.com/keepmind9/ai-switch/internal/config"
 	"github.com/spf13/cobra"
@@ -42,7 +41,7 @@ func runStop(_ *cobra.Command, _ []string) error {
 		return fmt.Errorf("failed to find process %d: %w", pid, err)
 	}
 
-	if err := proc.Signal(syscall.SIGTERM); err != nil {
+	if err := stopProcess(proc); err != nil {
 		removePIDFile(dataDir)
 		return fmt.Errorf("process %d not found, cleaned up stale PID file", pid)
 	}

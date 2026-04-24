@@ -18,3 +18,7 @@ func setupReloadSignal() chan os.Signal {
 	signal.Notify(ch, syscall.SIGHUP)
 	return ch
 }
+
+func stopProcess(proc *os.Process) error {
+	return proc.Signal(syscall.SIGTERM)
+}
