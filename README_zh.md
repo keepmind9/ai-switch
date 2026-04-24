@@ -23,11 +23,15 @@
 
 ### 一键安装（推荐）
 
-```bash
-# Linux / macOS
-curl -sL https://raw.githubusercontent.com/keepmind9/ai-switch/main/scripts/install.sh | bash
+**Linux / macOS:**
 
-# Windows (PowerShell)
+```bash
+curl -sL https://raw.githubusercontent.com/keepmind9/ai-switch/main/scripts/install.sh | bash
+```
+
+**Windows (PowerShell):**
+
+```powershell
 irm https://raw.githubusercontent.com/keepmind9/ai-switch/main/scripts/install.ps1 | iex
 ```
 

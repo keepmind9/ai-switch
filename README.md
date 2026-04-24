@@ -23,11 +23,15 @@ A lightweight local proxy that lets any AI CLI tool (Claude Code, Codex CLI, etc
 
 ### One-line install (recommended)
 
-```bash
-# Linux / macOS
-curl -sL https://raw.githubusercontent.com/keepmind9/ai-switch/main/scripts/install.sh | bash
+**Linux / macOS:**
 
-# Windows (PowerShell)
+```bash
+curl -sL https://raw.githubusercontent.com/keepmind9/ai-switch/main/scripts/install.sh | bash
+```
+
+**Windows (PowerShell):**
+
+```powershell
 irm https://raw.githubusercontent.com/keepmind9/ai-switch/main/scripts/install.ps1 | iex
 ```
 
