@@ -177,7 +177,7 @@ func startDaemon(configPath string) error {
 		if host == "0.0.0.0" {
 			host = "localhost"
 		}
-		displayAddr = fmt.Sprintf("http://%s:%d", host, cfg.Server.Port)
+		displayAddr = fmt.Sprintf("http://%s:%d/ui", host, cfg.Server.Port)
 	}
 
 	execPath, err := os.Executable()
