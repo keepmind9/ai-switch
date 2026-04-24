@@ -286,12 +286,16 @@ func (c *Converter) ResponsesToChat(req *types.ResponsesRequest) (*types.ChatReq
 
 	// Convert tools (skip built-in tools without name)
 	for _, t := range filterFunctionTools(req.Tools) {
+		params := t.Parameters
+		if params == nil {
+			params = map[string]any{"type": "object"}
+		}
 		chatReq.Tools = append(chatReq.Tools, types.Tool{
 			Type: "function",
 			Function: types.FunctionDef{
 				Name:        t.Name,
 				Description: t.Description,
-				Parameters:  t.Parameters,
+				Parameters:  params,
 			},
 		})
 	}

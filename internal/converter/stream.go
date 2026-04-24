@@ -20,6 +20,19 @@ type ResponsesStreamState struct {
 	OutputTokens int
 	ThinkTag     string
 	TagState     ThinkTagState
+
+	// Tool call tracking for Chat→Responses streaming
+	ToolCalls     map[int]*chatToolCallState
+	TextDoneSent  bool
+	TextItemID    string
+	FuncOutputIdx int
+}
+
+type chatToolCallState struct {
+	ID     string
+	Name   string
+	Args   string
+	ItemID string
 }
 
 func (s *ResponsesStreamState) nextSeq() int {
