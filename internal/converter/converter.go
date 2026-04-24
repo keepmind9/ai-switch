@@ -93,13 +93,12 @@ func (c *Converter) convertResponsesRequest(upstreamFormat string, body []byte, 
 		model = defaultModel
 	}
 
-	chatReq, err := c.ResponsesToChat(&req)
-	if err != nil {
-		return nil, err
-	}
-
 	switch upstreamFormat {
 	case FormatChat, "":
+		chatReq, err := c.ResponsesToChat(&req)
+		if err != nil {
+			return nil, err
+		}
 		chatReq.Model = resolveModel(defaultModel)
 		chatBody, err := json.Marshal(chatReq)
 		if err != nil {
@@ -108,7 +107,7 @@ func (c *Converter) convertResponsesRequest(upstreamFormat string, body []byte, 
 		return &ConvertedRequest{UpstreamBody: chatBody, Model: model, IsStreaming: req.Stream}, nil
 
 	case FormatAnthropic:
-		anthReq, err := c.ChatRequestToAnthropic(chatReq)
+		anthReq, err := c.ResponsesToAnthropic(&req)
 		if err != nil {
 			return nil, err
 		}
@@ -267,6 +266,14 @@ func NewConverter() *Converter {
 	return &Converter{}
 }
 
+// NormalizeRole maps unsupported roles to "user".
+func NormalizeRole(role string) string {
+	if role == "" || role == "system" || role == "developer" {
+		return "user"
+	}
+	return role
+}
+
 // ResponsesToChat converts OpenAI Responses API request to Chat Completions API request
 func (c *Converter) ResponsesToChat(req *types.ResponsesRequest) (*types.ChatRequest, error) {
 	chatReq := &types.ChatRequest{
@@ -277,31 +284,110 @@ func (c *Converter) ResponsesToChat(req *types.ResponsesRequest) (*types.ChatReq
 		TopP:        req.TopP,
 	}
 
-	// Handle input - can be string, array of strings, or array of message objects
-	promptText := extractInputText(req.Input)
+	// Convert tools (skip built-in tools without name)
+	for _, t := range filterFunctionTools(req.Tools) {
+		chatReq.Tools = append(chatReq.Tools, types.Tool{
+			Type: "function",
+			Function: types.FunctionDef{
+				Name:        t.Name,
+				Description: t.Description,
+				Parameters:  t.Parameters,
+			},
+		})
+	}
+	chatReq.ToolChoice = req.ToolChoice
 
 	// Add instructions as system prompt if present
-	var systemPrompt string
 	if req.Instructions != "" {
-		systemPrompt = req.Instructions
-	}
-
-	// Build messages
-	if systemPrompt != "" {
 		chatReq.Messages = append(chatReq.Messages, types.ChatMessage{
 			Role:    "system",
-			Content: systemPrompt,
+			Content: req.Instructions,
 		})
 	}
 
-	if promptText != "" {
-		chatReq.Messages = append(chatReq.Messages, types.ChatMessage{
-			Role:    "user",
-			Content: promptText,
-		})
-	}
+	// Handle input - can be string, array of items, or array of message objects
+	chatReq.Messages = append(chatReq.Messages, convertResponsesInputToChatMessages(req.Input)...)
 
 	return chatReq, nil
+}
+
+// convertResponsesInputToChatMessages converts Responses API input items to Chat messages.
+func convertResponsesInputToChatMessages(input any) []types.ChatMessage {
+	if input == nil {
+		return nil
+	}
+
+	switch v := input.(type) {
+	case string:
+		if v == "" {
+			return nil
+		}
+		return []types.ChatMessage{{Role: "user", Content: v}}
+	case []any:
+		var msgs []types.ChatMessage
+		for _, item := range v {
+			switch val := item.(type) {
+			case string:
+				if val != "" {
+					msgs = append(msgs, types.ChatMessage{Role: "user", Content: val})
+				}
+			case map[string]any:
+				itemType, _ := val["type"].(string)
+				switch itemType {
+				case "function_call":
+					callID, _ := val["call_id"].(string)
+					name, _ := val["name"].(string)
+					args, _ := val["arguments"].(string)
+					msgs = append(msgs, types.ChatMessage{
+						Role: "assistant",
+						ToolCalls: []types.ToolCall{
+							{ID: callID, Type: "function", Function: types.FunctionCall{Name: name, Arguments: args}},
+						},
+					})
+				case "function_call_output":
+					callID, _ := val["call_id"].(string)
+					output, _ := val["output"].(string)
+					msgs = append(msgs, types.ChatMessage{
+						Role:       "tool",
+						ToolCallID: callID,
+						Content:    output,
+					})
+				default:
+					// message format
+					role := NormalizeRole(val["role"].(string))
+					text := extractInputTextMessage(val)
+					if text != "" {
+						msgs = append(msgs, types.ChatMessage{Role: role, Content: text})
+					}
+				}
+			}
+		}
+		return msgs
+	}
+	return nil
+}
+
+// extractInputTextMessage extracts text from a message object's content array.
+func extractInputTextMessage(msg map[string]any) string {
+	content, ok := msg["content"]
+	if !ok {
+		return ""
+	}
+	switch c := content.(type) {
+	case string:
+		return c
+	case []any:
+		var parts []string
+		for _, item := range c {
+			if cMap, ok := item.(map[string]any); ok {
+				if text, ok := cMap["text"].(string); ok {
+					parts = append(parts, text)
+				}
+			}
+		}
+		return strings.Join(parts, "\n")
+	}
+	return ""
 }
 
 // extractInputText extracts text from various input formats
@@ -343,16 +429,34 @@ func (c *Converter) ChatToResponses(chatResp *types.ChatResponse, model, thinkTa
 	now := time.Now().Unix()
 	var responseItems []types.ResponseItem
 	for _, choice := range chatResp.Choices {
-		responseItems = append(responseItems, types.ResponseItem{
-			ID:      fmt.Sprintf("resp_%d", now),
-			Object:  "response",
-			Created: now,
-			Role:    "assistant",
-			Content: []types.ContentBlock{
-				{Type: "output_text", Text: StripThinkTag(choice.Message.Content, thinkTag)},
-			},
-			Status: "completed",
-		})
+		// Text message item
+		text := StripThinkTag(choice.Message.Content, thinkTag)
+		if text != "" || len(choice.Message.ToolCalls) == 0 {
+			responseItems = append(responseItems, types.ResponseItem{
+				ID:      fmt.Sprintf("resp_%d", now),
+				Type:    "message",
+				Object:  "response",
+				Created: now,
+				Role:    "assistant",
+				Content: []types.ContentBlock{
+					{Type: "output_text", Text: text},
+				},
+				Status: "completed",
+			})
+		}
+		// Function call items
+		for _, tc := range choice.Message.ToolCalls {
+			responseItems = append(responseItems, types.ResponseItem{
+				ID:        fmt.Sprintf("fc_%s", tc.ID),
+				Type:      "function_call",
+				Object:    "response",
+				Created:   now,
+				Status:    "completed",
+				CallID:    tc.ID,
+				Name:      tc.Function.Name,
+				Arguments: tc.Function.Arguments,
+			})
+		}
 	}
 
 	resp := &types.ResponsesResponse{

@@ -29,7 +29,7 @@ var staticFS embed.FS
 const ctxProviderKey = "provider_key"
 
 const (
-	maxLogReqBodyLen  = 2048
+	maxLogReqBodyLen  = 16384
 	maxLogRespBodyLen = 4096
 	maxStreamLogLen   = 512
 	upstreamTimeout   = 30 * time.Second // connection + first-byte timeout for upstream requests
@@ -135,6 +135,47 @@ func extractClientAPIKey(c *gin.Context) string {
 
 func buildUpstreamURL(result *router.RouteResult) string {
 	return router.BuildUpstreamURL(result.BaseURL, result.Path)
+}
+
+// normalizeInputRoles replaces unsupported roles in input/messages
+// and filters out built-in tools that lack name/parameters.
+func normalizeInputRoles(raw map[string]any) {
+	// Normalize roles in Responses API input array
+	if input, ok := raw["input"].([]any); ok {
+		for _, item := range input {
+			if m, ok := item.(map[string]any); ok {
+				if role, _ := m["role"].(string); role != "" {
+					m["role"] = converter.NormalizeRole(role)
+				}
+			}
+		}
+	}
+
+	// Normalize roles in Anthropic messages array
+	if messages, ok := raw["messages"].([]any); ok {
+		for _, item := range messages {
+			if m, ok := item.(map[string]any); ok {
+				if role, _ := m["role"].(string); role != "" {
+					m["role"] = converter.NormalizeRole(role)
+				}
+			}
+		}
+	}
+
+	// Filter out built-in tools without a name
+	if tools, ok := raw["tools"].([]any); ok {
+		var filtered []any
+		for _, t := range tools {
+			if m, ok := t.(map[string]any); ok {
+				if name, _ := m["name"].(string); name != "" {
+					filtered = append(filtered, m)
+				}
+			}
+		}
+		if len(filtered) != len(tools) {
+			raw["tools"] = filtered
+		}
+	}
 }
 
 // forwardRequest sends a request to the upstream API and returns the response with latency.
@@ -613,7 +654,7 @@ func (h *Handler) handleResponses(c *gin.Context) {
 	case "responses":
 		h.passthroughRequest(c, result, body, isStreaming)
 	case "anthropic":
-		h.responsesViaChatToAnthropic(c, result, &responsesReq, model, isStreaming)
+		h.responsesViaAnthropic(c, result, &responsesReq, model, isStreaming)
 	}
 }
 
@@ -718,13 +759,14 @@ func (h *Handler) handleChat(c *gin.Context) {
 // passthroughRequest forwards the request body directly to upstream.
 func (h *Handler) passthroughRequest(c *gin.Context, result *router.RouteResult, body []byte, isStreaming bool) {
 	originalBody := body
-	if result.Model != "" {
-		var raw map[string]any
-		if json.Unmarshal(body, &raw) == nil {
+	var raw map[string]any
+	if json.Unmarshal(body, &raw) == nil {
+		if result.Model != "" {
 			raw["model"] = result.Model
-			if newBody, err := json.Marshal(raw); err == nil {
-				body = newBody
-			}
+		}
+		normalizeInputRoles(raw)
+		if newBody, err := json.Marshal(raw); err == nil {
+			body = newBody
 		}
 	}
 
@@ -974,20 +1016,14 @@ func (h *Handler) chatViaResponses(c *gin.Context, result *router.RouteResult, c
 	c.Data(http.StatusOK, "application/json", respData)
 }
 
-// responsesViaChatToAnthropic converts Responses→Anthropic, forwards, converts stream back.
-func (h *Handler) responsesViaChatToAnthropic(c *gin.Context, result *router.RouteResult, req *types.ResponsesRequest, model string, isStreaming bool) {
-	chatReq, err := h.converter.ResponsesToChat(req)
+// responsesViaAnthropic converts Responses→Anthropic directly, forwards, converts back.
+func (h *Handler) responsesViaAnthropic(c *gin.Context, result *router.RouteResult, req *types.ResponsesRequest, model string, isStreaming bool) {
+	anthReq, err := h.converter.ResponsesToAnthropic(req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": "conversion_error", "message": err.Error()}})
 		return
 	}
-	chatReq.Model = model
-
-	anthReq, err := h.converter.ChatRequestToAnthropic(chatReq)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": "conversion_error", "message": err.Error()}})
-		return
-	}
+	anthReq.Model = model
 	anthReq.Stream = isStreaming
 	anthBody, _ := json.Marshal(anthReq)
 
@@ -1017,7 +1053,7 @@ func (h *Handler) responsesViaChatToAnthropic(c *gin.Context, result *router.Rou
 		return
 	}
 
-	// Non-streaming: convert Anthropic response → Chat response → Responses response
+	// Non-streaming: convert Anthropic response → Responses response
 	respBody, _ := io.ReadAll(resp.Body)
 	h.logLLMRequest(model, providerStr, upstreamURL, latency, false, anthBody, string(respBody))
 	var anthResp converter.AnthropicResponse
@@ -1025,12 +1061,7 @@ func (h *Handler) responsesViaChatToAnthropic(c *gin.Context, result *router.Rou
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": "conversion_error", "message": "failed to parse anthropic response"}})
 		return
 	}
-	chatResp, err := h.converter.AnthropicResponseToChat(&anthResp)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": "conversion_error", "message": err.Error()}})
-		return
-	}
-	responsesResp, err := h.converter.ChatToResponses(chatResp, model, result.ThinkTag)
+	responsesResp, err := h.converter.AnthropicResponseToResponses(&anthResp, model, result.ThinkTag)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": "conversion_error", "message": err.Error()}})
 		return

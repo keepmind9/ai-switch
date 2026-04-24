@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/keepmind9/ai-switch/internal/types"
 )
@@ -483,4 +484,242 @@ func anthropicStopToChat(reason string) string {
 	default:
 		return reason
 	}
+}
+
+// ResponsesToAnthropic converts a Responses API request directly to an Anthropic Messages request.
+func (c *Converter) ResponsesToAnthropic(req *types.ResponsesRequest) (*AnthropicRequest, error) {
+	anthReq := &AnthropicRequest{
+		Model:       req.Model,
+		MaxTokens:   req.MaxTokens,
+		Temperature: req.Temperature,
+		TopP:        req.TopP,
+		Stream:      req.Stream,
+		Metadata:    req.Metadata,
+	}
+
+	if anthReq.MaxTokens == 0 {
+		anthReq.MaxTokens = 4096
+	}
+
+	if req.Instructions != "" {
+		anthReq.System = req.Instructions
+	}
+
+	// Convert input items to Anthropic messages
+	anthReq.Messages = convertResponsesInputToAnthropicMessages(req.Input)
+
+	// Convert tools (skip built-in tools without name)
+	for _, t := range filterFunctionTools(req.Tools) {
+		schema := t.Parameters
+		if schema == nil {
+			schema = map[string]any{"type": "object"}
+		}
+		anthReq.Tools = append(anthReq.Tools, AnthropicTool{
+			Name:        t.Name,
+			Description: t.Description,
+			InputSchema: schema,
+		})
+	}
+
+	// Convert tool_choice
+	anthReq.ToolChoice = responsesToolChoiceToAnthropic(req.ToolChoice)
+
+	return anthReq, nil
+}
+
+// convertResponsesInputToAnthropicMessages converts Responses API input items to Anthropic messages.
+func convertResponsesInputToAnthropicMessages(input any) []AnthropicMessage {
+	if input == nil {
+		return nil
+	}
+
+	switch v := input.(type) {
+	case string:
+		if v == "" {
+			return nil
+		}
+		return []AnthropicMessage{{Role: "user", Content: v}}
+	case []any:
+		var msgs []AnthropicMessage
+		for _, item := range v {
+			switch val := item.(type) {
+			case string:
+				if val != "" {
+					msgs = append(msgs, AnthropicMessage{Role: "user", Content: val})
+				}
+			case map[string]any:
+				itemType, _ := val["type"].(string)
+				switch itemType {
+				case "function_call":
+					callID, _ := val["call_id"].(string)
+					name, _ := val["name"].(string)
+					argsStr, _ := val["arguments"].(string)
+					var input any = map[string]any{}
+					if argsStr != "" {
+						json.Unmarshal([]byte(argsStr), &input)
+					}
+					msgs = append(msgs, AnthropicMessage{
+						Role: "assistant",
+						Content: []any{map[string]any{
+							"type":  "tool_use",
+							"id":    callID,
+							"name":  name,
+							"input": input,
+						}},
+					})
+				case "function_call_output":
+					callID, _ := val["call_id"].(string)
+					output, _ := val["output"].(string)
+					msgs = append(msgs, AnthropicMessage{
+						Role: "user",
+						Content: []any{map[string]any{
+							"type":        "tool_result",
+							"tool_use_id": callID,
+							"content":     output,
+						}},
+					})
+				default:
+					// message format: extract text from content array
+					role := NormalizeRole(val["role"].(string))
+					text := extractMessageContentText(val)
+					if text != "" {
+						msgs = append(msgs, AnthropicMessage{Role: role, Content: text})
+					}
+				}
+			}
+		}
+		return msgs
+	}
+	return nil
+}
+
+// extractMessageContentText extracts text from a message object's content array.
+func extractMessageContentText(msg map[string]any) string {
+	content, ok := msg["content"]
+	if !ok {
+		return ""
+	}
+	switch c := content.(type) {
+	case string:
+		return c
+	case []any:
+		var parts []string
+		for _, item := range c {
+			if cMap, ok := item.(map[string]any); ok {
+				if text, ok := cMap["text"].(string); ok {
+					parts = append(parts, text)
+				}
+			}
+		}
+		return strings.Join(parts, "\n")
+	}
+	return ""
+}
+
+func responsesToolChoiceToAnthropic(choice any) any {
+	if choice == nil {
+		return nil
+	}
+	switch v := choice.(type) {
+	case string:
+		switch v {
+		case "auto":
+			return map[string]any{"type": "auto"}
+		case "required":
+			return map[string]any{"type": "any"}
+		case "none":
+			return nil
+		}
+	case map[string]any:
+		if v["type"] == "function" {
+			fn, _ := v["function"].(map[string]any)
+			name, _ := fn["name"].(string)
+			return map[string]any{"type": "tool", "name": name}
+		}
+	}
+	return choice
+}
+
+// AnthropicResponseToResponses converts an Anthropic Messages response directly to a Responses API response.
+func (c *Converter) AnthropicResponseToResponses(resp *AnthropicResponse, model, thinkTag string) (*types.ResponsesResponse, error) {
+	now := time.Now().Unix()
+
+	var items []types.ResponseItem
+
+	// Collect text blocks into a message item
+	var textParts []string
+	for _, block := range resp.Content {
+		if block.Type == "text" {
+			textParts = append(textParts, block.Text)
+		}
+	}
+	combinedText := StripThinkTag(strings.Join(textParts, ""), thinkTag)
+	if combinedText != "" || len(resp.Content) == 0 {
+		items = append(items, types.ResponseItem{
+			ID:      fmt.Sprintf("resp_%d", now),
+			Type:    "message",
+			Object:  "response",
+			Created: now,
+			Role:    "assistant",
+			Content: []types.ContentBlock{
+				{Type: "output_text", Text: combinedText},
+			},
+			Status: "completed",
+		})
+	}
+
+	// Convert tool_use blocks to function_call items
+	for _, block := range resp.Content {
+		if block.Type == "tool_use" {
+			argsJSON, _ := json.Marshal(block.Input)
+			items = append(items, types.ResponseItem{
+				ID:        fmt.Sprintf("fc_%s", block.ID),
+				Type:      "function_call",
+				Object:    "response",
+				Created:   now,
+				Status:    "completed",
+				CallID:    block.ID,
+				Name:      block.Name,
+				Arguments: string(argsJSON),
+			})
+		}
+	}
+
+	if len(items) == 0 {
+		items = append(items, types.ResponseItem{
+			ID:      fmt.Sprintf("resp_%d", now),
+			Type:    "message",
+			Object:  "response",
+			Created: now,
+			Role:    "assistant",
+			Content: []types.ContentBlock{{Type: "output_text", Text: ""}},
+			Status:  "completed",
+		})
+	}
+
+	return &types.ResponsesResponse{
+		ID:        resp.ID,
+		Object:    "response",
+		Created:   now,
+		Model:     model,
+		Responses: items,
+		Usage: &types.Usage{
+			InputTokens:  resp.Usage.InputTokens,
+			OutputTokens: resp.Usage.OutputTokens,
+			TotalTokens:  resp.Usage.InputTokens + resp.Usage.OutputTokens,
+		},
+	}, nil
+}
+
+// filterFunctionTools returns only tools that have a name (function tools),
+// skipping built-in tools like web_search that lack name/parameters.
+func filterFunctionTools(tools []types.ResponsesTool) []types.ResponsesTool {
+	var result []types.ResponsesTool
+	for _, t := range tools {
+		if t.Name == "" {
+			continue
+		}
+		result = append(result, t)
+	}
+	return result
 }

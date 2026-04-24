@@ -3,16 +3,25 @@ package types
 // OpenAI Responses API Types
 
 type ResponsesRequest struct {
-	Model              string         `json:"model"`
-	Input              any            `json:"input,omitempty"`
-	Instructions       string         `json:"instructions,omitempty"`
-	MaxTokens          int            `json:"max_tokens,omitempty"`
-	Store              bool           `json:"store,omitempty"`
-	Metadata           map[string]any `json:"metadata,omitempty"`
-	TopP               float64        `json:"top_p,omitempty"`
-	Temperature        float64        `json:"temperature,omitempty"`
-	PreviousResponseID string         `json:"previous_response_id,omitempty"`
-	Stream             bool           `json:"stream,omitempty"`
+	Model              string          `json:"model"`
+	Input              any             `json:"input,omitempty"`
+	Instructions       string          `json:"instructions,omitempty"`
+	MaxTokens          int             `json:"max_tokens,omitempty"`
+	Store              bool            `json:"store,omitempty"`
+	Metadata           map[string]any  `json:"metadata,omitempty"`
+	TopP               float64         `json:"top_p,omitempty"`
+	Temperature        float64         `json:"temperature,omitempty"`
+	PreviousResponseID string          `json:"previous_response_id,omitempty"`
+	Stream             bool            `json:"stream,omitempty"`
+	Tools              []ResponsesTool `json:"tools,omitempty"`
+	ToolChoice         any             `json:"tool_choice,omitempty"`
+}
+
+type ResponsesTool struct {
+	Type        string         `json:"type,omitempty"`
+	Name        string         `json:"name"`
+	Description string         `json:"description,omitempty"`
+	Parameters  map[string]any `json:"parameters,omitempty"`
 }
 
 type ResponsesResponse struct {
@@ -25,12 +34,16 @@ type ResponsesResponse struct {
 }
 
 type ResponseItem struct {
-	ID      string         `json:"id"`
-	Object  string         `json:"object"`
-	Created int64          `json:"created"`
-	Role    string         `json:"role"`
-	Content []ContentBlock `json:"content"`
-	Status  string         `json:"status"`
+	ID        string         `json:"id"`
+	Type      string         `json:"type,omitempty"`
+	Object    string         `json:"object"`
+	Created   int64          `json:"created"`
+	Role      string         `json:"role"`
+	Content   []ContentBlock `json:"content,omitempty"`
+	Status    string         `json:"status"`
+	CallID    string         `json:"call_id,omitempty"`
+	Name      string         `json:"name,omitempty"`
+	Arguments string         `json:"arguments,omitempty"`
 }
 
 type ContentBlock struct {

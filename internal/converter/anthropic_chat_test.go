@@ -848,3 +848,390 @@ func TestAnthropicToChat_ToolResultArrayContent(t *testing.T) {
 	assert.Equal(t, "tool", chatReq.Messages[0].Role)
 	assert.Equal(t, "Result line 1\nResult line 2", chatReq.Messages[0].Content)
 }
+
+// --- ResponsesToAnthropic direct conversion tests ---
+
+func TestResponsesToAnthropic_StringInput(t *testing.T) {
+	c := NewConverter()
+	req := &types.ResponsesRequest{
+		Model:  "gpt-4o",
+		Input:  "Hello",
+		Stream: true,
+	}
+
+	anthReq, err := c.ResponsesToAnthropic(req)
+	require.NoError(t, err)
+
+	assert.Equal(t, "gpt-4o", anthReq.Model)
+	assert.Equal(t, true, anthReq.Stream)
+	assert.Nil(t, anthReq.System)
+	require.Len(t, anthReq.Messages, 1)
+	assert.Equal(t, "user", anthReq.Messages[0].Role)
+	assert.Equal(t, "Hello", anthReq.Messages[0].Content)
+}
+
+func TestResponsesToAnthropic_WithInstructions(t *testing.T) {
+	c := NewConverter()
+	req := &types.ResponsesRequest{
+		Model:        "gpt-4o",
+		Input:        "Hi",
+		Instructions: "Be concise.",
+	}
+
+	anthReq, err := c.ResponsesToAnthropic(req)
+	require.NoError(t, err)
+
+	assert.Equal(t, "Be concise.", anthReq.System)
+}
+
+func TestResponsesToAnthropic_ArrayInput(t *testing.T) {
+	c := NewConverter()
+	req := &types.ResponsesRequest{
+		Model: "gpt-4o",
+		Input: []any{"First", "Second"},
+	}
+
+	anthReq, err := c.ResponsesToAnthropic(req)
+	require.NoError(t, err)
+
+	require.Len(t, anthReq.Messages, 2)
+	assert.Equal(t, "First", anthReq.Messages[0].Content)
+	assert.Equal(t, "Second", anthReq.Messages[1].Content)
+}
+
+func TestResponsesToAnthropic_NilInput(t *testing.T) {
+	c := NewConverter()
+	req := &types.ResponsesRequest{
+		Model: "gpt-4o",
+	}
+
+	anthReq, err := c.ResponsesToAnthropic(req)
+	require.NoError(t, err)
+
+	assert.Nil(t, anthReq.System)
+	assert.Empty(t, anthReq.Messages)
+}
+
+func TestResponsesToAnthropic_DefaultMaxTokens(t *testing.T) {
+	c := NewConverter()
+	req := &types.ResponsesRequest{
+		Model:     "gpt-4o",
+		Input:     "Hi",
+		MaxTokens: 0,
+	}
+
+	anthReq, err := c.ResponsesToAnthropic(req)
+	require.NoError(t, err)
+
+	assert.Equal(t, 4096, anthReq.MaxTokens)
+}
+
+func TestResponsesToAnthropic_PreservesMaxTokens(t *testing.T) {
+	c := NewConverter()
+	req := &types.ResponsesRequest{
+		Model:     "gpt-4o",
+		Input:     "Hi",
+		MaxTokens: 1024,
+	}
+
+	anthReq, err := c.ResponsesToAnthropic(req)
+	require.NoError(t, err)
+
+	assert.Equal(t, 1024, anthReq.MaxTokens)
+}
+
+func TestResponsesToAnthropic_Parameters(t *testing.T) {
+	c := NewConverter()
+	req := &types.ResponsesRequest{
+		Model:       "gpt-4o",
+		Input:       "Hi",
+		MaxTokens:   512,
+		Temperature: 0.7,
+		TopP:        0.9,
+		Metadata:    map[string]any{"key": "value"},
+	}
+
+	anthReq, err := c.ResponsesToAnthropic(req)
+	require.NoError(t, err)
+
+	assert.Equal(t, 512, anthReq.MaxTokens)
+	assert.Equal(t, 0.7, anthReq.Temperature)
+	assert.Equal(t, 0.9, anthReq.TopP)
+	assert.Equal(t, map[string]any{"key": "value"}, anthReq.Metadata)
+	assert.Nil(t, anthReq.Tools)
+	assert.Nil(t, anthReq.ToolChoice)
+}
+
+// --- AnthropicResponseToResponses direct conversion tests ---
+
+func TestAnthropicResponseToResponses_Basic(t *testing.T) {
+	c := NewConverter()
+	resp := &AnthropicResponse{
+		ID:    "msg_123",
+		Type:  "message",
+		Role:  "assistant",
+		Model: "claude-sonnet-4-5",
+		Content: []AnthropicContentBlock{
+			{Type: "text", Text: "Hello world"},
+		},
+		StopReason: "end_turn",
+		Usage:      AnthropicUsage{InputTokens: 10, OutputTokens: 5},
+	}
+
+	result, err := c.AnthropicResponseToResponses(resp, "claude-sonnet-4-5", "")
+	require.NoError(t, err)
+
+	assert.Equal(t, "msg_123", result.ID)
+	assert.Equal(t, "response", result.Object)
+	assert.Equal(t, "claude-sonnet-4-5", result.Model)
+	require.Len(t, result.Responses, 1)
+	assert.Equal(t, "assistant", result.Responses[0].Role)
+	assert.Equal(t, "completed", result.Responses[0].Status)
+	require.Len(t, result.Responses[0].Content, 1)
+	assert.Equal(t, "output_text", result.Responses[0].Content[0].Type)
+	assert.Equal(t, "Hello world", result.Responses[0].Content[0].Text)
+	require.NotNil(t, result.Usage)
+	assert.Equal(t, 10, result.Usage.InputTokens)
+	assert.Equal(t, 5, result.Usage.OutputTokens)
+	assert.Equal(t, 15, result.Usage.TotalTokens)
+}
+
+// --- Tool support tests for Responses↔Anthropic ---
+
+func TestResponsesToAnthropic_FunctionCallInput(t *testing.T) {
+	c := NewConverter()
+	req := &types.ResponsesRequest{
+		Model: "gpt-4o",
+		Input: []any{
+			map[string]any{"type": "message", "role": "user", "content": "What's the weather?"},
+			map[string]any{
+				"type":      "function_call",
+				"call_id":   "call_abc",
+				"name":      "get_weather",
+				"arguments": `{"location":"SF"}`,
+			},
+		},
+	}
+
+	anthReq, err := c.ResponsesToAnthropic(req)
+	require.NoError(t, err)
+
+	require.Len(t, anthReq.Messages, 2)
+	// First message: user text
+	assert.Equal(t, "user", anthReq.Messages[0].Role)
+	assert.Equal(t, "What's the weather?", anthReq.Messages[0].Content)
+
+	// Second message: assistant tool_use
+	assert.Equal(t, "assistant", anthReq.Messages[1].Role)
+	blocks, ok := anthReq.Messages[1].Content.([]any)
+	require.True(t, ok)
+	require.Len(t, blocks, 1)
+	block, _ := blocks[0].(map[string]any)
+	assert.Equal(t, "tool_use", block["type"])
+	assert.Equal(t, "call_abc", block["id"])
+	assert.Equal(t, "get_weather", block["name"])
+}
+
+func TestResponsesToAnthropic_FunctionCallOutputInput(t *testing.T) {
+	c := NewConverter()
+	req := &types.ResponsesRequest{
+		Model: "gpt-4o",
+		Input: []any{
+			map[string]any{
+				"type":    "function_call_output",
+				"call_id": "call_abc",
+				"output":  "Sunny, 72F",
+			},
+		},
+	}
+
+	anthReq, err := c.ResponsesToAnthropic(req)
+	require.NoError(t, err)
+
+	require.Len(t, anthReq.Messages, 1)
+	assert.Equal(t, "user", anthReq.Messages[0].Role)
+	blocks, ok := anthReq.Messages[0].Content.([]any)
+	require.True(t, ok)
+	require.Len(t, blocks, 1)
+	block, _ := blocks[0].(map[string]any)
+	assert.Equal(t, "tool_result", block["type"])
+	assert.Equal(t, "call_abc", block["tool_use_id"])
+	assert.Equal(t, "Sunny, 72F", block["content"])
+}
+
+func TestResponsesToAnthropic_ToolsMapping(t *testing.T) {
+	c := NewConverter()
+	req := &types.ResponsesRequest{
+		Model: "gpt-4o",
+		Input: "Hi",
+		Tools: []types.ResponsesTool{
+			{Name: "get_weather", Description: "Get weather", Parameters: map[string]any{"type": "object"}},
+		},
+	}
+
+	anthReq, err := c.ResponsesToAnthropic(req)
+	require.NoError(t, err)
+
+	require.Len(t, anthReq.Tools, 1)
+	assert.Equal(t, "get_weather", anthReq.Tools[0].Name)
+	assert.Equal(t, "Get weather", anthReq.Tools[0].Description)
+	assert.Contains(t, anthReq.Tools[0].InputSchema, "type")
+}
+
+func TestResponsesToAnthropic_ToolChoiceMapping(t *testing.T) {
+	tests := []struct {
+		name     string
+		choice   any
+		expected any
+	}{
+		{"auto", "auto", map[string]any{"type": "auto"}},
+		{"required", "required", map[string]any{"type": "any"}},
+		{"none", "none", nil},
+		{"function", map[string]any{"type": "function", "function": map[string]any{"name": "get_weather"}}, map[string]any{"type": "tool", "name": "get_weather"}},
+		{"nil", nil, nil},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := NewConverter()
+			req := &types.ResponsesRequest{
+				Model:      "gpt-4o",
+				Input:      "Hi",
+				ToolChoice: tt.choice,
+			}
+			anthReq, err := c.ResponsesToAnthropic(req)
+			require.NoError(t, err)
+			assert.Equal(t, tt.expected, anthReq.ToolChoice)
+		})
+	}
+}
+
+func TestAnthropicResponseToResponses_ToolUse(t *testing.T) {
+	c := NewConverter()
+	resp := &AnthropicResponse{
+		ID:   "msg_tool",
+		Type: "message",
+		Content: []AnthropicContentBlock{
+			{Type: "text", Text: "Let me check."},
+			{Type: "tool_use", ID: "toolu_abc", Name: "get_weather", Input: map[string]any{"location": "SF"}},
+		},
+		StopReason: "tool_use",
+		Usage:      AnthropicUsage{InputTokens: 100, OutputTokens: 50},
+	}
+
+	result, err := c.AnthropicResponseToResponses(resp, "model", "")
+	require.NoError(t, err)
+
+	require.Len(t, result.Responses, 2)
+
+	// First: message item
+	assert.Equal(t, "message", result.Responses[0].Type)
+	assert.Equal(t, "assistant", result.Responses[0].Role)
+	assert.Equal(t, "Let me check.", result.Responses[0].Content[0].Text)
+
+	// Second: function_call item
+	assert.Equal(t, "function_call", result.Responses[1].Type)
+	assert.Equal(t, "fc_toolu_abc", result.Responses[1].ID)
+	assert.Equal(t, "toolu_abc", result.Responses[1].CallID)
+	assert.Equal(t, "get_weather", result.Responses[1].Name)
+	assert.Contains(t, result.Responses[1].Arguments, "SF")
+	assert.Equal(t, "completed", result.Responses[1].Status)
+}
+
+func TestAnthropicResponseToResponses_ToolUseOnly(t *testing.T) {
+	c := NewConverter()
+	resp := &AnthropicResponse{
+		ID:   "msg_toolonly",
+		Type: "message",
+		Content: []AnthropicContentBlock{
+			{Type: "tool_use", ID: "toolu_1", Name: "calc", Input: map[string]any{"x": 1}},
+		},
+		StopReason: "tool_use",
+		Usage:      AnthropicUsage{InputTokens: 50, OutputTokens: 25},
+	}
+
+	result, err := c.AnthropicResponseToResponses(resp, "model", "")
+	require.NoError(t, err)
+
+	require.Len(t, result.Responses, 1)
+	assert.Equal(t, "function_call", result.Responses[0].Type)
+	assert.Equal(t, "calc", result.Responses[0].Name)
+}
+
+func TestAnthropicResponseToResponses_MultipleTextBlocks(t *testing.T) {
+	c := NewConverter()
+	resp := &AnthropicResponse{
+		ID:   "msg_multi",
+		Type: "message",
+		Content: []AnthropicContentBlock{
+			{Type: "text", Text: "Hello "},
+			{Type: "text", Text: "world"},
+		},
+		Usage: AnthropicUsage{InputTokens: 10, OutputTokens: 10},
+	}
+
+	result, err := c.AnthropicResponseToResponses(resp, "model", "")
+	require.NoError(t, err)
+
+	assert.Equal(t, "Hello world", result.Responses[0].Content[0].Text)
+}
+
+func TestAnthropicResponseToResponses_ThinkTag(t *testing.T) {
+	c := NewConverter()
+	resp := &AnthropicResponse{
+		ID:   "msg_think",
+		Type: "message",
+		Content: []AnthropicContentBlock{
+			{Type: "text", Text: "<think_>some reasoning</think_>The answer is 42"},
+		},
+		Usage: AnthropicUsage{InputTokens: 10, OutputTokens: 10},
+	}
+
+	result, err := c.AnthropicResponseToResponses(resp, "model", "think_")
+	require.NoError(t, err)
+
+	assert.Equal(t, "The answer is 42", result.Responses[0].Content[0].Text)
+}
+
+func TestAnthropicResponseToResponses_IgnoresNonTextBlocks(t *testing.T) {
+	c := NewConverter()
+	resp := &AnthropicResponse{
+		ID:   "msg_tool",
+		Type: "message",
+		Content: []AnthropicContentBlock{
+			{Type: "text", Text: "Let me check."},
+			{Type: "tool_use", ID: "toolu_1", Name: "get_weather", Input: map[string]any{"location": "SF"}},
+		},
+		StopReason: "tool_use",
+		Usage:      AnthropicUsage{InputTokens: 100, OutputTokens: 50},
+	}
+
+	result, err := c.AnthropicResponseToResponses(resp, "model", "")
+	require.NoError(t, err)
+
+	assert.Equal(t, "Let me check.", result.Responses[0].Content[0].Text)
+}
+
+func TestAnthropicResponseToResponses_UsageWithCache(t *testing.T) {
+	c := NewConverter()
+	resp := &AnthropicResponse{
+		ID:   "msg_cache",
+		Type: "message",
+		Content: []AnthropicContentBlock{
+			{Type: "text", Text: "Hi"},
+		},
+		Usage: AnthropicUsage{
+			InputTokens:              100,
+			OutputTokens:             50,
+			CacheCreationInputTokens: 200,
+			CacheReadInputTokens:     300,
+		},
+	}
+
+	result, err := c.AnthropicResponseToResponses(resp, "model", "")
+	require.NoError(t, err)
+
+	assert.Equal(t, 100, result.Usage.InputTokens)
+	assert.Equal(t, 50, result.Usage.OutputTokens)
+	assert.Equal(t, 150, result.Usage.TotalTokens)
+}

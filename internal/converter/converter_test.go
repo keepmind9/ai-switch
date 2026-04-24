@@ -55,8 +55,9 @@ func TestResponsesToChat_ArrayInput(t *testing.T) {
 	chatReq, err := c.ResponsesToChat(req)
 	require.NoError(t, err)
 
-	require.Len(t, chatReq.Messages, 1)
-	assert.Equal(t, "First part\nSecond part", chatReq.Messages[0].Content)
+	require.Len(t, chatReq.Messages, 2)
+	assert.Equal(t, "First part", chatReq.Messages[0].Content)
+	assert.Equal(t, "Second part", chatReq.Messages[1].Content)
 }
 
 func TestResponsesToChat_MessageArrayInput(t *testing.T) {
