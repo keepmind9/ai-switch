@@ -385,10 +385,29 @@ func (h *Handler) recordStreamUsageFromState(c *gin.Context, model string, input
 func (h *Handler) streamPassthrough(c *gin.Context, resp *http.Response, format string) string {
 	copyUpstreamHeaders(c, resp)
 
+	// Upstream may return SSE data without Content-Type header.
+	if !isSSEResponse(resp) && resp.StatusCode == http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		if looksLikeSSE(respBody) {
+			slog.Info("upstream SSE without Content-Type, streaming directly", "body_len", len(respBody))
+			return h.streamBodyAsSSE(c, bytes.NewReader(respBody), format)
+		} else if !isSSEErrorData(string(respBody)) && format == "responses" {
+			slog.Info("converting non-SSE Responses JSON to SSE events", "body_len", len(respBody))
+			return h.convertResponsesJSONToSSE(c, respBody)
+		}
+		// Error response — restore body for checkUpstreamStreamError
+		resp.Body = io.NopCloser(bytes.NewReader(respBody))
+	}
+
 	if body, handled := checkUpstreamStreamError(c, resp, format); handled {
 		return body
 	}
 
+	return h.streamBodyAsSSE(c, resp.Body, format)
+}
+
+// streamBodyAsSSE reads SSE from body and writes it to the client.
+func (h *Handler) streamBodyAsSSE(c *gin.Context, body io.Reader, format string) string {
 	writeSSEHeaders(c)
 
 	var acc middleware.StreamUsageAccumulator
@@ -396,7 +415,7 @@ func (h *Handler) streamPassthrough(c *gin.Context, resp *http.Response, format 
 	providerStr, _ := provider.(string)
 
 	flusher, canFlush := c.Writer.(http.Flusher)
-	scanner := bufio.NewScanner(resp.Body)
+	scanner := bufio.NewScanner(body)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
 	var buf bytes.Buffer
@@ -418,6 +437,98 @@ func (h *Handler) streamPassthrough(c *gin.Context, resp *http.Response, format 
 	}
 	h.recordStreamUsage(acc.Model, providerStr, int(acc.InputTokens), int(acc.OutputTokens))
 	return buf.String()
+}
+
+// convertResponsesJSONToSSE converts a non-streaming Responses API JSON response
+// into Responses API SSE events and writes them to the client.
+func (h *Handler) convertResponsesJSONToSSE(c *gin.Context, body []byte) string {
+	writeSSEHeaders(c)
+	w := &ginSSEWriter{c: c}
+	flusher, canFlush := c.Writer.(http.Flusher)
+
+	var resp map[string]any
+	if err := json.Unmarshal(body, &resp); err != nil {
+		slog.Error("failed to parse Responses JSON for SSE conversion", "error", err)
+		return string(body)
+	}
+
+	seq := 0
+	respID, _ := resp["id"].(string)
+	model, _ := resp["model"].(string)
+	createdAt := resp["created_at"]
+
+	w.WriteEvent("response.created", map[string]any{
+		"type": "response.created", "sequence_number": seq,
+		"response": map[string]any{
+			"id": respID, "object": "response", "created_at": createdAt,
+			"model": model, "status": "in_progress", "output": []any{},
+		},
+	})
+	seq++
+
+	output, _ := resp["output"].([]any)
+	for i, item := range output {
+		itemMap, _ := item.(map[string]any)
+		itemID, _ := itemMap["id"].(string)
+		itemType, _ := itemMap["type"].(string)
+
+		w.WriteEvent("response.output_item.added", map[string]any{
+			"type": "response.output_item.added", "sequence_number": seq, "output_index": i,
+			"item": item,
+		})
+		seq++
+
+		if itemType == "message" {
+			content, _ := itemMap["content"].([]any)
+			for j, part := range content {
+				partMap, _ := part.(map[string]any)
+				partType, _ := partMap["type"].(string)
+
+				w.WriteEvent("response.content_part.added", map[string]any{
+					"type": "response.content_part.added", "sequence_number": seq,
+					"output_index": i, "content_index": j, "item_id": itemID, "part": part,
+				})
+				seq++
+
+				if partType == "output_text" {
+					if text, _ := partMap["text"].(string); text != "" {
+						w.WriteEvent("response.output_text.delta", map[string]any{
+							"type": "response.output_text.delta", "sequence_number": seq,
+							"output_index": i, "content_index": j, "item_id": itemID, "delta": text,
+						})
+						seq++
+						w.WriteEvent("response.output_text.done", map[string]any{
+							"type": "response.output_text.done", "sequence_number": seq,
+							"output_index": i, "content_index": j, "item_id": itemID, "text": text,
+						})
+						seq++
+					}
+				}
+
+				w.WriteEvent("response.content_part.done", map[string]any{
+					"type": "response.content_part.done", "sequence_number": seq,
+					"output_index": i, "content_index": j, "item_id": itemID, "part": part,
+				})
+				seq++
+			}
+		}
+
+		w.WriteEvent("response.output_item.done", map[string]any{
+			"type": "response.output_item.done", "sequence_number": seq, "output_index": i,
+			"item": item,
+		})
+		seq++
+	}
+
+	resp["status"] = "completed"
+	w.WriteEvent("response.completed", map[string]any{
+		"type": "response.completed", "sequence_number": seq, "response": resp,
+	})
+
+	if canFlush {
+		flusher.Flush()
+	}
+	return string(body)
 }
 
 // streamToChatSSE reads upstream SSE (any format) and converts to Chat SSE output.

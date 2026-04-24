@@ -89,6 +89,19 @@ func isSSEResponse(resp *http.Response) bool {
 	return strings.Contains(ct, "text/event-stream")
 }
 
+// looksLikeSSE checks if raw bytes resemble SSE-formatted data (lines starting
+// with "event:" or "data:"). Used when upstream omits Content-Type header.
+func looksLikeSSE(body []byte) bool {
+	for _, line := range strings.Split(string(body), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		return strings.HasPrefix(trimmed, "event:") || strings.HasPrefix(trimmed, "data:")
+	}
+	return false
+}
+
 // isSSEErrorData checks if an SSE data payload contains an error object.
 func isSSEErrorData(data string) bool {
 	trimmed := strings.TrimSpace(data)
