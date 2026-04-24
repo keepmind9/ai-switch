@@ -6,6 +6,7 @@ import (
 
 	"github.com/keepmind9/ai-switch/internal/types"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func responsesEventJSON(eventType string, extra map[string]any) string {
@@ -131,4 +132,183 @@ func TestConvertResponsesLineToChat_ResponseCreatedNoResponse(t *testing.T) {
 	assert.Equal(t, "", state.Model)
 	assert.True(t, state.Started)
 	assert.Equal(t, "assistant", chunk.Choices[0].Delta.Role)
+}
+
+func TestConvertResponsesLineToChat_ToolCallStream(t *testing.T) {
+	state := &ResponsesToChatState{}
+
+	// response.created
+	result := ConvertResponsesLineToChat(state, responsesEventJSON("response.created", map[string]any{
+		"response": map[string]any{"id": "resp-001", "model": "gpt-4o"},
+	}))
+	require.NotNil(t, result)
+	assert.True(t, state.Started)
+
+	// response.output_item.added (function_call)
+	result = ConvertResponsesLineToChat(state, responsesEventJSON("response.output_item.added", map[string]any{
+		"output_index": 0,
+		"item": map[string]any{
+			"id":      "fc_123_0",
+			"type":    "function_call",
+			"call_id": "call_abc",
+			"name":    "get_weather",
+		},
+	}))
+	chunk, ok := result.(*types.ChatStreamResponse)
+	require.True(t, ok)
+	require.Len(t, chunk.Choices[0].Delta.ToolCalls, 1)
+	assert.Equal(t, "call_abc", chunk.Choices[0].Delta.ToolCalls[0].ID)
+	assert.Equal(t, "get_weather", chunk.Choices[0].Delta.ToolCalls[0].Function.Name)
+	assert.Equal(t, 0, chunk.Choices[0].Delta.ToolCalls[0].Index)
+	assert.True(t, state.HasToolCalls)
+
+	// response.function_call_arguments.delta
+	result = ConvertResponsesLineToChat(state, responsesEventJSON("response.function_call_arguments.delta", map[string]any{
+		"output_index": 0,
+		"item_id":      "fc_123_0",
+		"delta":        `{"city":`,
+	}))
+	chunk, ok = result.(*types.ChatStreamResponse)
+	require.True(t, ok)
+	require.Len(t, chunk.Choices[0].Delta.ToolCalls, 1)
+	assert.Equal(t, `{"city":`, chunk.Choices[0].Delta.ToolCalls[0].Function.Arguments)
+
+	// response.function_call_arguments.delta (second chunk)
+	result = ConvertResponsesLineToChat(state, responsesEventJSON("response.function_call_arguments.delta", map[string]any{
+		"output_index": 0,
+		"item_id":      "fc_123_0",
+		"delta":        `"NYC"}`,
+	}))
+	chunk, ok = result.(*types.ChatStreamResponse)
+	require.True(t, ok)
+	assert.Equal(t, `"NYC"}`, chunk.Choices[0].Delta.ToolCalls[0].Function.Arguments)
+
+	// Verify accumulated args in state
+	require.NotNil(t, state.ToolCallItems["fc_123_0"])
+	assert.Equal(t, `{"city":"NYC"}`, state.ToolCallItems["fc_123_0"].Args)
+
+	// response.function_call_arguments.done (should return nil)
+	result = ConvertResponsesLineToChat(state, responsesEventJSON("response.function_call_arguments.done", map[string]any{
+		"output_index": 0,
+		"item_id":      "fc_123_0",
+		"arguments":    `{"city":"NYC"}`,
+	}))
+	assert.Nil(t, result)
+
+	// response.completed
+	result = ConvertResponsesLineToChat(state, responsesEventJSON("response.completed", map[string]any{
+		"response": map[string]any{"id": "resp-001", "status": "completed"},
+	}))
+	chunk, ok = result.(*types.ChatStreamResponse)
+	require.True(t, ok)
+	assert.Equal(t, "tool_calls", chunk.Choices[0].FinishReason)
+}
+
+func TestConvertResponsesLineToChat_MultipleToolCalls(t *testing.T) {
+	state := &ResponsesToChatState{}
+
+	// response.created
+	ConvertResponsesLineToChat(state, responsesEventJSON("response.created", map[string]any{
+		"response": map[string]any{"id": "resp-002", "model": "gpt-4o"},
+	}))
+
+	// First tool call added
+	result := ConvertResponsesLineToChat(state, responsesEventJSON("response.output_item.added", map[string]any{
+		"output_index": 0,
+		"item": map[string]any{
+			"id": "fc_1", "type": "function_call", "call_id": "call_a", "name": "get_weather",
+		},
+	}))
+	chunk, _ := result.(*types.ChatStreamResponse)
+	assert.Equal(t, 0, chunk.Choices[0].Delta.ToolCalls[0].Index)
+
+	// Second tool call added
+	result = ConvertResponsesLineToChat(state, responsesEventJSON("response.output_item.added", map[string]any{
+		"output_index": 1,
+		"item": map[string]any{
+			"id": "fc_2", "type": "function_call", "call_id": "call_b", "name": "get_stock",
+		},
+	}))
+	chunk, _ = result.(*types.ChatStreamResponse)
+	assert.Equal(t, 1, chunk.Choices[0].Delta.ToolCalls[0].Index)
+
+	// Arguments delta for first tool call
+	result = ConvertResponsesLineToChat(state, responsesEventJSON("response.function_call_arguments.delta", map[string]any{
+		"item_id": "fc_1", "delta": `{"city":"NYC"}`,
+	}))
+	chunk, _ = result.(*types.ChatStreamResponse)
+	assert.Equal(t, 0, chunk.Choices[0].Delta.ToolCalls[0].Index)
+
+	// Arguments delta for second tool call
+	result = ConvertResponsesLineToChat(state, responsesEventJSON("response.function_call_arguments.delta", map[string]any{
+		"item_id": "fc_2", "delta": `{"sym":"AAPL"}`,
+	}))
+	chunk, _ = result.(*types.ChatStreamResponse)
+	assert.Equal(t, 1, chunk.Choices[0].Delta.ToolCalls[0].Index)
+
+	// Completed
+	result = ConvertResponsesLineToChat(state, responsesEventJSON("response.completed", map[string]any{
+		"response": map[string]any{"status": "completed"},
+	}))
+	chunk, _ = result.(*types.ChatStreamResponse)
+	assert.Equal(t, "tool_calls", chunk.Choices[0].FinishReason)
+}
+
+func TestConvertResponsesLineToChat_TextThenToolCall(t *testing.T) {
+	state := &ResponsesToChatState{}
+
+	// response.created
+	ConvertResponsesLineToChat(state, responsesEventJSON("response.created", map[string]any{
+		"response": map[string]any{"id": "resp-003", "model": "gpt-4o"},
+	}))
+
+	// Text delta
+	result := ConvertResponsesLineToChat(state, responsesEventJSON("response.output_text.delta", map[string]any{
+		"delta": "Let me check",
+	}))
+	chunk, _ := result.(*types.ChatStreamResponse)
+	assert.Equal(t, "Let me check", chunk.Choices[0].Delta.Content)
+
+	// Tool call added
+	result = ConvertResponsesLineToChat(state, responsesEventJSON("response.output_item.added", map[string]any{
+		"item": map[string]any{
+			"id": "fc_1", "type": "function_call", "call_id": "call_a", "name": "search",
+		},
+	}))
+	chunk, _ = result.(*types.ChatStreamResponse)
+	require.Len(t, chunk.Choices[0].Delta.ToolCalls, 1)
+	assert.Equal(t, "search", chunk.Choices[0].Delta.ToolCalls[0].Function.Name)
+
+	// Completed with tool_calls finish reason
+	result = ConvertResponsesLineToChat(state, responsesEventJSON("response.completed", map[string]any{
+		"response": map[string]any{"status": "completed"},
+	}))
+	chunk, _ = result.(*types.ChatStreamResponse)
+	assert.Equal(t, "tool_calls", chunk.Choices[0].FinishReason)
+}
+
+func TestConvertResponsesLineToChat_EmptyDeltaForToolArgs(t *testing.T) {
+	state := &ResponsesToChatState{}
+	ConvertResponsesLineToChat(state, responsesEventJSON("response.created", map[string]any{
+		"response": map[string]any{"id": "resp-004", "model": "gpt-4o"},
+	}))
+
+	// Empty delta should return nil
+	result := ConvertResponsesLineToChat(state, responsesEventJSON("response.function_call_arguments.delta", map[string]any{
+		"item_id": "fc_1", "delta": "",
+	}))
+	assert.Nil(t, result)
+}
+
+func TestConvertResponsesLineToChat_ToolArgsWithoutItemID(t *testing.T) {
+	state := &ResponsesToChatState{}
+	ConvertResponsesLineToChat(state, responsesEventJSON("response.created", map[string]any{
+		"response": map[string]any{"id": "resp-005", "model": "gpt-4o"},
+	}))
+
+	// Delta without item_id should return nil
+	result := ConvertResponsesLineToChat(state, responsesEventJSON("response.function_call_arguments.delta", map[string]any{
+		"delta": "some data",
+	}))
+	assert.Nil(t, result)
 }

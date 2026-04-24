@@ -16,6 +16,18 @@ type ResponsesToChatState struct {
 	Started      bool
 	InputTokens  int
 	OutputTokens int
+	HasToolCalls bool
+
+	// Tool call tracking: item_id -> call info
+	ToolCallItems map[string]*responsesToChatTC
+	ToolCallSeq   int
+}
+
+type responsesToChatTC struct {
+	CallID    string
+	Name      string
+	Args      string
+	ChatIndex int
 }
 
 // ChatStreamUsage returns token usage for the final Chat SSE usage chunk.
@@ -80,6 +92,74 @@ func ConvertResponsesLineToChat(state *ResponsesToChatState, line string) any {
 			},
 		}
 
+	case "response.output_item.added":
+		item, _ := raw["item"].(map[string]any)
+		if item == nil {
+			return nil
+		}
+		itemType, _ := item["type"].(string)
+		if itemType != "function_call" {
+			return nil
+		}
+
+		itemID, _ := item["id"].(string)
+		callID, _ := item["call_id"].(string)
+		name, _ := item["name"].(string)
+		state.HasToolCalls = true
+		if state.ToolCallItems == nil {
+			state.ToolCallItems = make(map[string]*responsesToChatTC)
+		}
+		chatIdx := state.ToolCallSeq
+		state.ToolCallSeq++
+		state.ToolCallItems[itemID] = &responsesToChatTC{
+			CallID:    callID,
+			Name:      name,
+			ChatIndex: chatIdx,
+		}
+
+		return &types.ChatStreamResponse{
+			ID:      state.ID,
+			Object:  "chat.completion.chunk",
+			Created: state.Created,
+			Model:   state.Model,
+			Choices: []types.StreamChoice{
+				{Index: 0, Delta: types.ChatMessage{
+					ToolCalls: []types.ToolCall{
+						{Index: chatIdx, ID: callID, Type: "function", Function: types.FunctionCall{Name: name}},
+					},
+				}, FinishReason: ""},
+			},
+		}
+
+	case "response.function_call_arguments.delta":
+		delta, _ := raw["delta"].(string)
+		itemID, _ := raw["item_id"].(string)
+		if delta == "" || itemID == "" {
+			return nil
+		}
+		tc := state.ToolCallItems[itemID]
+		if tc == nil {
+			return nil
+		}
+		tc.Args += delta
+
+		return &types.ChatStreamResponse{
+			ID:      state.ID,
+			Object:  "chat.completion.chunk",
+			Created: state.Created,
+			Model:   state.Model,
+			Choices: []types.StreamChoice{
+				{Index: 0, Delta: types.ChatMessage{
+					ToolCalls: []types.ToolCall{
+						{Index: tc.ChatIndex, Function: types.FunctionCall{Arguments: delta}},
+					},
+				}, FinishReason: ""},
+			},
+		}
+
+	case "response.function_call_arguments.done":
+		return nil
+
 	case "response.completed":
 		if resp, ok := raw["response"].(map[string]any); ok {
 			if usage, ok := resp["usage"].(map[string]any); ok {
@@ -87,20 +167,22 @@ func ConvertResponsesLineToChat(state *ResponsesToChatState, line string) any {
 				state.OutputTokens = int(toFloat64(usage["output_tokens"]))
 			}
 		}
+		finishReason := "stop"
+		if state.HasToolCalls {
+			finishReason = "tool_calls"
+		}
 		return &types.ChatStreamResponse{
 			ID:      state.ID,
 			Object:  "chat.completion.chunk",
 			Created: state.Created,
 			Model:   state.Model,
 			Choices: []types.StreamChoice{
-				{Index: 0, Delta: types.ChatMessage{}, FinishReason: "stop"},
+				{Index: 0, Delta: types.ChatMessage{}, FinishReason: finishReason},
 			},
 		}
 
 	case "response.output_item.done", "response.content_part.done",
-		"response.output_text.done", "response.output_item.added",
-		"response.content_part.added":
-		// Internal state events, no Chat SSE equivalent
+		"response.output_text.done", "response.content_part.added":
 		return nil
 	}
 

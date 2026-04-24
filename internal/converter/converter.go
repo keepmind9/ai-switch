@@ -151,12 +151,11 @@ func (c *Converter) convertAnthropicRequest(upstreamFormat string, body []byte, 
 		return &ConvertedRequest{UpstreamBody: chatBody, Model: model, IsStreaming: req.Stream}, nil
 
 	case FormatResponses:
-		chatReq, err := c.AnthropicToChat(&req)
+		respReq, err := c.AnthropicToResponses(&req)
 		if err != nil {
 			return nil, err
 		}
-		chatReq.Model = resolveModel(model)
-		respReq := BuildResponsesFromChat(chatReq, req.Stream)
+		respReq.Model = resolveModel(model)
 		respBody, err := json.Marshal(respReq)
 		if err != nil {
 			return nil, err
@@ -205,20 +204,60 @@ func (c *Converter) convertChatRequest(upstreamFormat string, body []byte, defau
 
 func BuildResponsesFromChat(chatReq *types.ChatRequest, stream bool) *types.ResponsesRequest {
 	var instructions string
-	var inputParts []string
+	var inputItems []any
 	for _, msg := range chatReq.Messages {
 		if msg.Role == "system" {
 			instructions += msg.Content + "\n"
-		} else {
-			inputParts = append(inputParts, msg.Content)
+			continue
+		}
+		if msg.Role == "tool" {
+			inputItems = append(inputItems, map[string]any{
+				"type":    "function_call_output",
+				"call_id": msg.ToolCallID,
+				"output":  msg.Content,
+			})
+			continue
+		}
+		if msg.Role == "assistant" && len(msg.ToolCalls) > 0 {
+			if msg.Content != "" {
+				inputItems = append(inputItems, msg.Content)
+			}
+			for _, tc := range msg.ToolCalls {
+				inputItems = append(inputItems, map[string]any{
+					"type":      "function_call",
+					"call_id":   tc.ID,
+					"name":      tc.Function.Name,
+					"arguments": tc.Function.Arguments,
+				})
+			}
+			continue
+		}
+		if msg.Content != "" {
+			inputItems = append(inputItems, msg.Content)
 		}
 	}
-	var input any
-	if len(inputParts) == 1 {
-		input = inputParts[0]
-	} else if len(inputParts) > 1 {
-		input = inputParts
+
+	var tools []types.ResponsesTool
+	for _, t := range chatReq.Tools {
+		tools = append(tools, types.ResponsesTool{
+			Type:        "function",
+			Name:        t.Function.Name,
+			Description: t.Function.Description,
+			Parameters:  t.Function.Parameters,
+		})
 	}
+
+	var input any
+	if len(inputItems) == 1 {
+		if s, ok := inputItems[0].(string); ok {
+			input = s
+		} else {
+			input = inputItems
+		}
+	} else if len(inputItems) > 1 {
+		input = inputItems
+	}
+
 	return &types.ResponsesRequest{
 		Model:        chatReq.Model,
 		Input:        input,
@@ -227,6 +266,8 @@ func BuildResponsesFromChat(chatReq *types.ChatRequest, stream bool) *types.Resp
 		MaxTokens:    chatReq.MaxTokens,
 		Temperature:  chatReq.Temperature,
 		TopP:         chatReq.TopP,
+		Tools:        tools,
+		ToolChoice:   chatReq.ToolChoice,
 	}
 }
 
@@ -245,19 +286,39 @@ func (c *Converter) ResponsesToChatResponse(resp *types.ResponsesResponse) (*typ
 			TotalTokens:      resp.Usage.TotalTokens,
 		}
 	}
+
+	var contentText string
+	var toolCalls []types.ToolCall
 	for _, item := range resp.Responses {
-		for _, block := range item.Content {
-			if block.Type == "output_text" {
-				chatResp.Choices = append(chatResp.Choices, types.ChatChoice{
-					Index: 0,
-					Message: types.ChatMessage{
-						Role:    "assistant",
-						Content: block.Text,
-					},
-					FinishReason: "stop",
-				})
+		switch item.Type {
+		case "message", "":
+			for _, block := range item.Content {
+				if block.Type == "output_text" {
+					contentText += block.Text
+				}
 			}
+		case "function_call":
+			toolCalls = append(toolCalls, types.ToolCall{
+				ID:   item.CallID,
+				Type: "function",
+				Function: types.FunctionCall{
+					Name:      item.Name,
+					Arguments: item.Arguments,
+				},
+			})
 		}
+	}
+
+	finishReason := "stop"
+	if len(toolCalls) > 0 {
+		finishReason = "tool_calls"
+	}
+	if contentText != "" || len(toolCalls) > 0 {
+		chatResp.Choices = []types.ChatChoice{{
+			Index:        0,
+			Message:      types.ChatMessage{Role: "assistant", Content: contentText, ToolCalls: toolCalls},
+			FinishReason: finishReason,
+		}}
 	}
 	return chatResp, nil
 }

@@ -723,3 +723,138 @@ func filterFunctionTools(tools []types.ResponsesTool) []types.ResponsesTool {
 	}
 	return result
 }
+
+// AnthropicToResponses converts an Anthropic Messages request directly to a Responses API request.
+func (c *Converter) AnthropicToResponses(req *AnthropicRequest) (*types.ResponsesRequest, error) {
+	respReq := &types.ResponsesRequest{
+		Model:       req.Model,
+		MaxTokens:   req.MaxTokens,
+		Temperature: req.Temperature,
+		TopP:        req.TopP,
+		Stream:      req.Stream,
+		Metadata:    req.Metadata,
+	}
+
+	if req.MaxTokens == 0 {
+		respReq.MaxTokens = 4096
+	}
+
+	if req.System != nil {
+		respReq.Instructions = extractSystemText(req.System)
+	}
+
+	// Convert messages → input items
+	respReq.Input = convertAnthropicMessagesToResponsesInput(req.Messages)
+
+	// Convert tools
+	for _, t := range req.Tools {
+		schema := t.InputSchema
+		if schema == nil {
+			schema = map[string]any{"type": "object"}
+		}
+		respReq.Tools = append(respReq.Tools, types.ResponsesTool{
+			Type:        "function",
+			Name:        t.Name,
+			Description: t.Description,
+			Parameters:  schema,
+		})
+	}
+
+	// Convert tool_choice
+	respReq.ToolChoice = anthropicToolChoiceToResponses(req.ToolChoice)
+
+	return respReq, nil
+}
+
+func convertAnthropicMessagesToResponsesInput(msgs []AnthropicMessage) any {
+	var items []any
+	for _, msg := range msgs {
+		converted := anthropicMessageToResponsesItems(msg)
+		items = append(items, converted...)
+	}
+	if len(items) == 0 {
+		return nil
+	}
+	if len(items) == 1 {
+		if s, ok := items[0].(string); ok {
+			return s
+		}
+		return items
+	}
+	return items
+}
+
+func anthropicMessageToResponsesItems(msg AnthropicMessage) []any {
+	if s, ok := msg.Content.(string); ok {
+		if s == "" {
+			return nil
+		}
+		return []any{s}
+	}
+
+	blocks, ok := msg.Content.([]any)
+	if !ok {
+		text := extractContentText(msg.Content)
+		if text == "" {
+			return nil
+		}
+		return []any{text}
+	}
+
+	var items []any
+	for _, item := range blocks {
+		block, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		switch block["type"] {
+		case "text":
+			if text, ok := block["text"].(string); ok && text != "" {
+				items = append(items, text)
+			}
+		case "tool_use":
+			id, _ := block["id"].(string)
+			name, _ := block["name"].(string)
+			argsJSON, _ := json.Marshal(block["input"])
+			items = append(items, map[string]any{
+				"type":      "function_call",
+				"call_id":   id,
+				"name":      name,
+				"arguments": string(argsJSON),
+			})
+		case "tool_result":
+			toolUseID, _ := block["tool_use_id"].(string)
+			content := extractToolResultContent(block["content"])
+			items = append(items, map[string]any{
+				"type":    "function_call_output",
+				"call_id": toolUseID,
+				"output":  content,
+			})
+		}
+	}
+	return items
+}
+
+func anthropicToolChoiceToResponses(choice any) any {
+	if choice == nil {
+		return nil
+	}
+	m, ok := choice.(map[string]any)
+	if !ok {
+		return choice
+	}
+	t, _ := m["type"].(string)
+	switch t {
+	case "auto":
+		return "auto"
+	case "any":
+		return "required"
+	case "tool":
+		name, _ := m["name"].(string)
+		return map[string]any{
+			"type":     "function",
+			"function": map[string]any{"name": name},
+		}
+	}
+	return choice
+}

@@ -1235,3 +1235,142 @@ func TestAnthropicResponseToResponses_UsageWithCache(t *testing.T) {
 	assert.Equal(t, 50, result.Usage.OutputTokens)
 	assert.Equal(t, 150, result.Usage.TotalTokens)
 }
+
+func TestAnthropicToResponses_SimpleMessage(t *testing.T) {
+	c := NewConverter()
+	req := &AnthropicRequest{
+		Model:    "claude-3",
+		Messages: []AnthropicMessage{{Role: "user", Content: "Hello"}},
+	}
+
+	respReq, err := c.AnthropicToResponses(req)
+	require.NoError(t, err)
+	assert.Equal(t, "Hello", respReq.Input)
+	assert.Equal(t, "claude-3", respReq.Model)
+}
+
+func TestAnthropicToResponses_WithSystem(t *testing.T) {
+	c := NewConverter()
+	req := &AnthropicRequest{
+		Model:    "claude-3",
+		System:   "You are helpful",
+		Messages: []AnthropicMessage{{Role: "user", Content: "Hi"}},
+	}
+
+	respReq, err := c.AnthropicToResponses(req)
+	require.NoError(t, err)
+	assert.Equal(t, "You are helpful", respReq.Instructions)
+}
+
+func TestAnthropicToResponses_Tools(t *testing.T) {
+	c := NewConverter()
+	req := &AnthropicRequest{
+		Model:    "claude-3",
+		Messages: []AnthropicMessage{{Role: "user", Content: "Weather?"}},
+		Tools: []AnthropicTool{
+			{Name: "get_weather", Description: "Get weather", InputSchema: map[string]any{"type": "object"}},
+		},
+		ToolChoice: map[string]any{"type": "auto"},
+	}
+
+	respReq, err := c.AnthropicToResponses(req)
+	require.NoError(t, err)
+	require.Len(t, respReq.Tools, 1)
+	assert.Equal(t, "function", respReq.Tools[0].Type)
+	assert.Equal(t, "get_weather", respReq.Tools[0].Name)
+	assert.Equal(t, "auto", respReq.ToolChoice)
+}
+
+func TestAnthropicToResponses_ToolNilSchema(t *testing.T) {
+	c := NewConverter()
+	req := &AnthropicRequest{
+		Model: "claude-3",
+		Tools: []AnthropicTool{{Name: "search"}},
+	}
+
+	respReq, err := c.AnthropicToResponses(req)
+	require.NoError(t, err)
+	require.Len(t, respReq.Tools, 1)
+	assert.Equal(t, map[string]any{"type": "object"}, respReq.Tools[0].Parameters)
+}
+
+func TestAnthropicToResponses_ToolUseMessages(t *testing.T) {
+	c := NewConverter()
+	req := &AnthropicRequest{
+		Model: "claude-3",
+		Messages: []AnthropicMessage{
+			{Role: "user", Content: "Weather?"},
+			{Role: "assistant", Content: []any{
+				map[string]any{"type": "tool_use", "id": "call_1", "name": "get_weather", "input": map[string]any{"city": "NYC"}},
+			}},
+			{Role: "user", Content: []any{
+				map[string]any{"type": "tool_result", "tool_use_id": "call_1", "content": `{"temp":72}`},
+			}},
+		},
+	}
+
+	respReq, err := c.AnthropicToResponses(req)
+	require.NoError(t, err)
+	arr, ok := respReq.Input.([]any)
+	require.True(t, ok)
+	require.Len(t, arr, 3)
+
+	assert.Equal(t, "Weather?", arr[0])
+
+	fc, ok := arr[1].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "function_call", fc["type"])
+	assert.Equal(t, "call_1", fc["call_id"])
+	assert.Equal(t, "get_weather", fc["name"])
+
+	fco, ok := arr[2].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "function_call_output", fco["type"])
+	assert.Equal(t, "call_1", fco["call_id"])
+	assert.Equal(t, `{"temp":72}`, fco["output"])
+}
+
+func TestAnthropicToResponses_ToolChoiceMapping(t *testing.T) {
+	tests := []struct {
+		name   string
+		choice any
+		want   any
+	}{
+		{"auto", map[string]any{"type": "auto"}, "auto"},
+		{"any_to_required", map[string]any{"type": "any"}, "required"},
+		{"none", map[string]any{"type": "none"}, map[string]any{"type": "none"}},
+		{"tool", map[string]any{"type": "tool", "name": "search"}, map[string]any{"type": "function", "function": map[string]any{"name": "search"}}},
+		{"nil", nil, nil},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := NewConverter()
+			req := &AnthropicRequest{
+				Model:      "claude-3",
+				Messages:   []AnthropicMessage{{Role: "user", Content: "test"}},
+				ToolChoice: tt.choice,
+			}
+			respReq, err := c.AnthropicToResponses(req)
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, respReq.ToolChoice)
+		})
+	}
+}
+
+func TestAnthropicToResponses_MultiTurnMessages(t *testing.T) {
+	c := NewConverter()
+	req := &AnthropicRequest{
+		Messages: []AnthropicMessage{
+			{Role: "user", Content: "Hello"},
+			{Role: "assistant", Content: "Hi"},
+			{Role: "user", Content: "Bye"},
+		},
+	}
+
+	respReq, err := c.AnthropicToResponses(req)
+	require.NoError(t, err)
+	arr, ok := respReq.Input.([]any)
+	require.True(t, ok)
+	assert.Equal(t, []any{"Hello", "Hi", "Bye"}, arr)
+}

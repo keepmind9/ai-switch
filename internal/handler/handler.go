@@ -709,7 +709,7 @@ func (h *Handler) handleAnthropic(c *gin.Context) {
 	case "anthropic":
 		h.passthroughRequest(c, result, body, isStreaming)
 	case "responses":
-		h.anthropicViaChatToResponses(c, result, &anthReq, model, isStreaming)
+		h.anthropicViaResponses(c, result, &anthReq, model, isStreaming)
 	}
 }
 
@@ -1069,18 +1069,17 @@ func (h *Handler) responsesViaAnthropic(c *gin.Context, result *router.RouteResu
 	c.JSON(http.StatusOK, responsesResp)
 }
 
-// anthropicViaChatToResponses chains Anthropic→Chat→Responses.
-func (h *Handler) anthropicViaChatToResponses(c *gin.Context, result *router.RouteResult, req *converter.AnthropicRequest, model string, isStreaming bool) {
-	chatReq, err := h.converter.AnthropicToChat(req)
+// anthropicViaResponses converts Anthropic→Responses directly, forwards, converts back.
+func (h *Handler) anthropicViaResponses(c *gin.Context, result *router.RouteResult, req *converter.AnthropicRequest, model string, isStreaming bool) {
+	respReq, err := h.converter.AnthropicToResponses(req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": "conversion_error", "message": err.Error()}})
 		return
 	}
-	chatReq.Model = model
-	chatReq.Stream = isStreaming
+	respReq.Model = model
 
-	chatBody, _ := json.Marshal(chatReq)
-	resp, latency, err := h.forwardRequest(result, chatBody)
+	respBodyData, _ := json.Marshal(respReq)
+	resp, latency, err := h.forwardRequest(result, respBodyData)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": gin.H{"code": "upstream_error", "message": err.Error()}})
 		return
@@ -1093,7 +1092,7 @@ func (h *Handler) anthropicViaChatToResponses(c *gin.Context, result *router.Rou
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
-		h.logLLMRequest(model, providerStr, upstreamURL, latency, isStreaming, chatBody, string(respBody))
+		h.logLLMRequest(model, providerStr, upstreamURL, latency, isStreaming, respBodyData, string(respBody))
 		h.writeConvertedError(c, resp, respBody, "anthropic")
 		return
 	}
@@ -1104,12 +1103,12 @@ func (h *Handler) anthropicViaChatToResponses(c *gin.Context, result *router.Rou
 			return converter.ConvertResponsesEventToAnthropicSSE(w, state, data)
 		}, "anthropic")
 		h.recordStreamUsageFromState(c, state.Model, state.InputTokens, state.OutputTokens)
-		h.logLLMRequest(model, providerStr, upstreamURL, latency, true, chatBody, content)
+		h.logLLMRequest(model, providerStr, upstreamURL, latency, true, respBodyData, content)
 		return
 	}
 
 	respBody, _ := io.ReadAll(resp.Body)
-	h.logLLMRequest(model, providerStr, upstreamURL, latency, false, chatBody, string(respBody))
+	h.logLLMRequest(model, providerStr, upstreamURL, latency, false, respBodyData, string(respBody))
 	copyUpstreamHeaders(c, resp)
 	c.Data(http.StatusOK, "application/json", respBody)
 }

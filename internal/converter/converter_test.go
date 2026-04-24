@@ -233,10 +233,9 @@ func TestBuildResponsesFromChat_MultiTurn(t *testing.T) {
 
 	respReq := BuildResponsesFromChat(chatReq, false)
 	assert.Equal(t, "Be helpful", respReq.Instructions)
-	// Multi-turn: input should be array of all non-system messages
-	arr, ok := respReq.Input.([]string)
+	arr, ok := respReq.Input.([]any)
 	require.True(t, ok)
-	assert.Equal(t, []string{"Hello", "Hi there", "How are you?"}, arr)
+	assert.Equal(t, []any{"Hello", "Hi there", "How are you?"}, arr)
 }
 
 func TestBuildResponsesFromChat_SingleTurn(t *testing.T) {
@@ -254,4 +253,154 @@ func TestBuildResponsesFromChat_NoMessages(t *testing.T) {
 	chatReq := &types.ChatRequest{Model: "gpt-4o"}
 	respReq := BuildResponsesFromChat(chatReq, false)
 	assert.Nil(t, respReq.Input)
+}
+
+func TestBuildResponsesFromChat_WithTools(t *testing.T) {
+	chatReq := &types.ChatRequest{
+		Model: "gpt-4o",
+		Messages: []types.ChatMessage{
+			{Role: "user", Content: "What's the weather?"},
+		},
+		Tools: []types.Tool{
+			{Type: "function", Function: types.FunctionDef{
+				Name:        "get_weather",
+				Description: "Get weather",
+				Parameters:  map[string]any{"type": "object", "properties": map[string]any{"city": map[string]any{"type": "string"}}},
+			}},
+		},
+		ToolChoice: "auto",
+	}
+
+	respReq := BuildResponsesFromChat(chatReq, false)
+	require.Len(t, respReq.Tools, 1)
+	assert.Equal(t, "function", respReq.Tools[0].Type)
+	assert.Equal(t, "get_weather", respReq.Tools[0].Name)
+	assert.Equal(t, "Get weather", respReq.Tools[0].Description)
+	assert.Equal(t, "auto", respReq.ToolChoice)
+}
+
+func TestBuildResponsesFromChat_ToolMessages(t *testing.T) {
+	chatReq := &types.ChatRequest{
+		Model: "gpt-4o",
+		Messages: []types.ChatMessage{
+			{Role: "user", Content: "What's the weather?"},
+			{Role: "assistant", ToolCalls: []types.ToolCall{
+				{ID: "call_1", Type: "function", Function: types.FunctionCall{Name: "get_weather", Arguments: `{"city":"NYC"}`}},
+			}},
+			{Role: "tool", ToolCallID: "call_1", Content: `{"temp":72}`},
+		},
+	}
+
+	respReq := BuildResponsesFromChat(chatReq, false)
+	arr, ok := respReq.Input.([]any)
+	require.True(t, ok)
+	require.Len(t, arr, 3)
+
+	// First: user text
+	assert.Equal(t, "What's the weather?", arr[0])
+
+	// Second: function_call
+	fc, ok := arr[1].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "function_call", fc["type"])
+	assert.Equal(t, "call_1", fc["call_id"])
+	assert.Equal(t, "get_weather", fc["name"])
+	assert.Equal(t, `{"city":"NYC"}`, fc["arguments"])
+
+	// Third: function_call_output
+	fco, ok := arr[2].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "function_call_output", fco["type"])
+	assert.Equal(t, "call_1", fco["call_id"])
+	assert.Equal(t, `{"temp":72}`, fco["output"])
+}
+
+func TestBuildResponsesFromChat_AssistantWithTextAndToolCalls(t *testing.T) {
+	chatReq := &types.ChatRequest{
+		Model: "gpt-4o",
+		Messages: []types.ChatMessage{
+			{Role: "user", Content: "Check weather"},
+			{Role: "assistant", Content: "Let me check", ToolCalls: []types.ToolCall{
+				{ID: "call_1", Type: "function", Function: types.FunctionCall{Name: "get_weather", Arguments: `{}`}},
+			}},
+		},
+	}
+
+	respReq := BuildResponsesFromChat(chatReq, false)
+	arr, ok := respReq.Input.([]any)
+	require.True(t, ok)
+	require.Len(t, arr, 3)
+	assert.Equal(t, "Check weather", arr[0])
+	assert.Equal(t, "Let me check", arr[1])
+	fc := arr[2].(map[string]any)
+	assert.Equal(t, "function_call", fc["type"])
+}
+
+func TestResponsesToChatResponse_WithFunctionCall(t *testing.T) {
+	resp := &types.ResponsesResponse{
+		ID:     "resp-001",
+		Object: "response",
+		Model:  "gpt-4o",
+		Responses: []types.ResponseItem{
+			{
+				ID:   "item-1",
+				Type: "message",
+				Content: []types.ContentBlock{
+					{Type: "output_text", Text: "Let me check"},
+				},
+			},
+			{
+				ID:        "fc-1",
+				Type:      "function_call",
+				CallID:    "call_abc",
+				Name:      "get_weather",
+				Arguments: `{"city":"NYC"}`,
+			},
+		},
+		Usage: &types.Usage{InputTokens: 10, OutputTokens: 20, TotalTokens: 30},
+	}
+
+	c := NewConverter()
+	chatResp, err := c.ResponsesToChatResponse(resp)
+	require.NoError(t, err)
+	require.Len(t, chatResp.Choices, 1)
+	assert.Equal(t, "Let me check", chatResp.Choices[0].Message.Content)
+	require.Len(t, chatResp.Choices[0].Message.ToolCalls, 1)
+	assert.Equal(t, "call_abc", chatResp.Choices[0].Message.ToolCalls[0].ID)
+	assert.Equal(t, "get_weather", chatResp.Choices[0].Message.ToolCalls[0].Function.Name)
+	assert.Equal(t, `{"city":"NYC"}`, chatResp.Choices[0].Message.ToolCalls[0].Function.Arguments)
+	assert.Equal(t, "tool_calls", chatResp.Choices[0].FinishReason)
+}
+
+func TestResponsesToChatResponse_MultipleFunctionCalls(t *testing.T) {
+	resp := &types.ResponsesResponse{
+		ID:     "resp-002",
+		Object: "response",
+		Model:  "gpt-4o",
+		Responses: []types.ResponseItem{
+			{
+				ID:        "fc-1",
+				Type:      "function_call",
+				CallID:    "call_a",
+				Name:      "get_weather",
+				Arguments: `{"city":"NYC"}`,
+			},
+			{
+				ID:        "fc-2",
+				Type:      "function_call",
+				CallID:    "call_b",
+				Name:      "get_stock",
+				Arguments: `{"sym":"AAPL"}`,
+			},
+		},
+	}
+
+	c := NewConverter()
+	chatResp, err := c.ResponsesToChatResponse(resp)
+	require.NoError(t, err)
+	require.Len(t, chatResp.Choices, 1)
+	require.Len(t, chatResp.Choices[0].Message.ToolCalls, 2)
+	assert.Equal(t, "call_a", chatResp.Choices[0].Message.ToolCalls[0].ID)
+	assert.Equal(t, "call_b", chatResp.Choices[0].Message.ToolCalls[1].ID)
+	assert.Equal(t, "tool_calls", chatResp.Choices[0].FinishReason)
 }
