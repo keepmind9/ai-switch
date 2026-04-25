@@ -41,6 +41,20 @@ if (Get-Command $Binary -ErrorAction SilentlyContinue) {
     Write-Host "ai-switch not found. Installing $latestVersion..."
 }
 
+# Check if ai-switch is currently running (cannot replace a running binary)
+$runningProcess = Get-Process -Name $Binary -ErrorAction SilentlyContinue
+if ($runningProcess) {
+    Write-Host ""
+    Write-Host "Error: ai-switch is currently running and cannot be replaced." -ForegroundColor Red
+    Write-Host ""
+    Write-Host "Please stop it first, then re-run this script:" -ForegroundColor Yellow
+    Write-Host "  ai-switch stop"
+    Write-Host ""
+    Write-Host "Or close the process manually:" -ForegroundColor Yellow
+    Write-Host "  Stop-Process -Name `"$Binary`" -Force"
+    exit 1
+}
+
 # Find matching asset for windows-amd64
 try {
     $version = $releaseInfo.tag_name

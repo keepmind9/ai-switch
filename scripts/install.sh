@@ -36,6 +36,18 @@ else
     echo "ai-switch not found. Installing $LATEST_VERSION..."
 fi
 
+# Check if ai-switch is currently running (cannot replace a running binary)
+if pgrep -x "$BINARY" > /dev/null 2>&1; then
+    echo "Error: ai-switch is currently running and cannot be replaced."
+    echo ""
+    echo "Please stop it first, then re-run this script:"
+    echo "  ai-switch stop"
+    echo ""
+    echo "Or kill the process:"
+    echo "  pkill -x $BINARY"
+    exit 1
+fi
+
 # Detect platform
 OS=""
 ARCH=""
