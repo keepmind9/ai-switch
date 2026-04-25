@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/http"
+	"slices"
 	"sync"
 
 	"github.com/gin-gonic/gin"
@@ -25,6 +26,7 @@ func (a *AdminHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("/admin/providers", a.createProvider)
 	r.PUT("/admin/providers/:key", a.updateProvider)
 	r.DELETE("/admin/providers/:key", a.deleteProvider)
+	r.POST("/admin/providers/fetch-models", a.fetchModels)
 
 	r.GET("/admin/routes", a.listRoutes)
 	r.POST("/admin/routes", a.createRoute)
@@ -54,7 +56,13 @@ func (a *AdminHandler) listProviders(c *gin.Context) {
 	}
 
 	items := make([]providerItem, 0, len(cfg.Providers))
-	for k, p := range cfg.Providers {
+	keys := make([]string, 0, len(cfg.Providers))
+	for k := range cfg.Providers {
+		keys = append(keys, k)
+	}
+	slices.Sort(keys)
+	for _, k := range keys {
+		p := cfg.Providers[k]
 		items = append(items, providerItem{
 			Key:      k,
 			Name:     p.Name,
@@ -241,7 +249,13 @@ func (a *AdminHandler) listRoutes(c *gin.Context) {
 	}
 
 	items := make([]routeItem, 0, len(cfg.Routes))
-	for k, r := range cfg.Routes {
+	rkeys := make([]string, 0, len(cfg.Routes))
+	for k := range cfg.Routes {
+		rkeys = append(rkeys, k)
+	}
+	slices.Sort(rkeys)
+	for _, k := range rkeys {
+		r := cfg.Routes[k]
 		items = append(items, routeItem{
 			Key:                  k,
 			Provider:             r.Provider,
