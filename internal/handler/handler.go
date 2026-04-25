@@ -87,7 +87,13 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 		}
 		c.Data(http.StatusOK, "text/html; charset=utf-8", data)
 	}
+	r.GET("/favicon.svg", func(c *gin.Context) {
+		c.FileFromFS("/favicon.svg", http.FS(staticSub))
+	})
 	r.GET("/ui", serveUI)
+	r.GET("/ui/favicon.svg", func(c *gin.Context) {
+		c.FileFromFS("/favicon.svg", http.FS(staticSub))
+	})
 	r.GET("/ui/assets/*filepath", func(c *gin.Context) {
 		ip := net.ParseIP(c.ClientIP())
 		if ip == nil || !ip.IsLoopback() {
