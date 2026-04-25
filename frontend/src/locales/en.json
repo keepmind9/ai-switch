@@ -61,8 +61,14 @@
         "format": "Protocol Format",
         "type": "Provider Type",
         "isPartner": "Is Partner/Sponsor",
+        "fetchModels": "Fetch Models",
+        "defaultModel": "Default Model",
+        "defaultModelPlaceholder": "Select or type default model",
         "models": "Available Models",
-        "addModel": "Add model (e.g. gpt-4o)"
+        "addModel": "Add model (e.g. gpt-4o)",
+        "fetchSuccess": "Models fetched successfully",
+        "fetchSuccessDesc": "Successfully loaded {count} models, you can select them below.",
+        "fetchFail": "Failed to fetch models"
       }
     }
   },

@@ -61,8 +61,14 @@
         "format": "协议格式",
         "type": "服务商类型",
         "isPartner": "是否为合作伙伴/赞助商",
+        "fetchModels": "获取可用模型",
+        "defaultModel": "默认模型",
+        "defaultModelPlaceholder": "选择或输入默认模型",
         "models": "可用模型列表",
-        "addModel": "添加模型 (例如 gpt-4o)"
+        "addModel": "添加模型 (例如 gpt-4o)",
+        "fetchSuccess": "模型列表获取成功",
+        "fetchSuccessDesc": "已成功加载 {count} 个模型，可直接在下方选择。",
+        "fetchFail": "模型获取失败"
       }
     }
   },

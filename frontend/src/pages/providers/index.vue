@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from "vue"
 import { ElMessage } from "element-plus"
-import { Plus, View, Edit, Hide, CopyDocument, Search, Refresh, Link, Delete, QuestionFilled } from "@element-plus/icons-vue"
-import { listProviders, createProvider, updateProvider, deleteProvider, revealAPIKey, type Provider } from "@/api/providers"
+import { Plus, View, Edit, Hide, CopyDocument, Search, Refresh, Link, Delete, QuestionFilled, Check } from "@element-plus/icons-vue"
+import { listProviders, createProvider, updateProvider, deleteProvider, revealAPIKey, fetchModels, type Provider, type ModelInfo } from "@/api/providers"
 import { listPresets, type Preset } from "@/api/stats"
 import { useConfirm } from "@@/composables/useConfirm"
 import { useI18n } from "vue-i18n"
@@ -11,6 +11,8 @@ const { t } = useI18n()
 const providers = ref<Provider[]>([])
 const presets = ref<Preset[]>([])
 const loading = ref(true)
+const fetchingModels = ref(false)
+const fetchedModels = ref<ModelInfo[]>([])
 const showDrawer = ref(false)
 const isEdit = ref(false)
 const selectedPreset = ref("")
@@ -19,7 +21,7 @@ const revealedKeys = ref<Record<string, string>>({})
 const searchQuery = ref("")
 const { confirmState, toggle: toggleDelete, reset: resetDelete } = useConfirm()
 
-const defaultForm = { key: "", name: "", base_url: "", path: "", api_key: "", format: "chat", logo_url: "", sponsor: false, models: [] as string[] }
+const defaultForm = { key: "", name: "", base_url: "", path: "", api_key: "", format: "chat", logo_url: "", sponsor: false, default_model: "", models: [] as string[] }
 const modelInput = ref("")
 
 async function load() {
@@ -53,7 +55,7 @@ function applyPreset(key: string) {
 }
 
 function openCreate() {
-  isEdit.value = false; form.value = { ...defaultForm }; selectedPreset.value = ""; showDrawer.value = true
+  isEdit.value = false; form.value = { ...defaultForm }; selectedPreset.value = ""; fetchedModels.value = []; showDrawer.value = true
 }
 
 function openEdit(row: Provider) {
@@ -67,9 +69,32 @@ function openEdit(row: Provider) {
     format: row.format, 
     logo_url: row.logo_url, 
     sponsor: row.sponsor, 
+    default_model: row.default_model || "",
     models: [...(row.models || [])] 
   }
-  selectedPreset.value = ""; showDrawer.value = true
+  selectedPreset.value = ""; fetchedModels.value = []; showDrawer.value = true
+}
+
+async function handleFetchModels() {
+  if (!form.value.base_url || !form.value.format) return
+  fetchingModels.value = true
+  try {
+    const payload: any = {
+      base_url: form.value.base_url,
+      api_key: form.value.api_key || "",
+      format: form.value.format
+    }
+    if (isEdit.value && form.value.key) {
+      payload.key = form.value.key
+    }
+    const res = await fetchModels(payload)
+    fetchedModels.value = res.data.models
+    ElMessage.success(t("providers.drawer.form.fetchSuccess"))
+  } catch (e: any) {
+    ElMessage.error(e.response?.data?.error || t("providers.drawer.form.fetchFail"))
+  } finally {
+    fetchingModels.value = false
+  }
 }
 
 function addModel() {
@@ -308,20 +333,40 @@ onMounted(load)
             </el-col>
           </el-row>
 
-          <el-form-item :label="$t('providers.drawer.form.models')">
-            <div class="rounded-lg p-3" style="background-color: var(--v3-section-bg); border: 1px solid var(--el-border-color-light)">
-              <div class="flex flex-wrap gap-2 mb-3">
-                <el-tag v-for="(m, idx) in form.models" :key="idx" closable @close="removeModel(Number(idx))" size="small" type="info">
-                  {{ m }}
-                </el-tag>
-                <span v-if="!form.models.length" class="text-xs text-slate-400 italic mt-1">{{ $t('providers.table.noModels') }}</span>
-              </div>
-              <div class="flex gap-2">
-                <el-input v-model="modelInput" :placeholder="$t('providers.drawer.form.addModel')" size="small" @keyup.enter="addModel" />
-                <el-button @click="addModel" size="small" :icon="Plus">{{ $t('navbar.language') === 'Language' ? 'Add' : '添加' }}</el-button>
-              </div>
+          <div class="mb-6">
+            <div class="text-sm font-bold text-slate-500 mb-2">{{ $t('providers.drawer.form.models') }}</div>
+            <div class="flex items-center gap-2 mb-3">
+              <el-button 
+                type="primary" 
+                :loading="fetchingModels" 
+                :disabled="!form.base_url || !form.format" 
+                @click="handleFetchModels"
+                class="flex-1 shadow-sm"
+              >
+                <el-icon class="mr-1"><Refresh /></el-icon> {{ $t('providers.drawer.form.fetchModels') }}
+              </el-button>
             </div>
-          </el-form-item>
+            <div v-if="fetchedModels.length > 0" class="text-xs text-emerald-600 mb-2 flex items-center">
+              <el-icon class="mr-1"><Check /></el-icon> 
+              {{ $t('providers.drawer.form.fetchSuccessDesc', { count: fetchedModels.length }) }}
+            </div>
+            <el-select 
+              v-model="form.models" 
+              multiple 
+              filterable 
+              allow-create 
+              default-first-option
+              :placeholder="$t('providers.drawer.form.addModel')" 
+              class="w-full"
+            >
+              <el-option 
+                v-for="m in fetchedModels" 
+                :key="m.id" 
+                :label="m.id" 
+                :value="m.id" 
+              />
+            </el-select>
+          </div>
         </el-form>
       </div>
       <template #footer>
