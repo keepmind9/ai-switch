@@ -13,8 +13,11 @@ import (
 // message_start uses input_tokens: 0 as placeholder.
 // message_delta is deferred until upstream usage arrives (or [DONE] as fallback),
 // and includes both input_tokens and output_tokens from real upstream data.
+//
+// Handles DeepSeek reasoning_content by emitting Anthropic thinking blocks.
 func ConvertChatChunkToAnthropicSSE(w SSEWriter, state *AnthropicStreamState, data string) bool {
 	if data == "[DONE]" {
+		closeReasoningBlock(w, state)
 		closeOpenToolBlocks(w, state)
 		emitAnthropicFinalEvents(w, state)
 		return true
@@ -26,7 +29,7 @@ func ConvertChatChunkToAnthropicSSE(w SSEWriter, state *AnthropicStreamState, da
 	}
 
 	for _, choice := range chunk.Choices {
-		// First chunk with role: emit message_start
+		// First chunk with role: emit message_start only (blocks start on content)
 		if !state.ContentSent && choice.Delta.Role == "assistant" {
 			state.MessageID = chunk.ID
 			state.Model = chunk.Model
@@ -49,21 +52,39 @@ func ConvertChatChunkToAnthropicSSE(w SSEWriter, state *AnthropicStreamState, da
 					},
 				},
 			})
-
-			w.WriteEvent("content_block_start", map[string]any{
-				"type":  "content_block_start",
-				"index": state.nextBlockIndex(),
-				"content_block": map[string]any{
-					"type": "text",
-					"text": "",
-				},
-			})
 			continue
 		}
 
 		// Tool calls
 		if len(choice.Delta.ToolCalls) > 0 {
+			closeReasoningBlock(w, state)
 			processToolCalls(w, state, choice.Delta.ToolCalls, chunk)
+			continue
+		}
+
+		// Reasoning content delta (DeepSeek thinking mode)
+		if choice.Delta.ReasoningContent != nil && *choice.Delta.ReasoningContent != "" {
+			ensureMessageStarted(w, state, chunk)
+			if !state.ReasoningStarted {
+				state.ReasoningStarted = true
+				w.WriteEvent("content_block_start", map[string]any{
+					"type":  "content_block_start",
+					"index": state.nextBlockIndex(),
+					"content_block": map[string]any{
+						"type":     "thinking",
+						"thinking": "",
+					},
+				})
+			}
+			w.WriteEvent("content_block_delta", map[string]any{
+				"type":  "content_block_delta",
+				"index": 0,
+				"delta": map[string]any{
+					"type":     "thinking_delta",
+					"thinking": *choice.Delta.ReasoningContent,
+				},
+			})
+			state.OutputTokens++
 			continue
 		}
 
@@ -73,32 +94,16 @@ func ConvertChatChunkToAnthropicSSE(w SSEWriter, state *AnthropicStreamState, da
 			if content == "" {
 				continue
 			}
-			if !state.ContentSent {
-				state.ContentSent = true
-				state.MessageID = chunk.ID
-				state.Model = chunk.Model
 
-				w.WriteEvent("message_start", map[string]any{
-					"type": "message_start",
-					"message": map[string]any{
-						"id":          chunk.ID,
-						"type":        "message",
-						"role":        "assistant",
-						"content":     []any{},
-						"model":       chunk.Model,
-						"stop_reason": nil,
-						"usage": map[string]any{
-							"input_tokens":                0,
-							"output_tokens":               0,
-							"cache_creation_input_tokens": 0,
-							"cache_read_input_tokens":     0,
-						},
-					},
-				})
+			ensureMessageStarted(w, state, chunk)
+			closeReasoningBlock(w, state)
 
+			if !state.TextBlockClosed && !state.TextBlockStarted {
+				state.TextBlockStarted = true
+				state.TextBlockIdx = state.nextBlockIndex()
 				w.WriteEvent("content_block_start", map[string]any{
 					"type":  "content_block_start",
-					"index": state.nextBlockIndex(),
+					"index": state.TextBlockIdx,
 					"content_block": map[string]any{
 						"type": "text",
 						"text": "",
@@ -111,7 +116,7 @@ func ConvertChatChunkToAnthropicSSE(w SSEWriter, state *AnthropicStreamState, da
 
 			w.WriteEvent("content_block_delta", map[string]any{
 				"type":  "content_block_delta",
-				"index": 0,
+				"index": state.TextBlockIdx,
 				"delta": map[string]any{
 					"type": "text_delta",
 					"text": content,
@@ -122,12 +127,13 @@ func ConvertChatChunkToAnthropicSSE(w SSEWriter, state *AnthropicStreamState, da
 		// Finish reason: close blocks, defer message_delta
 		if choice.FinishReason != "" && choice.FinishReason != "null" {
 			state.FinishReason = chatStopToAnthropic(choice.FinishReason)
+			closeReasoningBlock(w, state)
 
-			if !state.TextBlockClosed && state.ContentSent {
+			if !state.TextBlockClosed && state.TextBlockStarted {
 				state.TextBlockClosed = true
 				w.WriteEvent("content_block_stop", map[string]any{
 					"type":  "content_block_stop",
-					"index": 0,
+					"index": state.TextBlockIdx,
 				})
 			}
 		}
@@ -145,6 +151,43 @@ func ConvertChatChunkToAnthropicSSE(w SSEWriter, state *AnthropicStreamState, da
 	}
 
 	return false
+}
+
+func ensureMessageStarted(w SSEWriter, state *AnthropicStreamState, chunk types.ChatStreamResponse) {
+	if state.ContentSent {
+		return
+	}
+	state.ContentSent = true
+	state.MessageID = chunk.ID
+	state.Model = chunk.Model
+
+	w.WriteEvent("message_start", map[string]any{
+		"type": "message_start",
+		"message": map[string]any{
+			"id":          chunk.ID,
+			"type":        "message",
+			"role":        "assistant",
+			"content":     []any{},
+			"model":       chunk.Model,
+			"stop_reason": nil,
+			"usage": map[string]any{
+				"input_tokens":                0,
+				"output_tokens":               0,
+				"cache_creation_input_tokens": 0,
+				"cache_read_input_tokens":     0,
+			},
+		},
+	})
+}
+
+func closeReasoningBlock(w SSEWriter, state *AnthropicStreamState) {
+	if state.ReasoningStarted && !state.ReasoningClosed {
+		state.ReasoningClosed = true
+		w.WriteEvent("content_block_stop", map[string]any{
+			"type":  "content_block_stop",
+			"index": 0,
+		})
+	}
 }
 
 func processToolCalls(w SSEWriter, state *AnthropicStreamState, toolCalls []types.ToolCall, chunk types.ChatStreamResponse) {
@@ -178,11 +221,11 @@ func processToolCalls(w SSEWriter, state *AnthropicStreamState, toolCalls []type
 	}
 
 	// Close text block if still open
-	if !state.TextBlockClosed {
+	if !state.TextBlockClosed && state.TextBlockStarted {
 		state.TextBlockClosed = true
 		w.WriteEvent("content_block_stop", map[string]any{
 			"type":  "content_block_stop",
-			"index": 0,
+			"index": state.TextBlockIdx,
 		})
 	}
 

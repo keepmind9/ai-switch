@@ -157,11 +157,12 @@ func TestConvertChatChunkToAnthropicSSE_FullStream(t *testing.T) {
 	// Chunk 1: role announcement
 	done := ConvertChatChunkToAnthropicSSE(w, state, chatChunkJSON("chatcmpl-a", "assistant", "", ""))
 	assert.False(t, done)
-	assert.Equal(t, []string{"message_start", "content_block_start"}, w.eventTypes())
+	assert.Equal(t, []string{"message_start"}, w.eventTypes())
 
-	// Chunk 2: content delta
+	// Chunk 2: content delta — triggers content_block_start + content_block_delta
 	done = ConvertChatChunkToAnthropicSSE(w, state, chatChunkJSON("chatcmpl-a", "", "Hello ", ""))
 	assert.False(t, done)
+	assert.Contains(t, w.eventTypes(), "content_block_start")
 	assert.Contains(t, w.eventTypes(), "content_block_delta")
 
 	// Chunk 3: more content
@@ -296,7 +297,7 @@ func TestConvertChatChunkToAnthropicSSE_MessageStartStructure(t *testing.T) {
 
 	ConvertChatChunkToAnthropicSSE(w, state, chatChunkJSON("msg-123", "assistant", "", ""))
 
-	require.Len(t, w.events, 2)
+	require.Len(t, w.events, 1)
 	assert.Equal(t, "message_start", w.events[0].eventType)
 
 	data, ok := w.events[0].data.(map[string]any)
@@ -521,8 +522,8 @@ func TestConvertChatChunkToAnthropicSSE_ToolCallsOnlyNoText(t *testing.T) {
 	events := w.eventTypes()
 	assert.Contains(t, events, "message_start")
 	assert.Contains(t, events, "content_block_start")
-	// text block should have been opened and closed
-	assert.Contains(t, events, "content_block_stop")
+	// No text block was started, so no text block close needed
+	// content_block_stop only emitted for tool blocks at [DONE]
 }
 
 func TestConvertChatChunkToAnthropicSSE_MultipleToolCalls(t *testing.T) {

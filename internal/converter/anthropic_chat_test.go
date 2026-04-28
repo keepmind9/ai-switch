@@ -1374,3 +1374,128 @@ func TestAnthropicToResponses_MultiTurnMessages(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, []any{"Hello", "Hi", "Bye"}, arr)
 }
+
+func TestAnthropicToChat_MultiTurnToolUse(t *testing.T) {
+	c := NewConverter()
+	req := &AnthropicRequest{
+		Model: "test",
+		Messages: []AnthropicMessage{
+			{Role: "user", Content: "What's the weather?"},
+			{
+				Role: "assistant",
+				Content: []any{
+					map[string]any{"type": "thinking", "thinking": "I need to check the weather..."},
+					map[string]any{
+						"type":  "tool_use",
+						"id":    "call_abc",
+						"name":  "get_weather",
+						"input": map[string]any{"city": "NYC"},
+					},
+				},
+			},
+			{
+				Role: "user",
+				Content: []any{
+					map[string]any{
+						"type":        "tool_result",
+						"tool_use_id": "call_abc",
+						"content":     "72°F sunny",
+					},
+				},
+			},
+			{
+				Role: "assistant",
+				Content: []any{
+					map[string]any{"type": "thinking", "thinking": "Good weather..."},
+					map[string]any{"type": "text", "text": "The weather is 72°F."},
+				},
+			},
+			{Role: "user", Content: "What about London?"},
+		},
+	}
+
+	chatReq, err := c.AnthropicToChat(req)
+	require.NoError(t, err)
+
+	// Verify message sequence
+	msgs := chatReq.Messages
+	require.Len(t, msgs, 5)
+
+	// 1. user: "What's the weather?"
+	assert.Equal(t, "user", msgs[0].Role)
+	assert.Equal(t, "What's the weather?", msgs[0].Content)
+
+	// 2. assistant with reasoning_content + tool_calls
+	assert.Equal(t, "assistant", msgs[1].Role)
+	require.NotNil(t, msgs[1].ReasoningContent)
+	assert.Equal(t, "I need to check the weather...", *msgs[1].ReasoningContent)
+	require.Len(t, msgs[1].ToolCalls, 1)
+	assert.Equal(t, "call_abc", msgs[1].ToolCalls[0].ID)
+	assert.Equal(t, "get_weather", msgs[1].ToolCalls[0].Function.Name)
+
+	// 3. tool result (MUST immediately follow assistant with tool_calls)
+	assert.Equal(t, "tool", msgs[2].Role)
+	assert.Equal(t, "call_abc", msgs[2].ToolCallID)
+	assert.Equal(t, "72°F sunny", msgs[2].Content)
+
+	// 4. assistant with reasoning_content + text
+	assert.Equal(t, "assistant", msgs[3].Role)
+	require.NotNil(t, msgs[3].ReasoningContent)
+	assert.Equal(t, "Good weather...", *msgs[3].ReasoningContent)
+	assert.Equal(t, "The weather is 72°F.", msgs[3].Content)
+
+	// 5. user follow-up
+	assert.Equal(t, "user", msgs[4].Role)
+	assert.Equal(t, "What about London?", msgs[4].Content)
+
+	// Verify JSON serialization preserves reasoning_content on assistant messages
+	for _, msg := range msgs {
+		data, err := json.Marshal(msg)
+		require.NoError(t, err)
+		if msg.Role == "assistant" {
+			assert.Contains(t, string(data), "reasoning_content",
+				"assistant message must include reasoning_content: %s", string(data))
+		}
+	}
+}
+
+func TestAnthropicToChat_ToolResultWithTextOrdering(t *testing.T) {
+	// When a user message has both tool_result and text blocks,
+	// tool messages must come BEFORE user text to satisfy Chat API ordering.
+	c := NewConverter()
+	req := &AnthropicRequest{
+		Model: "test",
+		Messages: []AnthropicMessage{
+			{Role: "user", Content: "Check weather"},
+			{
+				Role: "assistant",
+				Content: []any{
+					map[string]any{"type": "tool_use", "id": "call_1", "name": "get_weather", "input": map[string]any{}},
+				},
+			},
+			{
+				Role: "user",
+				Content: []any{
+					map[string]any{"type": "tool_result", "tool_use_id": "call_1", "content": "72°F"},
+					map[string]any{"type": "text", "text": "Also tell me about NYC"},
+				},
+			},
+		},
+	}
+
+	chatReq, err := c.AnthropicToChat(req)
+	require.NoError(t, err)
+
+	// assistant with tool_calls, then tool message, then user text
+	require.Len(t, chatReq.Messages, 4)
+	assert.Equal(t, "user", chatReq.Messages[0].Role)
+	assert.Equal(t, "assistant", chatReq.Messages[1].Role)
+	assert.Len(t, chatReq.Messages[1].ToolCalls, 1)
+
+	// Tool message MUST come before user text
+	assert.Equal(t, "tool", chatReq.Messages[2].Role)
+	assert.Equal(t, "call_1", chatReq.Messages[2].ToolCallID)
+
+	assert.Equal(t, "user", chatReq.Messages[3].Role)
+	assert.Equal(t, "Also tell me about NYC", chatReq.Messages[3].Content)
+}

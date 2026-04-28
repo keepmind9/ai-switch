@@ -9,6 +9,8 @@ import (
 	"github.com/keepmind9/ai-switch/internal/types"
 )
 
+func strPtr(s string) *string { return &s }
+
 // Anthropic → Chat conversions (for clients sending Anthropic format)
 
 // AnthropicRequest represents an Anthropic Messages API request.
@@ -38,6 +40,7 @@ type AnthropicMessage struct {
 
 type AnthropicContentBlock struct {
 	Type      string `json:"type"`
+	Thinking  string `json:"thinking,omitempty"`
 	Text      string `json:"text,omitempty"`
 	ID        string `json:"id,omitempty"`
 	Name      string `json:"name,omitempty"`
@@ -121,6 +124,14 @@ func (c *Converter) ChatToAnthropic(chatResp *types.ChatResponse, model, thinkTa
 
 	if len(chatResp.Choices) > 0 {
 		choice := chatResp.Choices[0]
+
+		// Convert reasoning_content to thinking block (DeepSeek thinking mode)
+		if choice.Message.ReasoningContent != nil {
+			content = append(content, AnthropicContentBlock{
+				Type:     "thinking",
+				Thinking: *choice.Message.ReasoningContent,
+			})
+		}
 
 		text := StripThinkTag(choice.Message.Content, thinkTag)
 		if text != "" {
@@ -292,17 +303,26 @@ func extractContentText(content any) string {
 // anthropicMessageToChat converts a single Anthropic message to one or more Chat messages.
 func anthropicMessageToChat(msg AnthropicMessage) []types.ChatMessage {
 	if s, ok := msg.Content.(string); ok {
-		return []types.ChatMessage{{Role: msg.Role, Content: s}}
+		m := types.ChatMessage{Role: msg.Role, Content: s}
+		if msg.Role == "assistant" {
+			m.ReasoningContent = strPtr("")
+		}
+		return []types.ChatMessage{m}
 	}
 
 	blocks, ok := msg.Content.([]any)
 	if !ok {
-		return []types.ChatMessage{{Role: msg.Role, Content: extractContentText(msg.Content)}}
+		m := types.ChatMessage{Role: msg.Role, Content: extractContentText(msg.Content)}
+		if msg.Role == "assistant" {
+			m.ReasoningContent = strPtr("")
+		}
+		return []types.ChatMessage{m}
 	}
 
 	var textParts []string
 	var toolCalls []types.ToolCall
 	var toolResults []types.ChatMessage
+	var reasoningContent *string
 
 	for _, item := range blocks {
 		block, ok := item.(map[string]any)
@@ -313,6 +333,12 @@ func anthropicMessageToChat(msg AnthropicMessage) []types.ChatMessage {
 		case "text":
 			if text, ok := block["text"].(string); ok {
 				textParts = append(textParts, text)
+			}
+		case "thinking":
+			if msg.Role == "assistant" {
+				if thinking, ok := block["thinking"].(string); ok {
+					reasoningContent = strPtr(thinking)
+				}
 			}
 		case "tool_use":
 			id, _ := block["id"].(string)
@@ -336,8 +362,14 @@ func anthropicMessageToChat(msg AnthropicMessage) []types.ChatMessage {
 		}
 	}
 
+	// DeepSeek V4 requires reasoning_content on ALL assistant messages in thinking mode.
+	// Use empty string when no thinking block was present.
+	if msg.Role == "assistant" && reasoningContent == nil {
+		reasoningContent = strPtr("")
+	}
+
 	if msg.Role == "assistant" && len(toolCalls) > 0 {
-		m := types.ChatMessage{Role: "assistant", ToolCalls: toolCalls}
+		m := types.ChatMessage{Role: "assistant", ToolCalls: toolCalls, ReasoningContent: reasoningContent}
 		if len(textParts) > 0 {
 			m.Content = strings.Join(textParts, "\n")
 		}
@@ -345,13 +377,23 @@ func anthropicMessageToChat(msg AnthropicMessage) []types.ChatMessage {
 	}
 
 	var result []types.ChatMessage
+	// Tool messages MUST come first — Chat API requires tool messages to immediately
+	// follow assistant messages with tool_calls. Placing user text between them breaks
+	// providers like DeepSeek V4.
+	result = append(result, toolResults...)
 	if len(textParts) > 0 {
 		result = append(result, types.ChatMessage{
-			Role:    msg.Role,
-			Content: strings.Join(textParts, "\n"),
+			Role:             msg.Role,
+			Content:          strings.Join(textParts, "\n"),
+			ReasoningContent: reasoningContent,
 		})
 	}
-	result = append(result, toolResults...)
+	if len(result) == 0 && reasoningContent != nil && *reasoningContent != "" {
+		result = append(result, types.ChatMessage{
+			Role:             msg.Role,
+			ReasoningContent: reasoningContent,
+		})
+	}
 	return result
 }
 
@@ -370,6 +412,12 @@ func chatMessageToAnthropic(msg types.ChatMessage) []AnthropicMessage {
 
 	if msg.Role == "assistant" && len(msg.ToolCalls) > 0 {
 		var blocks []any
+		if msg.ReasoningContent != nil {
+			blocks = append(blocks, map[string]any{
+				"type":     "thinking",
+				"thinking": *msg.ReasoningContent,
+			})
+		}
 		if msg.Content != "" {
 			blocks = append(blocks, map[string]any{"type": "text", "text": msg.Content})
 		}
@@ -386,6 +434,13 @@ func chatMessageToAnthropic(msg types.ChatMessage) []AnthropicMessage {
 			})
 		}
 		return []AnthropicMessage{{Role: "assistant", Content: blocks}}
+	}
+
+	if msg.Role == "assistant" && msg.ReasoningContent != nil {
+		return []AnthropicMessage{{Role: "assistant", Content: []any{
+			map[string]any{"type": "thinking", "thinking": *msg.ReasoningContent},
+			map[string]any{"type": "text", "text": msg.Content},
+		}}}
 	}
 
 	return []AnthropicMessage{{Role: msg.Role, Content: msg.Content}}
