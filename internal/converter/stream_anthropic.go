@@ -89,8 +89,8 @@ func ConvertChatChunkToAnthropicSSE(w SSEWriter, state *AnthropicStreamState, da
 		}
 
 		// Content delta
-		if choice.Delta.Content != "" {
-			content := state.TagState.FilterChunk(choice.Delta.Content, state.ThinkTag)
+		if choice.Delta.Content != nil && *choice.Delta.Content != "" {
+			content := state.TagState.FilterChunk(*choice.Delta.Content, state.ThinkTag)
 			if content == "" {
 				continue
 			}

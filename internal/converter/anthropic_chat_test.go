@@ -29,7 +29,7 @@ func TestAnthropicToChat_SimpleMessages(t *testing.T) {
 	assert.Equal(t, 1024, chatReq.MaxTokens)
 	require.Len(t, chatReq.Messages, 1)
 	assert.Equal(t, "user", chatReq.Messages[0].Role)
-	assert.Equal(t, "Hello", chatReq.Messages[0].Content)
+	assert.Equal(t, "Hello", derefStr(chatReq.Messages[0].Content))
 }
 
 func TestAnthropicToChat_WithSystemString(t *testing.T) {
@@ -49,7 +49,7 @@ func TestAnthropicToChat_WithSystemString(t *testing.T) {
 
 	require.Len(t, chatReq.Messages, 2)
 	assert.Equal(t, "system", chatReq.Messages[0].Role)
-	assert.Equal(t, "You are a helpful assistant.", chatReq.Messages[0].Content)
+	assert.Equal(t, "You are a helpful assistant.", derefStr(chatReq.Messages[0].Content))
 	assert.Equal(t, "user", chatReq.Messages[1].Role)
 }
 
@@ -73,7 +73,7 @@ func TestAnthropicToChat_WithSystemBlocks(t *testing.T) {
 
 	require.Len(t, chatReq.Messages, 2)
 	assert.Equal(t, "system", chatReq.Messages[0].Role)
-	assert.Equal(t, "Part one.\nPart two.", chatReq.Messages[0].Content)
+	assert.Equal(t, "Part one.\nPart two.", derefStr(chatReq.Messages[0].Content))
 }
 
 func TestAnthropicToChat_MultiTurn(t *testing.T) {
@@ -119,7 +119,7 @@ func TestAnthropicToChat_ContentBlocks(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Len(t, chatReq.Messages, 1)
-	assert.Equal(t, "First block\nSecond block", chatReq.Messages[0].Content)
+	assert.Equal(t, "First block\nSecond block", derefStr(chatReq.Messages[0].Content))
 }
 
 func TestAnthropicToChat_Parameters(t *testing.T) {
@@ -154,7 +154,7 @@ func TestChatToAnthropic_Basic(t *testing.T) {
 		Choices: []types.ChatChoice{
 			{
 				Index:        0,
-				Message:      types.ChatMessage{Role: "assistant", Content: "Hello from assistant"},
+				Message:      types.ChatMessage{Role: "assistant", Content: strPtr("Hello from assistant")},
 				FinishReason: "stop",
 			},
 		},
@@ -199,7 +199,7 @@ func TestChatToAnthropic_StopReasonMapping(t *testing.T) {
 			c := NewConverter()
 			chatResp := &types.ChatResponse{
 				Choices: []types.ChatChoice{
-					{FinishReason: tt.finishReason, Message: types.ChatMessage{Content: "text"}},
+					{FinishReason: tt.finishReason, Message: types.ChatMessage{Content: strPtr("text")}},
 				},
 			}
 
@@ -233,7 +233,7 @@ func TestChatRequestToAnthropic_Basic(t *testing.T) {
 	chatReq := &types.ChatRequest{
 		Model: "gpt-4o",
 		Messages: []types.ChatMessage{
-			{Role: "user", Content: "Hello"},
+			{Role: "user", Content: strPtr("Hello")},
 		},
 		MaxTokens:   2048,
 		Temperature: 0.7,
@@ -256,10 +256,10 @@ func TestChatRequestToAnthropic_SystemExtraction(t *testing.T) {
 	chatReq := &types.ChatRequest{
 		Model: "gpt-4o",
 		Messages: []types.ChatMessage{
-			{Role: "system", Content: "Be helpful"},
-			{Role: "user", Content: "Hi"},
-			{Role: "assistant", Content: "Hello!"},
-			{Role: "user", Content: "How are you?"},
+			{Role: "system", Content: strPtr("Be helpful")},
+			{Role: "user", Content: strPtr("Hi")},
+			{Role: "assistant", Content: strPtr("Hello!")},
+			{Role: "user", Content: strPtr("How are you?")},
 		},
 	}
 
@@ -278,7 +278,7 @@ func TestChatRequestToAnthropic_DefaultMaxTokens(t *testing.T) {
 
 	chatReq := &types.ChatRequest{
 		Model:    "gpt-4o",
-		Messages: []types.ChatMessage{{Role: "user", Content: "test"}},
+		Messages: []types.ChatMessage{{Role: "user", Content: strPtr("test")}},
 	}
 
 	anthReq, err := c.ChatRequestToAnthropic(chatReq)
@@ -292,7 +292,7 @@ func TestChatRequestToAnthropic_PreservesMaxTokens(t *testing.T) {
 
 	chatReq := &types.ChatRequest{
 		Model:     "gpt-4o",
-		Messages:  []types.ChatMessage{{Role: "user", Content: "test"}},
+		Messages:  []types.ChatMessage{{Role: "user", Content: strPtr("test")}},
 		MaxTokens: 8192,
 	}
 
@@ -332,7 +332,7 @@ func TestAnthropicResponseToChat_Basic(t *testing.T) {
 	require.Len(t, chatResp.Choices, 1)
 	assert.Equal(t, 0, chatResp.Choices[0].Index)
 	assert.Equal(t, "assistant", chatResp.Choices[0].Message.Role)
-	assert.Equal(t, "Hello! I can help.", chatResp.Choices[0].Message.Content)
+	assert.Equal(t, "Hello! I can help.", derefStr(chatResp.Choices[0].Message.Content))
 	assert.Equal(t, "stop", chatResp.Choices[0].FinishReason)
 
 	assert.Equal(t, 50, chatResp.Usage.PromptTokens)
@@ -381,7 +381,7 @@ func TestAnthropicResponseToChat_MultipleContentBlocks(t *testing.T) {
 	chatResp, err := c.AnthropicResponseToChat(anthResp)
 	require.NoError(t, err)
 
-	assert.Equal(t, "Part one. Part two.", chatResp.Choices[0].Message.Content)
+	assert.Equal(t, "Part one. Part two.", derefStr(chatResp.Choices[0].Message.Content))
 }
 
 func TestAnthropicResponseToChat_EmptyContent(t *testing.T) {
@@ -394,7 +394,7 @@ func TestAnthropicResponseToChat_EmptyContent(t *testing.T) {
 
 	chatResp, err := c.AnthropicResponseToChat(anthResp)
 	require.NoError(t, err)
-	assert.Empty(t, chatResp.Choices[0].Message.Content)
+	assert.Empty(t, derefStr(chatResp.Choices[0].Message.Content))
 }
 
 func TestAnthropicResponseToChat_UsageWithCache(t *testing.T) {
@@ -448,7 +448,7 @@ func TestRoundTrip_AnthropicToChatAndBack(t *testing.T) {
 		Choices: []types.ChatChoice{
 			{
 				Index:        0,
-				Message:      types.ChatMessage{Role: "assistant", Content: "I'm doing well, thanks!"},
+				Message:      types.ChatMessage{Role: "assistant", Content: strPtr("I'm doing well, thanks!")},
 				FinishReason: "stop",
 			},
 		},
@@ -471,8 +471,8 @@ func TestRoundTrip_ChatToAnthropicAndBack(t *testing.T) {
 	origReq := &types.ChatRequest{
 		Model: "gpt-4o",
 		Messages: []types.ChatMessage{
-			{Role: "system", Content: "Be concise."},
-			{Role: "user", Content: "What is 2+2?"},
+			{Role: "system", Content: strPtr("Be concise.")},
+			{Role: "user", Content: strPtr("What is 2+2?")},
 		},
 		MaxTokens: 512,
 	}
@@ -501,7 +501,7 @@ func TestRoundTrip_ChatToAnthropicAndBack(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, "stop", chatResp.Choices[0].FinishReason)
-	assert.Equal(t, "2+2 equals 4.", chatResp.Choices[0].Message.Content)
+	assert.Equal(t, "2+2 equals 4.", derefStr(chatResp.Choices[0].Message.Content))
 	assert.Equal(t, 23, chatResp.Usage.TotalTokens)
 }
 
@@ -593,7 +593,7 @@ func TestAnthropicToChat_ToolUseMessages(t *testing.T) {
 	require.Len(t, chatReq.Messages, 2)
 	assert.Equal(t, "user", chatReq.Messages[0].Role)
 	assert.Equal(t, "assistant", chatReq.Messages[1].Role)
-	assert.Equal(t, "Let me check.", chatReq.Messages[1].Content)
+	assert.Equal(t, "Let me check.", derefStr(chatReq.Messages[1].Content))
 	require.Len(t, chatReq.Messages[1].ToolCalls, 1)
 	assert.Equal(t, "toolu_123", chatReq.Messages[1].ToolCalls[0].ID)
 	assert.Equal(t, "function", chatReq.Messages[1].ToolCalls[0].Type)
@@ -625,7 +625,7 @@ func TestAnthropicToChat_ToolResultMessages(t *testing.T) {
 	require.Len(t, chatReq.Messages, 1)
 	assert.Equal(t, "tool", chatReq.Messages[0].Role)
 	assert.Equal(t, "toolu_123", chatReq.Messages[0].ToolCallID)
-	assert.Equal(t, "Sunny, 72F", chatReq.Messages[0].Content)
+	assert.Equal(t, "Sunny, 72F", derefStr(chatReq.Messages[0].Content))
 }
 
 func TestChatRequestToAnthropic_ToolDefinitions(t *testing.T) {
@@ -633,7 +633,7 @@ func TestChatRequestToAnthropic_ToolDefinitions(t *testing.T) {
 	req := &types.ChatRequest{
 		Model: "gpt-4o",
 		Messages: []types.ChatMessage{
-			{Role: "user", Content: "hi"},
+			{Role: "user", Content: strPtr("hi")},
 		},
 		Tools: []types.Tool{
 			{
@@ -674,7 +674,7 @@ func TestChatRequestToAnthropic_ToolChoice(t *testing.T) {
 			c := NewConverter()
 			req := &types.ChatRequest{
 				Model:      "test",
-				Messages:   []types.ChatMessage{{Role: "user", Content: "hi"}},
+				Messages:   []types.ChatMessage{{Role: "user", Content: strPtr("hi")}},
 				ToolChoice: tt.choice,
 			}
 			anthReq, err := c.ChatRequestToAnthropic(req)
@@ -691,14 +691,14 @@ func TestChatRequestToAnthropic_ToolCallMessages(t *testing.T) {
 	req := &types.ChatRequest{
 		Model: "gpt-4o",
 		Messages: []types.ChatMessage{
-			{Role: "user", Content: "weather?"},
+			{Role: "user", Content: strPtr("weather?")},
 			{
 				Role: "assistant",
 				ToolCalls: []types.ToolCall{
 					{ID: "call_abc", Type: "function", Function: types.FunctionCall{Name: "get_weather", Arguments: string(args)}},
 				},
 			},
-			{Role: "tool", ToolCallID: "call_abc", Content: "Sunny"},
+			{Role: "tool", ToolCallID: "call_abc", Content: strPtr("Sunny")},
 		},
 	}
 
@@ -752,7 +752,7 @@ func TestAnthropicResponseToChat_ToolUse(t *testing.T) {
 	chatResp, err := c.AnthropicResponseToChat(resp)
 	require.NoError(t, err)
 
-	assert.Equal(t, "Let me check.", chatResp.Choices[0].Message.Content)
+	assert.Equal(t, "Let me check.", derefStr(chatResp.Choices[0].Message.Content))
 	require.Len(t, chatResp.Choices[0].Message.ToolCalls, 1)
 	assert.Equal(t, "toolu_abc", chatResp.Choices[0].Message.ToolCalls[0].ID)
 	assert.Equal(t, "get_weather", chatResp.Choices[0].Message.ToolCalls[0].Function.Name)
@@ -771,7 +771,7 @@ func TestChatToAnthropic_ToolCalls(t *testing.T) {
 				Index: 0,
 				Message: types.ChatMessage{
 					Role:    "assistant",
-					Content: "Let me check.",
+					Content: strPtr("Let me check."),
 					ToolCalls: []types.ToolCall{
 						{ID: "call_abc", Type: "function", Function: types.FunctionCall{Name: "get_weather", Arguments: string(args)}},
 					},
@@ -846,7 +846,7 @@ func TestAnthropicToChat_ToolResultArrayContent(t *testing.T) {
 
 	require.Len(t, chatReq.Messages, 1)
 	assert.Equal(t, "tool", chatReq.Messages[0].Role)
-	assert.Equal(t, "Result line 1\nResult line 2", chatReq.Messages[0].Content)
+	assert.Equal(t, "Result line 1\nResult line 2", derefStr(chatReq.Messages[0].Content))
 }
 
 // --- ResponsesToAnthropic direct conversion tests ---
@@ -1423,7 +1423,7 @@ func TestAnthropicToChat_MultiTurnToolUse(t *testing.T) {
 
 	// 1. user: "What's the weather?"
 	assert.Equal(t, "user", msgs[0].Role)
-	assert.Equal(t, "What's the weather?", msgs[0].Content)
+	assert.Equal(t, "What's the weather?", derefStr(msgs[0].Content))
 
 	// 2. assistant with reasoning_content + tool_calls
 	assert.Equal(t, "assistant", msgs[1].Role)
@@ -1436,17 +1436,17 @@ func TestAnthropicToChat_MultiTurnToolUse(t *testing.T) {
 	// 3. tool result (MUST immediately follow assistant with tool_calls)
 	assert.Equal(t, "tool", msgs[2].Role)
 	assert.Equal(t, "call_abc", msgs[2].ToolCallID)
-	assert.Equal(t, "72°F sunny", msgs[2].Content)
+	assert.Equal(t, "72°F sunny", derefStr(msgs[2].Content))
 
 	// 4. assistant with reasoning_content + text
 	assert.Equal(t, "assistant", msgs[3].Role)
 	require.NotNil(t, msgs[3].ReasoningContent)
 	assert.Equal(t, "Good weather...", *msgs[3].ReasoningContent)
-	assert.Equal(t, "The weather is 72°F.", msgs[3].Content)
+	assert.Equal(t, "The weather is 72°F.", derefStr(msgs[3].Content))
 
 	// 5. user follow-up
 	assert.Equal(t, "user", msgs[4].Role)
-	assert.Equal(t, "What about London?", msgs[4].Content)
+	assert.Equal(t, "What about London?", derefStr(msgs[4].Content))
 
 	// Verify JSON serialization preserves reasoning_content on assistant messages
 	for _, msg := range msgs {
@@ -1497,5 +1497,5 @@ func TestAnthropicToChat_ToolResultWithTextOrdering(t *testing.T) {
 	assert.Equal(t, "call_1", chatReq.Messages[2].ToolCallID)
 
 	assert.Equal(t, "user", chatReq.Messages[3].Role)
-	assert.Equal(t, "Also tell me about NYC", chatReq.Messages[3].Content)
+	assert.Equal(t, "Also tell me about NYC", derefStr(chatReq.Messages[3].Content))
 }

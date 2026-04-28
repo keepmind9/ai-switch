@@ -64,7 +64,7 @@ func TestConvertAnthropicLineToChat_FullStream(t *testing.T) {
 		"delta": map[string]any{"text": "Hello "},
 	}))
 	chunk := assertChatChunk(t, result)
-	assert.Equal(t, "Hello ", chunk.Choices[0].Delta.Content)
+	assert.Equal(t, "Hello ", derefStr(chunk.Choices[0].Delta.Content))
 
 	// content_block_delta 2
 	result = ConvertAnthropicLineToChat(state, anthropicEventJSON("content_block_delta", map[string]any{
@@ -237,7 +237,7 @@ func TestConvertAnthropicLineToChat_FullToolUseStream(t *testing.T) {
 		"delta": map[string]any{"text": "Checking..."},
 	}))
 	chunk := assertChatChunk(t, result)
-	assert.Equal(t, "Checking...", chunk.Choices[0].Delta.Content)
+	assert.Equal(t, "Checking...", derefStr(chunk.Choices[0].Delta.Content))
 
 	// tool_use content_block_start
 	result = ConvertAnthropicLineToChat(state, anthropicEventJSON("content_block_start", map[string]any{

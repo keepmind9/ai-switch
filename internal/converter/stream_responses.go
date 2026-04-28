@@ -55,7 +55,7 @@ func ConvertChatChunkToResponsesSSE(w SSEWriter, state *ResponsesStreamState, da
 		}
 
 		// Handle text content
-		if choice.Delta.Content != "" {
+		if choice.Delta.Content != nil && *choice.Delta.Content != "" {
 			if state.ItemID == "" {
 				state.ItemID = fmt.Sprintf("item_%d", time.Now().UnixNano())
 				state.TextItemID = state.ItemID
@@ -88,7 +88,7 @@ func ConvertChatChunkToResponsesSSE(w SSEWriter, state *ResponsesStreamState, da
 				})
 			}
 
-			content := state.TagState.FilterChunk(choice.Delta.Content, state.ThinkTag)
+			content := state.TagState.FilterChunk(*choice.Delta.Content, state.ThinkTag)
 			if content != "" {
 				state.AccText += content
 				w.WriteEvent("response.output_text.delta", map[string]any{

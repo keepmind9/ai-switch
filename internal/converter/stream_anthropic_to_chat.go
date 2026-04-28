@@ -178,7 +178,7 @@ func ConvertAnthropicLineToChat(state *AnthropicToChatState, line string) any {
 			Created: state.Created,
 			Model:   state.Model,
 			Choices: []types.StreamChoice{
-				{Index: 0, Delta: types.ChatMessage{Content: text}, FinishReason: ""},
+				{Index: 0, Delta: types.ChatMessage{Content: strPtr(text)}, FinishReason: ""},
 			},
 		}
 

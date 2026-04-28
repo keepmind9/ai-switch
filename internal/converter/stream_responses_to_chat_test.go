@@ -58,7 +58,7 @@ func TestConvertResponsesLineToChat_FullStream(t *testing.T) {
 	}))
 	chunk, ok := result.(*types.ChatStreamResponse)
 	assert.True(t, ok)
-	assert.Equal(t, "Hello ", chunk.Choices[0].Delta.Content)
+	assert.Equal(t, "Hello ", derefStr(chunk.Choices[0].Delta.Content))
 
 	// output_text.delta 2
 	result = ConvertResponsesLineToChat(state, responsesEventJSON("response.output_text.delta", map[string]any{
@@ -267,7 +267,7 @@ func TestConvertResponsesLineToChat_TextThenToolCall(t *testing.T) {
 		"delta": "Let me check",
 	}))
 	chunk, _ := result.(*types.ChatStreamResponse)
-	assert.Equal(t, "Let me check", chunk.Choices[0].Delta.Content)
+	assert.Equal(t, "Let me check", derefStr(chunk.Choices[0].Delta.Content))
 
 	// Tool call added
 	result = ConvertResponsesLineToChat(state, responsesEventJSON("response.output_item.added", map[string]any{

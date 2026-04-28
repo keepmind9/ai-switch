@@ -207,20 +207,20 @@ func BuildResponsesFromChat(chatReq *types.ChatRequest, stream bool) *types.Resp
 	var inputItems []any
 	for _, msg := range chatReq.Messages {
 		if msg.Role == "system" {
-			instructions += msg.Content + "\n"
+			instructions += derefStr(msg.Content) + "\n"
 			continue
 		}
 		if msg.Role == "tool" {
 			inputItems = append(inputItems, map[string]any{
 				"type":    "function_call_output",
 				"call_id": msg.ToolCallID,
-				"output":  msg.Content,
+				"output":  derefStr(msg.Content),
 			})
 			continue
 		}
 		if msg.Role == "assistant" && len(msg.ToolCalls) > 0 {
-			if msg.Content != "" {
-				inputItems = append(inputItems, msg.Content)
+			if msg.Content != nil && *msg.Content != "" {
+				inputItems = append(inputItems, *msg.Content)
 			}
 			for _, tc := range msg.ToolCalls {
 				inputItems = append(inputItems, map[string]any{
@@ -232,8 +232,8 @@ func BuildResponsesFromChat(chatReq *types.ChatRequest, stream bool) *types.Resp
 			}
 			continue
 		}
-		if msg.Content != "" {
-			inputItems = append(inputItems, msg.Content)
+		if msg.Content != nil && *msg.Content != "" {
+			inputItems = append(inputItems, *msg.Content)
 		}
 	}
 
@@ -316,7 +316,7 @@ func (c *Converter) ResponsesToChatResponse(resp *types.ResponsesResponse) (*typ
 	if contentText != "" || len(toolCalls) > 0 {
 		chatResp.Choices = []types.ChatChoice{{
 			Index:        0,
-			Message:      types.ChatMessage{Role: "assistant", Content: contentText, ToolCalls: toolCalls},
+			Message:      types.ChatMessage{Role: "assistant", Content: strPtr(contentText), ToolCalls: toolCalls},
 			FinishReason: finishReason,
 		}}
 	}
@@ -366,7 +366,7 @@ func (c *Converter) ResponsesToChat(req *types.ResponsesRequest) (*types.ChatReq
 	if req.Instructions != "" {
 		chatReq.Messages = append(chatReq.Messages, types.ChatMessage{
 			Role:    "system",
-			Content: req.Instructions,
+			Content: strPtr(req.Instructions),
 		})
 	}
 
@@ -387,14 +387,14 @@ func convertResponsesInputToChatMessages(input any) []types.ChatMessage {
 		if v == "" {
 			return nil
 		}
-		return []types.ChatMessage{{Role: "user", Content: v}}
+		return []types.ChatMessage{{Role: "user", Content: strPtr(v)}}
 	case []any:
 		var msgs []types.ChatMessage
 		for _, item := range v {
 			switch val := item.(type) {
 			case string:
 				if val != "" {
-					msgs = append(msgs, types.ChatMessage{Role: "user", Content: val})
+					msgs = append(msgs, types.ChatMessage{Role: "user", Content: strPtr(val)})
 				}
 			case map[string]any:
 				itemType, _ := val["type"].(string)
@@ -404,7 +404,8 @@ func convertResponsesInputToChatMessages(input any) []types.ChatMessage {
 					name, _ := val["name"].(string)
 					args, _ := val["arguments"].(string)
 					msgs = append(msgs, types.ChatMessage{
-						Role: "assistant",
+						Role:    "assistant",
+						Content: strPtr(""),
 						ToolCalls: []types.ToolCall{
 							{ID: callID, Type: "function", Function: types.FunctionCall{Name: name, Arguments: args}},
 						},
@@ -415,14 +416,14 @@ func convertResponsesInputToChatMessages(input any) []types.ChatMessage {
 					msgs = append(msgs, types.ChatMessage{
 						Role:       "tool",
 						ToolCallID: callID,
-						Content:    output,
+						Content:    strPtr(output),
 					})
 				default:
 					// message format
 					role := NormalizeRole(val["role"].(string))
 					text := extractInputTextMessage(val)
 					if text != "" {
-						msgs = append(msgs, types.ChatMessage{Role: role, Content: text})
+						msgs = append(msgs, types.ChatMessage{Role: role, Content: strPtr(text)})
 					}
 				}
 			}
@@ -495,7 +496,7 @@ func (c *Converter) ChatToResponses(chatResp *types.ChatResponse, model, thinkTa
 	var responseItems []types.ResponseItem
 	for _, choice := range chatResp.Choices {
 		// Text message item
-		text := StripThinkTag(choice.Message.Content, thinkTag)
+		text := StripThinkTag(derefStr(choice.Message.Content), thinkTag)
 		if text != "" || len(choice.Message.ToolCalls) == 0 {
 			responseItems = append(responseItems, types.ResponseItem{
 				ID:      fmt.Sprintf("resp_%d", now),

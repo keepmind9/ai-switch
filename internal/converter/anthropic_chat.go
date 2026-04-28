@@ -11,6 +11,13 @@ import (
 
 func strPtr(s string) *string { return &s }
 
+func derefStr(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
 // Anthropic → Chat conversions (for clients sending Anthropic format)
 
 // AnthropicRequest represents an Anthropic Messages API request.
@@ -103,7 +110,7 @@ func (c *Converter) AnthropicToChat(req *AnthropicRequest) (*types.ChatRequest, 
 		if systemText != "" {
 			chatReq.Messages = append(chatReq.Messages, types.ChatMessage{
 				Role:    "system",
-				Content: systemText,
+				Content: strPtr(systemText),
 			})
 		}
 	}
@@ -133,7 +140,7 @@ func (c *Converter) ChatToAnthropic(chatResp *types.ChatResponse, model, thinkTa
 			})
 		}
 
-		text := StripThinkTag(choice.Message.Content, thinkTag)
+		text := StripThinkTag(derefStr(choice.Message.Content), thinkTag)
 		if text != "" {
 			content = append(content, AnthropicContentBlock{
 				Type: "text",
@@ -206,7 +213,7 @@ func (c *Converter) ChatRequestToAnthropic(req *types.ChatRequest) (*AnthropicRe
 	// Convert messages
 	for _, msg := range req.Messages {
 		if msg.Role == "system" {
-			anthReq.System = msg.Content
+			anthReq.System = derefStr(msg.Content)
 			continue
 		}
 		anthMsgs := chatMessageToAnthropic(msg)
@@ -238,7 +245,7 @@ func (c *Converter) AnthropicResponseToChat(resp *AnthropicResponse) (*types.Cha
 		}
 	}
 
-	msg := types.ChatMessage{Role: "assistant", Content: contentText}
+	msg := types.ChatMessage{Role: "assistant", Content: strPtr(contentText)}
 	if len(toolCalls) > 0 {
 		msg.ToolCalls = toolCalls
 	}
@@ -303,7 +310,7 @@ func extractContentText(content any) string {
 // anthropicMessageToChat converts a single Anthropic message to one or more Chat messages.
 func anthropicMessageToChat(msg AnthropicMessage) []types.ChatMessage {
 	if s, ok := msg.Content.(string); ok {
-		m := types.ChatMessage{Role: msg.Role, Content: s}
+		m := types.ChatMessage{Role: msg.Role, Content: strPtr(s)}
 		if msg.Role == "assistant" {
 			m.ReasoningContent = strPtr("")
 		}
@@ -312,7 +319,7 @@ func anthropicMessageToChat(msg AnthropicMessage) []types.ChatMessage {
 
 	blocks, ok := msg.Content.([]any)
 	if !ok {
-		m := types.ChatMessage{Role: msg.Role, Content: extractContentText(msg.Content)}
+		m := types.ChatMessage{Role: msg.Role, Content: strPtr(extractContentText(msg.Content))}
 		if msg.Role == "assistant" {
 			m.ReasoningContent = strPtr("")
 		}
@@ -356,7 +363,7 @@ func anthropicMessageToChat(msg AnthropicMessage) []types.ChatMessage {
 			toolUseID, _ := block["tool_use_id"].(string)
 			toolResults = append(toolResults, types.ChatMessage{
 				Role:       "tool",
-				Content:    extractToolResultContent(block["content"]),
+				Content:    strPtr(extractToolResultContent(block["content"])),
 				ToolCallID: toolUseID,
 			})
 		}
@@ -369,10 +376,11 @@ func anthropicMessageToChat(msg AnthropicMessage) []types.ChatMessage {
 	}
 
 	if msg.Role == "assistant" && len(toolCalls) > 0 {
-		m := types.ChatMessage{Role: "assistant", ToolCalls: toolCalls, ReasoningContent: reasoningContent}
+		content := ""
 		if len(textParts) > 0 {
-			m.Content = strings.Join(textParts, "\n")
+			content = strings.Join(textParts, "\n")
 		}
+		m := types.ChatMessage{Role: "assistant", Content: strPtr(content), ToolCalls: toolCalls, ReasoningContent: reasoningContent}
 		return []types.ChatMessage{m}
 	}
 
@@ -384,13 +392,14 @@ func anthropicMessageToChat(msg AnthropicMessage) []types.ChatMessage {
 	if len(textParts) > 0 {
 		result = append(result, types.ChatMessage{
 			Role:             msg.Role,
-			Content:          strings.Join(textParts, "\n"),
+			Content:          strPtr(strings.Join(textParts, "\n")),
 			ReasoningContent: reasoningContent,
 		})
 	}
 	if len(result) == 0 && reasoningContent != nil && *reasoningContent != "" {
 		result = append(result, types.ChatMessage{
 			Role:             msg.Role,
+			Content:          strPtr(""),
 			ReasoningContent: reasoningContent,
 		})
 	}
@@ -405,7 +414,7 @@ func chatMessageToAnthropic(msg types.ChatMessage) []AnthropicMessage {
 			Content: []any{map[string]any{
 				"type":        "tool_result",
 				"tool_use_id": msg.ToolCallID,
-				"content":     msg.Content,
+				"content":     derefStr(msg.Content),
 			}},
 		}}
 	}
@@ -418,8 +427,8 @@ func chatMessageToAnthropic(msg types.ChatMessage) []AnthropicMessage {
 				"thinking": *msg.ReasoningContent,
 			})
 		}
-		if msg.Content != "" {
-			blocks = append(blocks, map[string]any{"type": "text", "text": msg.Content})
+		if msg.Content != nil && *msg.Content != "" {
+			blocks = append(blocks, map[string]any{"type": "text", "text": *msg.Content})
 		}
 		for _, tc := range msg.ToolCalls {
 			var input any
@@ -439,11 +448,11 @@ func chatMessageToAnthropic(msg types.ChatMessage) []AnthropicMessage {
 	if msg.Role == "assistant" && msg.ReasoningContent != nil {
 		return []AnthropicMessage{{Role: "assistant", Content: []any{
 			map[string]any{"type": "thinking", "thinking": *msg.ReasoningContent},
-			map[string]any{"type": "text", "text": msg.Content},
+			map[string]any{"type": "text", "text": derefStr(msg.Content)},
 		}}}
 	}
 
-	return []AnthropicMessage{{Role: msg.Role, Content: msg.Content}}
+	return []AnthropicMessage{{Role: msg.Role, Content: derefStr(msg.Content)}}
 }
 
 func extractToolResultContent(content any) string {

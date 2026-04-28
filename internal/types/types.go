@@ -79,7 +79,7 @@ type StreamOptions struct {
 
 type ChatMessage struct {
 	Role             string     `json:"role,omitempty"`
-	Content          string     `json:"content,omitempty"`
+	Content          *string    `json:"content,omitempty"`
 	ReasoningContent *string    `json:"reasoning_content,omitempty"`
 	ToolCalls        []ToolCall `json:"tool_calls,omitempty"`
 	ToolCallID       string     `json:"tool_call_id,omitempty"`

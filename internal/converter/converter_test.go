@@ -22,7 +22,7 @@ func TestResponsesToChat_SimpleInput(t *testing.T) {
 	assert.Equal(t, "gpt-4o", chatReq.Model)
 	require.Len(t, chatReq.Messages, 1)
 	assert.Equal(t, "user", chatReq.Messages[0].Role)
-	assert.Equal(t, "Hello, how are you?", chatReq.Messages[0].Content)
+	assert.Equal(t, "Hello, how are you?", derefStr(chatReq.Messages[0].Content))
 }
 
 func TestResponsesToChat_WithInstructions(t *testing.T) {
@@ -39,9 +39,9 @@ func TestResponsesToChat_WithInstructions(t *testing.T) {
 
 	require.Len(t, chatReq.Messages, 2)
 	assert.Equal(t, "system", chatReq.Messages[0].Role)
-	assert.Equal(t, "You are a helpful math tutor.", chatReq.Messages[0].Content)
+	assert.Equal(t, "You are a helpful math tutor.", derefStr(chatReq.Messages[0].Content))
 	assert.Equal(t, "user", chatReq.Messages[1].Role)
-	assert.Equal(t, "What is 2+2?", chatReq.Messages[1].Content)
+	assert.Equal(t, "What is 2+2?", derefStr(chatReq.Messages[1].Content))
 }
 
 func TestResponsesToChat_ArrayInput(t *testing.T) {
@@ -56,8 +56,8 @@ func TestResponsesToChat_ArrayInput(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Len(t, chatReq.Messages, 2)
-	assert.Equal(t, "First part", chatReq.Messages[0].Content)
-	assert.Equal(t, "Second part", chatReq.Messages[1].Content)
+	assert.Equal(t, "First part", derefStr(chatReq.Messages[0].Content))
+	assert.Equal(t, "Second part", derefStr(chatReq.Messages[1].Content))
 }
 
 func TestResponsesToChat_MessageArrayInput(t *testing.T) {
@@ -80,7 +80,7 @@ func TestResponsesToChat_MessageArrayInput(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Len(t, chatReq.Messages, 1)
-	assert.Equal(t, "Hello from Codex", chatReq.Messages[0].Content)
+	assert.Equal(t, "Hello from Codex", derefStr(chatReq.Messages[0].Content))
 }
 
 func TestResponsesToChat_NilInput(t *testing.T) {
@@ -128,7 +128,7 @@ func TestChatToResponses(t *testing.T) {
 		Choices: []types.ChatChoice{
 			{
 				Index:        0,
-				Message:      types.ChatMessage{Role: "assistant", Content: "Hello! How can I help?"},
+				Message:      types.ChatMessage{Role: "assistant", Content: strPtr("Hello! How can I help?")},
 				FinishReason: "stop",
 			},
 		},
@@ -165,8 +165,8 @@ func TestChatToResponses_MultipleChoices(t *testing.T) {
 		Created: 1234567890,
 		Model:   "gpt-4o",
 		Choices: []types.ChatChoice{
-			{Index: 0, Message: types.ChatMessage{Role: "assistant", Content: "First"}, FinishReason: "stop"},
-			{Index: 1, Message: types.ChatMessage{Role: "assistant", Content: "Second"}, FinishReason: "stop"},
+			{Index: 0, Message: types.ChatMessage{Role: "assistant", Content: strPtr("First")}, FinishReason: "stop"},
+			{Index: 1, Message: types.ChatMessage{Role: "assistant", Content: strPtr("Second")}, FinishReason: "stop"},
 		},
 		Usage: types.ChatUsage{PromptTokens: 10, CompletionTokens: 10, TotalTokens: 20},
 	}
@@ -206,7 +206,7 @@ func TestResponsesToChatResponse(t *testing.T) {
 	assert.Equal(t, "chat.completion", chatResp.Object)
 	assert.Equal(t, "gpt-4o", chatResp.Model)
 	require.Len(t, chatResp.Choices, 1)
-	assert.Equal(t, "Hello world", chatResp.Choices[0].Message.Content)
+	assert.Equal(t, "Hello world", derefStr(chatResp.Choices[0].Message.Content))
 	assert.Equal(t, "stop", chatResp.Choices[0].FinishReason)
 	assert.Equal(t, 10, chatResp.Usage.PromptTokens)
 	assert.Equal(t, 20, chatResp.Usage.CompletionTokens)
@@ -224,10 +224,10 @@ func TestBuildResponsesFromChat_MultiTurn(t *testing.T) {
 	chatReq := &types.ChatRequest{
 		Model: "gpt-4o",
 		Messages: []types.ChatMessage{
-			{Role: "system", Content: "Be helpful"},
-			{Role: "user", Content: "Hello"},
-			{Role: "assistant", Content: "Hi there"},
-			{Role: "user", Content: "How are you?"},
+			{Role: "system", Content: strPtr("Be helpful")},
+			{Role: "user", Content: strPtr("Hello")},
+			{Role: "assistant", Content: strPtr("Hi there")},
+			{Role: "user", Content: strPtr("How are you?")},
 		},
 	}
 
@@ -241,7 +241,7 @@ func TestBuildResponsesFromChat_MultiTurn(t *testing.T) {
 func TestBuildResponsesFromChat_SingleTurn(t *testing.T) {
 	chatReq := &types.ChatRequest{
 		Model:    "gpt-4o",
-		Messages: []types.ChatMessage{{Role: "user", Content: "Hello"}},
+		Messages: []types.ChatMessage{{Role: "user", Content: strPtr("Hello")}},
 	}
 
 	respReq := BuildResponsesFromChat(chatReq, false)
@@ -259,7 +259,7 @@ func TestBuildResponsesFromChat_WithTools(t *testing.T) {
 	chatReq := &types.ChatRequest{
 		Model: "gpt-4o",
 		Messages: []types.ChatMessage{
-			{Role: "user", Content: "What's the weather?"},
+			{Role: "user", Content: strPtr("What's the weather?")},
 		},
 		Tools: []types.Tool{
 			{Type: "function", Function: types.FunctionDef{
@@ -283,11 +283,11 @@ func TestBuildResponsesFromChat_ToolMessages(t *testing.T) {
 	chatReq := &types.ChatRequest{
 		Model: "gpt-4o",
 		Messages: []types.ChatMessage{
-			{Role: "user", Content: "What's the weather?"},
+			{Role: "user", Content: strPtr("What's the weather?")},
 			{Role: "assistant", ToolCalls: []types.ToolCall{
 				{ID: "call_1", Type: "function", Function: types.FunctionCall{Name: "get_weather", Arguments: `{"city":"NYC"}`}},
 			}},
-			{Role: "tool", ToolCallID: "call_1", Content: `{"temp":72}`},
+			{Role: "tool", ToolCallID: "call_1", Content: strPtr(`{"temp":72}`)},
 		},
 	}
 
@@ -319,8 +319,8 @@ func TestBuildResponsesFromChat_AssistantWithTextAndToolCalls(t *testing.T) {
 	chatReq := &types.ChatRequest{
 		Model: "gpt-4o",
 		Messages: []types.ChatMessage{
-			{Role: "user", Content: "Check weather"},
-			{Role: "assistant", Content: "Let me check", ToolCalls: []types.ToolCall{
+			{Role: "user", Content: strPtr("Check weather")},
+			{Role: "assistant", Content: strPtr("Let me check"), ToolCalls: []types.ToolCall{
 				{ID: "call_1", Type: "function", Function: types.FunctionCall{Name: "get_weather", Arguments: `{}`}},
 			}},
 		},
@@ -364,7 +364,7 @@ func TestResponsesToChatResponse_WithFunctionCall(t *testing.T) {
 	chatResp, err := c.ResponsesToChatResponse(resp)
 	require.NoError(t, err)
 	require.Len(t, chatResp.Choices, 1)
-	assert.Equal(t, "Let me check", chatResp.Choices[0].Message.Content)
+	assert.Equal(t, "Let me check", derefStr(chatResp.Choices[0].Message.Content))
 	require.Len(t, chatResp.Choices[0].Message.ToolCalls, 1)
 	assert.Equal(t, "call_abc", chatResp.Choices[0].Message.ToolCalls[0].ID)
 	assert.Equal(t, "get_weather", chatResp.Choices[0].Message.ToolCalls[0].Function.Name)

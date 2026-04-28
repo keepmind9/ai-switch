@@ -40,7 +40,7 @@ func chatChunkJSON(id string, role, content, finishReason string) string {
 		Choices: []types.StreamChoice{
 			{
 				Index:        0,
-				Delta:        types.ChatMessage{Role: role, Content: content},
+				Delta:        types.ChatMessage{Role: role, Content: strPtr(content)},
 				FinishReason: finishReason,
 			},
 		},

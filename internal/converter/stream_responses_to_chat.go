@@ -88,7 +88,7 @@ func ConvertResponsesLineToChat(state *ResponsesToChatState, line string) any {
 			Created: state.Created,
 			Model:   state.Model,
 			Choices: []types.StreamChoice{
-				{Index: 0, Delta: types.ChatMessage{Content: delta}, FinishReason: ""},
+				{Index: 0, Delta: types.ChatMessage{Content: strPtr(delta)}, FinishReason: ""},
 			},
 		}
 
