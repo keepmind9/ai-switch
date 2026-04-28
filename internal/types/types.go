@@ -18,10 +18,11 @@ type ResponsesRequest struct {
 }
 
 type ResponsesTool struct {
-	Type        string         `json:"type,omitempty"`
-	Name        string         `json:"name"`
-	Description string         `json:"description,omitempty"`
-	Parameters  map[string]any `json:"parameters,omitempty"`
+	Type        string          `json:"type,omitempty"`
+	Name        string          `json:"name"`
+	Description string          `json:"description,omitempty"`
+	Parameters  map[string]any  `json:"parameters,omitempty"`
+	Tools       []ResponsesTool `json:"tools,omitempty"` // namespace sub-tools (Codex MCP)
 }
 
 type ResponsesResponse struct {

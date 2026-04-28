@@ -719,6 +719,25 @@ func filterFunctionTools(tools []types.ResponsesTool) []types.ResponsesTool {
 		if t.Name == "" {
 			continue
 		}
+		// Expand namespace tools (Codex MCP) into flat function tools.
+		if t.Type == "namespace" && len(t.Tools) > 0 {
+			for _, sub := range t.Tools {
+				if sub.Name == "" {
+					continue
+				}
+				desc := sub.Description
+				if desc == "" {
+					desc = t.Description
+				}
+				result = append(result, types.ResponsesTool{
+					Type:        "function",
+					Name:        sub.Name,
+					Description: desc,
+					Parameters:  sub.Parameters,
+				})
+			}
+			continue
+		}
 		result = append(result, t)
 	}
 	return result
