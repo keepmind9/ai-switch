@@ -202,7 +202,7 @@ func (h *Handler) forwardRequest(result *router.RouteResult, body []byte) (*http
 	req.Header.Set("Content-Type", "application/json")
 
 	switch result.Format {
-	case "anthropic":
+	case converter.FormatAnthropic:
 		req.Header.Set("x-api-key", result.APIKey)
 		req.Header.Set("anthropic-version", "2023-06-01")
 	default:
@@ -256,7 +256,7 @@ func checkUpstreamStreamError(c *gin.Context, resp *http.Response, clientFormat 
 
 	// Case 2: peek at first SSE event — only for non-Anthropic clients.
 	// Anthropic clients (Claude Code) handle SSE error events natively.
-	if clientFormat == "anthropic" {
+	if clientFormat == converter.FormatAnthropic {
 		return "", false
 	}
 
@@ -404,7 +404,7 @@ func (h *Handler) streamPassthrough(c *gin.Context, resp *http.Response, format 
 		if looksLikeSSE(respBody) {
 			slog.Info("upstream SSE without Content-Type, streaming directly", "body_len", len(respBody))
 			return h.streamBodyAsSSE(c, bytes.NewReader(respBody), format)
-		} else if !isSSEErrorData(string(respBody)) && format == "responses" {
+		} else if !isSSEErrorData(string(respBody)) && format == converter.FormatResponses {
 			slog.Info("converting non-SSE Responses JSON to SSE events", "body_len", len(respBody))
 			return h.convertResponsesJSONToSSE(c, respBody)
 		}
@@ -550,7 +550,7 @@ func (h *Handler) convertResponsesJSONToSSE(c *gin.Context, body []byte) string 
 func (h *Handler) streamToChatSSE(c *gin.Context, resp *http.Response, convertFn func(state any, line string) any, initialState any) string {
 	copyUpstreamHeaders(c, resp)
 
-	if body, handled := checkUpstreamStreamError(c, resp, "chat"); handled {
+	if body, handled := checkUpstreamStreamError(c, resp, converter.FormatChat); handled {
 		return body
 	}
 
@@ -635,7 +635,7 @@ func (h *Handler) streamToChatSSE(c *gin.Context, resp *http.Response, convertFn
 func (h *Handler) streamAnthropicToResponsesSSE(c *gin.Context, resp *http.Response, state *converter.AnthropicToResponsesState) string {
 	copyUpstreamHeaders(c, resp)
 
-	if body, handled := checkUpstreamStreamError(c, resp, "responses"); handled {
+	if body, handled := checkUpstreamStreamError(c, resp, converter.FormatResponses); handled {
 		return body
 	}
 
@@ -656,7 +656,7 @@ func (h *Handler) streamAnthropicToResponsesSSE(c *gin.Context, resp *http.Respo
 		if data != "" && isSSEErrorData(data) {
 			msg, errType := parseUpstreamError([]byte(data))
 			slog.Warn("SSE error event from upstream", "message", msg, "type", errType)
-			writeSSEErrorToClient(w, msg, errType, "responses")
+			writeSSEErrorToClient(w, msg, errType, converter.FormatResponses)
 			if canFlush {
 				flusher.Flush()
 			}
@@ -691,7 +691,7 @@ func (h *Handler) handleResponses(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"code": "invalid_request", "message": "failed to read request body"}})
 		return
 	}
-	h.executePipeline(c, "responses", body)
+	h.executePipeline(c, converter.FormatResponses, body)
 }
 
 // handleAnthropic handles /v1/messages endpoint (Claude Code, Anthropic Messages API).
@@ -713,7 +713,7 @@ func (h *Handler) handleAnthropic(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"type": "invalid_request_error", "message": "failed to read request body"}})
 		return
 	}
-	h.executePipeline(c, "anthropic", body)
+	h.executePipeline(c, converter.FormatAnthropic, body)
 }
 
 // handleChat handles /v1/chat/completions endpoint (Chat Completions passthrough).
@@ -723,7 +723,7 @@ func (h *Handler) handleChat(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"code": "invalid_request", "message": "failed to read request body"}})
 		return
 	}
-	h.executePipeline(c, "chat", body)
+	h.executePipeline(c, converter.FormatChat, body)
 }
 
 // Upstream API paths. BuildUpstreamURL handles /v1 deduplication

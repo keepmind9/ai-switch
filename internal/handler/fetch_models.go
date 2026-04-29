@@ -13,6 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/keepmind9/ai-switch/internal/config"
+	"github.com/keepmind9/ai-switch/internal/converter"
 )
 
 // ModelInfo represents a single model returned by the fetch-models endpoint.
@@ -60,7 +61,7 @@ func (a *AdminHandler) fetchModels(c *gin.Context) {
 
 	// For anthropic format, replace /anthropic in path with /v1 to get models endpoint.
 	baseURL := req.BaseURL
-	if req.Format == "anthropic" {
+	if req.Format == converter.FormatAnthropic {
 		baseURL = strings.Replace(baseURL, "/anthropic", "/v1", 1)
 	}
 

@@ -10,6 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/keepmind9/ai-switch/internal/config"
+	"github.com/keepmind9/ai-switch/internal/converter"
 )
 
 type AdminHandler struct {
@@ -98,7 +99,7 @@ func (a *AdminHandler) createProvider(c *gin.Context) {
 	}
 
 	if req.Format == "" {
-		req.Format = "chat"
+		req.Format = converter.FormatChat
 	}
 	if !config.ValidFormat(req.Format) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid format, must be chat, responses, or anthropic"})

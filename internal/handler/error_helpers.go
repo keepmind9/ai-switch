@@ -59,7 +59,7 @@ func (h *Handler) writeConvertedError(c *gin.Context, resp *http.Response, respB
 	slog.Warn("upstream error", "status", resp.StatusCode, "message", message, "type", errType, "client_format", clientFormat)
 
 	switch clientFormat {
-	case "anthropic":
+	case converter.FormatAnthropic:
 		// Anthropic format: {"type": "error", "error": {"type": "...", "message": "..."}}
 		if errType == "" {
 			errType = "api_error"
@@ -120,7 +120,7 @@ func isSSEErrorData(data string) bool {
 // hasn't started SSE yet (upstream returned non-SSE in a streaming request).
 func writeStreamErrorJSON(c *gin.Context, statusCode int, message, errType, clientFormat string) {
 	switch clientFormat {
-	case "anthropic":
+	case converter.FormatAnthropic:
 		if errType == "" {
 			errType = "api_error"
 		}
@@ -146,7 +146,7 @@ func writeStreamErrorJSON(c *gin.Context, statusCode int, message, errType, clie
 // in the appropriate format before the stream closes.
 func writeSSEErrorToClient(w converter.SSEWriter, msg, errType, clientFormat string) {
 	switch clientFormat {
-	case "anthropic":
+	case converter.FormatAnthropic:
 		if errType == "" {
 			errType = "api_error"
 		}
