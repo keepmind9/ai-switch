@@ -18,7 +18,7 @@ import (
 // executePipeline runs the unified request pipeline with hook support.
 func (h *Handler) executePipeline(c *gin.Context, protocol string, body []byte) {
 	ctx := hook.NewContext(c, protocol, body)
-	hooks := hook.NewManager() // Will be replaced with Handler.hooks in Task 7
+	hooks := h.hooks
 
 	type pipelineStep struct {
 		name string

@@ -17,6 +17,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/keepmind9/ai-switch/internal/config"
 	"github.com/keepmind9/ai-switch/internal/converter"
+	"github.com/keepmind9/ai-switch/internal/hook"
 	"github.com/keepmind9/ai-switch/internal/middleware"
 	"github.com/keepmind9/ai-switch/internal/router"
 	"github.com/keepmind9/ai-switch/internal/store"
@@ -42,6 +43,7 @@ type Handler struct {
 	usageStore *store.UsageStore
 	router     router.Router
 	llmLogger  *slog.Logger
+	hooks      *hook.Manager
 }
 
 func NewHandler(provider *config.Provider, usageStore *store.UsageStore, r router.Router, llmLogger *slog.Logger) *Handler {
@@ -56,6 +58,7 @@ func NewHandler(provider *config.Provider, usageStore *store.UsageStore, r route
 		usageStore: usageStore,
 		router:     r,
 		llmLogger:  llmLogger,
+		hooks:      hook.NewManager(),
 	}
 }
 
@@ -740,39 +743,7 @@ func (h *Handler) handleResponses(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"code": "invalid_request", "message": "failed to read request body"}})
 		return
 	}
-
-	var responsesReq types.ResponsesRequest
-	if err := json.Unmarshal(body, &responsesReq); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"code": "invalid_request", "message": "failed to parse request: " + err.Error()}})
-		return
-	}
-
-	apiKey := extractClientAPIKey(c)
-	result, routeErr := h.router.Route("responses", apiKey, body)
-	if routeErr != nil {
-		slog.Error("route error", "error", routeErr, "api_key", apiKey)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": "route_error", "message": routeErr.Error()}})
-		return
-	}
-	c.Set(ctxProviderKey, result.ProviderKey)
-
-	slog.Info("responses request", "model", responsesReq.Model, "stream", responsesReq.Stream, "upstream_format", result.Format, "upstream_url", buildUpstreamURL(result), "resolved_model", result.Model)
-
-	model := result.Model
-	if model == "" {
-		model = responsesReq.Model
-	}
-
-	isStreaming := responsesReq.Stream
-
-	switch result.Format {
-	case "chat", "":
-		h.responsesViaChat(c, result, &responsesReq, model, isStreaming)
-	case "responses":
-		h.passthroughRequest(c, result, body, isStreaming)
-	case "anthropic":
-		h.responsesViaAnthropic(c, result, &responsesReq, model, isStreaming)
-	}
+	h.executePipeline(c, "responses", body)
 }
 
 // handleAnthropic handles /v1/messages endpoint (Claude Code, Anthropic Messages API).
@@ -791,43 +762,10 @@ func (h *Handler) handleCountTokens(c *gin.Context) {
 func (h *Handler) handleAnthropic(c *gin.Context) {
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"code": "invalid_request", "message": "failed to read request body"}})
+		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"type": "invalid_request_error", "message": "failed to read request body"}})
 		return
 	}
-
-	var anthReq converter.AnthropicRequest
-	if err := json.Unmarshal(body, &anthReq); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"code": "invalid_request", "message": "failed to parse request: " + err.Error()}})
-		return
-	}
-
-	apiKey := extractClientAPIKey(c)
-	result, routeErr := h.router.Route("anthropic", apiKey, body)
-	if routeErr != nil {
-		slog.Error("route error", "error", routeErr, "protocol", "anthropic", "api_key", apiKey)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": "route_error", "message": routeErr.Error()}})
-		return
-	}
-	c.Set(ctxProviderKey, result.ProviderKey)
-
-	slog.Info("anthropic request", "model", anthReq.Model, "stream", anthReq.Stream, "upstream_format", result.Format, "upstream_url", buildUpstreamURL(result), "resolved_model", result.Model)
-
-	model := result.Model
-	if model == "" {
-		model = anthReq.Model
-	}
-	anthReq.Model = model
-
-	isStreaming := anthReq.Stream
-
-	switch result.Format {
-	case "chat", "":
-		h.anthropicViaChat(c, result, &anthReq, model, isStreaming)
-	case "anthropic":
-		h.passthroughRequest(c, result, body, isStreaming)
-	case "responses":
-		h.anthropicViaResponses(c, result, &anthReq, model, isStreaming)
-	}
+	h.executePipeline(c, "anthropic", body)
 }
 
 // handleChat handles /v1/chat/completions endpoint (Chat Completions passthrough).
@@ -837,397 +775,7 @@ func (h *Handler) handleChat(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"code": "invalid_request", "message": "failed to read request body"}})
 		return
 	}
-
-	var chatReq types.ChatRequest
-	if err := json.Unmarshal(body, &chatReq); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"code": "invalid_request", "message": "failed to parse request: " + err.Error()}})
-		return
-	}
-
-	apiKey := extractClientAPIKey(c)
-	result, routeErr := h.router.Route("chat", apiKey, body)
-	if routeErr != nil {
-		slog.Error("route error", "error", routeErr, "protocol", "chat", "api_key", apiKey)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": "route_error", "message": routeErr.Error()}})
-		return
-	}
-	c.Set(ctxProviderKey, result.ProviderKey)
-
-	slog.Info("chat request", "model", chatReq.Model, "stream", chatReq.Stream, "upstream_format", result.Format, "upstream_url", buildUpstreamURL(result), "resolved_model", result.Model)
-
-	if result.Model != "" {
-		chatReq.Model = result.Model
-	}
-
-	isStreaming := chatReq.Stream
-
-	switch result.Format {
-	case "chat", "":
-		h.passthroughRequest(c, result, body, isStreaming)
-	case "anthropic":
-		h.chatViaAnthropic(c, result, &chatReq, isStreaming)
-	case "responses":
-		h.chatViaResponses(c, result, &chatReq, isStreaming)
-	}
-}
-
-// --- Routing implementations ---
-
-// passthroughRequest forwards the request body directly to upstream.
-func (h *Handler) passthroughRequest(c *gin.Context, result *router.RouteResult, body []byte, isStreaming bool) {
-	originalBody := body
-	var raw map[string]any
-	if json.Unmarshal(body, &raw) == nil {
-		if result.Model != "" {
-			raw["model"] = result.Model
-		}
-		normalizeInputRoles(raw)
-		if newBody, err := json.Marshal(raw); err == nil {
-			body = newBody
-		}
-	}
-
-	resp, latency, err := h.forwardRequest(result, body)
-	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": gin.H{"code": "upstream_error", "message": "failed to call upstream: " + err.Error()}})
-		return
-	}
-	defer resp.Body.Close()
-
-	upstreamURL := buildUpstreamURL(result)
-	provider, _ := c.Get(ctxProviderKey)
-	providerStr, _ := provider.(string)
-
-	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
-		h.logLLMRequest(result.Model, providerStr, upstreamURL, latency, isStreaming, originalBody, string(respBody))
-		h.writeConvertedError(c, resp, respBody, result.Format)
-		return
-	}
-
-	if isStreaming {
-		content := h.streamPassthrough(c, resp, result.Format)
-		h.logLLMRequest(result.Model, providerStr, upstreamURL, latency, true, originalBody, content)
-		return
-	}
-
-	respBody, _ := io.ReadAll(resp.Body)
-	h.logLLMRequest(result.Model, providerStr, upstreamURL, latency, false, originalBody, string(respBody))
-	copyUpstreamHeaders(c, resp)
-	c.Data(http.StatusOK, "application/json", respBody)
-}
-
-// responsesViaChat converts Responses→Chat, forwards to upstream, converts back.
-func (h *Handler) responsesViaChat(c *gin.Context, result *router.RouteResult, req *types.ResponsesRequest, model string, isStreaming bool) {
-	chatReq, err := h.converter.ResponsesToChat(req)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": "conversion_error", "message": err.Error()}})
-		return
-	}
-
-	chatReq.Model = result.Model
-	chatReq.Stream = isStreaming
-	if isStreaming {
-		chatReq.StreamOptions = &types.StreamOptions{IncludeUsage: true}
-	}
-
-	chatBody, _ := json.Marshal(chatReq)
-	resp, latency, err := h.forwardRequest(result, chatBody)
-	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": gin.H{"code": "upstream_error", "message": err.Error()}})
-		return
-	}
-	defer resp.Body.Close()
-
-	upstreamURL := buildUpstreamURL(result)
-	provider, _ := c.Get(ctxProviderKey)
-	providerStr, _ := provider.(string)
-
-	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
-		h.logLLMRequest(model, providerStr, upstreamURL, latency, isStreaming, chatBody, string(respBody))
-		h.writeConvertedError(c, resp, respBody, "responses")
-		return
-	}
-
-	if isStreaming {
-		state := &converter.ResponsesStreamState{Created: time.Now().Unix(), Model: model, ThinkTag: result.ThinkTag}
-		content := h.streamChatToClient(c, resp, func(w converter.SSEWriter, data string) bool {
-			return converter.ConvertChatChunkToResponsesSSE(w, state, data)
-		}, "responses")
-		h.recordStreamUsageFromState(c, state.Model, state.InputTokens, state.OutputTokens)
-		h.logLLMRequest(model, providerStr, upstreamURL, latency, true, chatBody, content)
-		return
-	}
-
-	respBody, _ := io.ReadAll(resp.Body)
-	h.logLLMRequest(model, providerStr, upstreamURL, latency, false, chatBody, string(respBody))
-	var chatResp types.ChatResponse
-	if err := json.Unmarshal(respBody, &chatResp); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": "conversion_error", "message": "failed to parse chat response"}})
-		return
-	}
-
-	responsesResp, err := h.converter.ChatToResponses(&chatResp, model, result.ThinkTag)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": "conversion_error", "message": err.Error()}})
-		return
-	}
-
-	c.JSON(http.StatusOK, responsesResp)
-}
-
-// anthropicViaChat converts Anthropic→Chat, forwards, converts back.
-func (h *Handler) anthropicViaChat(c *gin.Context, result *router.RouteResult, req *converter.AnthropicRequest, model string, isStreaming bool) {
-	chatReq, err := h.converter.AnthropicToChat(req)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": "conversion_error", "message": err.Error()}})
-		return
-	}
-
-	chatReq.Model = result.Model
-	chatReq.Stream = isStreaming
-	if isStreaming {
-		chatReq.StreamOptions = &types.StreamOptions{IncludeUsage: true}
-	}
-
-	chatBody, _ := json.Marshal(chatReq)
-	resp, latency, err := h.forwardRequest(result, chatBody)
-	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": gin.H{"code": "upstream_error", "message": err.Error()}})
-		return
-	}
-	defer resp.Body.Close()
-
-	upstreamURL := buildUpstreamURL(result)
-	provider, _ := c.Get(ctxProviderKey)
-	providerStr, _ := provider.(string)
-
-	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
-		h.logLLMRequest(model, providerStr, upstreamURL, latency, isStreaming, chatBody, string(respBody))
-		h.writeConvertedError(c, resp, respBody, "anthropic")
-		return
-	}
-
-	if isStreaming {
-		state := &converter.AnthropicStreamState{Model: model, ThinkTag: result.ThinkTag}
-		content := h.streamChatToClient(c, resp, func(w converter.SSEWriter, data string) bool {
-			return converter.ConvertChatChunkToAnthropicSSE(w, state, data)
-		}, "anthropic")
-		h.recordStreamUsageFromState(c, state.Model, state.InputTokens, state.OutputTokens)
-		h.logLLMRequest(model, providerStr, upstreamURL, latency, true, chatBody, content)
-		return
-	}
-
-	respBody, _ := io.ReadAll(resp.Body)
-	h.logLLMRequest(model, providerStr, upstreamURL, latency, false, chatBody, string(respBody))
-	var chatResp types.ChatResponse
-	if err := json.Unmarshal(respBody, &chatResp); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": "conversion_error", "message": "failed to parse chat response"}})
-		return
-	}
-
-	anthResp, err := h.converter.ChatToAnthropic(&chatResp, model, result.ThinkTag)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": "conversion_error", "message": err.Error()}})
-		return
-	}
-
-	c.JSON(http.StatusOK, anthResp)
-}
-
-// chatViaAnthropic converts Chat→Anthropic, forwards, converts back.
-func (h *Handler) chatViaAnthropic(c *gin.Context, result *router.RouteResult, chatReq *types.ChatRequest, isStreaming bool) {
-	anthReq, err := h.converter.ChatRequestToAnthropic(chatReq)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": "conversion_error", "message": err.Error()}})
-		return
-	}
-
-	anthReq.Stream = isStreaming
-	anthBody, _ := json.Marshal(anthReq)
-
-	resp, latency, err := h.forwardRequest(result, anthBody)
-	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": gin.H{"code": "upstream_error", "message": err.Error()}})
-		return
-	}
-	defer resp.Body.Close()
-
-	upstreamURL := buildUpstreamURL(result)
-	provider, _ := c.Get(ctxProviderKey)
-	providerStr, _ := provider.(string)
-
-	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
-		h.logLLMRequest(chatReq.Model, providerStr, upstreamURL, latency, isStreaming, anthBody, string(respBody))
-		h.writeConvertedError(c, resp, respBody, "chat")
-		return
-	}
-
-	if isStreaming {
-		state := &converter.AnthropicToChatState{}
-		content := h.streamToChatSSE(c, resp, func(s any, line string) any {
-			return converter.ConvertAnthropicLineToChat(s.(*converter.AnthropicToChatState), line)
-		}, state)
-		h.recordStreamUsageFromState(c, state.Model, state.InputTokens, state.OutputTokens)
-		h.logLLMRequest(chatReq.Model, providerStr, upstreamURL, latency, true, anthBody, content)
-		return
-	}
-
-	respBody, _ := io.ReadAll(resp.Body)
-	h.logLLMRequest(chatReq.Model, providerStr, upstreamURL, latency, false, anthBody, string(respBody))
-	var anthResp converter.AnthropicResponse
-	if err := json.Unmarshal(respBody, &anthResp); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": "conversion_error", "message": "failed to parse anthropic response"}})
-		return
-	}
-
-	chatResp, err := h.converter.AnthropicResponseToChat(&anthResp)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": "conversion_error", "message": err.Error()}})
-		return
-	}
-
-	c.JSON(http.StatusOK, chatResp)
-}
-
-// chatViaResponses converts Chat→Responses, forwards, converts back.
-func (h *Handler) chatViaResponses(c *gin.Context, result *router.RouteResult, chatReq *types.ChatRequest, isStreaming bool) {
-	respReq := converter.BuildResponsesFromChat(chatReq, isStreaming)
-	respReq.Model = result.Model
-
-	respBodyData, _ := json.Marshal(respReq)
-	resp, latency, err := h.forwardRequest(result, respBodyData)
-	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": gin.H{"code": "upstream_error", "message": err.Error()}})
-		return
-	}
-	defer resp.Body.Close()
-
-	upstreamURL := buildUpstreamURL(result)
-	provider, _ := c.Get(ctxProviderKey)
-	providerStr, _ := provider.(string)
-
-	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
-		h.logLLMRequest(chatReq.Model, providerStr, upstreamURL, latency, isStreaming, respBodyData, string(respBody))
-		h.writeConvertedError(c, resp, respBody, "chat")
-		return
-	}
-
-	if isStreaming {
-		state := &converter.ResponsesToChatState{}
-		content := h.streamToChatSSE(c, resp, func(s any, line string) any {
-			return converter.ConvertResponsesLineToChat(s.(*converter.ResponsesToChatState), line)
-		}, state)
-		h.recordStreamUsageFromState(c, state.Model, state.InputTokens, state.OutputTokens)
-		h.logLLMRequest(chatReq.Model, providerStr, upstreamURL, latency, true, respBodyData, content)
-		return
-	}
-
-	respData, _ := io.ReadAll(resp.Body)
-	h.logLLMRequest(chatReq.Model, providerStr, upstreamURL, latency, false, respBodyData, string(respData))
-	copyUpstreamHeaders(c, resp)
-	c.Data(http.StatusOK, "application/json", respData)
-}
-
-// responsesViaAnthropic converts Responses→Anthropic directly, forwards, converts back.
-func (h *Handler) responsesViaAnthropic(c *gin.Context, result *router.RouteResult, req *types.ResponsesRequest, model string, isStreaming bool) {
-	anthReq, err := h.converter.ResponsesToAnthropic(req)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": "conversion_error", "message": err.Error()}})
-		return
-	}
-	anthReq.Model = model
-	anthReq.Stream = isStreaming
-	anthBody, _ := json.Marshal(anthReq)
-
-	resp, latency, err := h.forwardRequest(result, anthBody)
-	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": gin.H{"code": "upstream_error", "message": err.Error()}})
-		return
-	}
-	defer resp.Body.Close()
-
-	upstreamURL := buildUpstreamURL(result)
-	provider, _ := c.Get(ctxProviderKey)
-	providerStr, _ := provider.(string)
-
-	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
-		h.logLLMRequest(model, providerStr, upstreamURL, latency, isStreaming, anthBody, string(respBody))
-		h.writeConvertedError(c, resp, respBody, "responses")
-		return
-	}
-
-	if isStreaming {
-		state := &converter.AnthropicToResponsesState{ThinkTag: result.ThinkTag}
-		content := h.streamAnthropicToResponsesSSE(c, resp, state)
-		h.recordStreamUsageFromState(c, state.Model, state.InputTokens, state.OutputTokens)
-		h.logLLMRequest(model, providerStr, upstreamURL, latency, true, anthBody, content)
-		return
-	}
-
-	// Non-streaming: convert Anthropic response → Responses response
-	respBody, _ := io.ReadAll(resp.Body)
-	h.logLLMRequest(model, providerStr, upstreamURL, latency, false, anthBody, string(respBody))
-	var anthResp converter.AnthropicResponse
-	if err := json.Unmarshal(respBody, &anthResp); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": "conversion_error", "message": "failed to parse anthropic response"}})
-		return
-	}
-	responsesResp, err := h.converter.AnthropicResponseToResponses(&anthResp, model, result.ThinkTag)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": "conversion_error", "message": err.Error()}})
-		return
-	}
-	c.JSON(http.StatusOK, responsesResp)
-}
-
-// anthropicViaResponses converts Anthropic→Responses directly, forwards, converts back.
-func (h *Handler) anthropicViaResponses(c *gin.Context, result *router.RouteResult, req *converter.AnthropicRequest, model string, isStreaming bool) {
-	respReq, err := h.converter.AnthropicToResponses(req)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": "conversion_error", "message": err.Error()}})
-		return
-	}
-	respReq.Model = model
-
-	respBodyData, _ := json.Marshal(respReq)
-	resp, latency, err := h.forwardRequest(result, respBodyData)
-	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": gin.H{"code": "upstream_error", "message": err.Error()}})
-		return
-	}
-	defer resp.Body.Close()
-
-	upstreamURL := buildUpstreamURL(result)
-	provider, _ := c.Get(ctxProviderKey)
-	providerStr, _ := provider.(string)
-
-	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
-		h.logLLMRequest(model, providerStr, upstreamURL, latency, isStreaming, respBodyData, string(respBody))
-		h.writeConvertedError(c, resp, respBody, "anthropic")
-		return
-	}
-
-	if isStreaming {
-		state := &converter.ResponsesToAnthropicState{}
-		content := h.streamChatToClient(c, resp, func(w converter.SSEWriter, data string) bool {
-			return converter.ConvertResponsesEventToAnthropicSSE(w, state, data)
-		}, "anthropic")
-		h.recordStreamUsageFromState(c, state.Model, state.InputTokens, state.OutputTokens)
-		h.logLLMRequest(model, providerStr, upstreamURL, latency, true, respBodyData, content)
-		return
-	}
-
-	respBody, _ := io.ReadAll(resp.Body)
-	h.logLLMRequest(model, providerStr, upstreamURL, latency, false, respBodyData, string(respBody))
-	copyUpstreamHeaders(c, resp)
-	c.Data(http.StatusOK, "application/json", respBody)
+	h.executePipeline(c, "chat", body)
 }
 
 // Upstream API paths. BuildUpstreamURL handles /v1 deduplication
