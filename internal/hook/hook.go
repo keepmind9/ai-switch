@@ -43,11 +43,6 @@ const (
 	Optional              // Optional hooks log errors and continue.
 )
 
-// Context will be fully defined in context.go. Minimal placeholder for compilation.
-type Context struct {
-	RequestID string
-}
-
 // HookFunc is the function signature for hook callbacks.
 type HookFunc func(ctx *Context) error
 
