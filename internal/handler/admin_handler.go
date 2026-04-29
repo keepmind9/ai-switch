@@ -243,6 +243,7 @@ func (a *AdminHandler) listRoutes(c *gin.Context) {
 		Key                  string            `json:"key"`
 		Provider             string            `json:"provider"`
 		DefaultModel         string            `json:"default_model"`
+		Disabled             bool              `json:"disabled"`
 		SceneMap             map[string]string `json:"scene_map"`
 		ModelMap             map[string]string `json:"model_map"`
 		LongContextThreshold int               `json:"long_context_threshold"`
@@ -262,6 +263,7 @@ func (a *AdminHandler) listRoutes(c *gin.Context) {
 			DefaultModel:         r.DefaultModel,
 			SceneMap:             r.SceneMap,
 			ModelMap:             r.ModelMap,
+			Disabled:             r.Disabled,
 			LongContextThreshold: r.LongContextThreshold,
 		})
 	}
@@ -276,6 +278,7 @@ func (a *AdminHandler) createRoute(c *gin.Context) {
 		SceneMap             map[string]string `json:"scene_map"`
 		ModelMap             map[string]string `json:"model_map"`
 		LongContextThreshold *int              `json:"long_context_threshold"`
+		Disabled             bool              `json:"disabled"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -305,6 +308,7 @@ func (a *AdminHandler) createRoute(c *gin.Context) {
 		DefaultModel: req.DefaultModel,
 		SceneMap:     req.SceneMap,
 		ModelMap:     req.ModelMap,
+		Disabled:     req.Disabled,
 	}
 	if req.LongContextThreshold != nil {
 		route.LongContextThreshold = *req.LongContextThreshold
@@ -333,6 +337,7 @@ func (a *AdminHandler) updateRoute(c *gin.Context) {
 		SceneMap             *map[string]string `json:"scene_map"`
 		ModelMap             *map[string]string `json:"model_map"`
 		LongContextThreshold *int               `json:"long_context_threshold"`
+		Disabled             *bool              `json:"disabled"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -368,6 +373,9 @@ func (a *AdminHandler) updateRoute(c *gin.Context) {
 	}
 	if req.LongContextThreshold != nil {
 		rule.LongContextThreshold = *req.LongContextThreshold
+	}
+	if req.Disabled != nil {
+		rule.Disabled = *req.Disabled
 	}
 
 	cfg.Routes[key] = rule
@@ -588,6 +596,7 @@ func copyConfig(cfg *config.Config) *config.Config {
 		cp.Routes[k] = config.RouteRule{
 			Provider:             v.Provider,
 			DefaultModel:         v.DefaultModel,
+			Disabled:             v.Disabled,
 			SceneMap:             sm,
 			ModelMap:             mm,
 			LongContextThreshold: v.LongContextThreshold,

@@ -24,7 +24,7 @@ func (r *ConfigRouter) Route(clientProtocol, apiKey string, body []byte) (*Route
 
 	// 1. Try to find route by API key
 	if len(cfg.Routes) > 0 {
-		if rule, ok := cfg.Routes[strings.ToLower(apiKey)]; ok {
+		if rule, ok := cfg.Routes[strings.ToLower(apiKey)]; ok && !rule.Disabled {
 			return r.resolveRoute(cfg, rule, clientProtocol, body)
 		}
 	}

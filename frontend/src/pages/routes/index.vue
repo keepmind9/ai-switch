@@ -71,7 +71,7 @@ async function load() {
   loading.value = true
   try { 
     const [r, p, s] = await Promise.all([listRoutes(), listProviders(), getAdminStatus()])
-    routes.value = r.data.data
+    routes.value = (r.data.data || []).map(route => ({ ...route, disabled: !!route.disabled }))
     providers.value = p.data.data 
     
     const status = s.data
@@ -120,9 +120,19 @@ async function saveDefaultRoutes() {
   }
 }
 
+async function toggleDisabled(row: Route) {
+  try {
+    await updateRoute(row.key, { disabled: row.disabled })
+    ElMessage.success(t("routes.actions.toggleSuccess"))
+  } catch (e) {
+    row.disabled = !row.disabled // revert on failure
+    ElMessage.error(t("routes.actions.failSave"))
+  }
+}
+
 function openCreate() {
   isEdit.value = false; editKey.value = ""
-  form.value = { key: "", provider: "", default_model: "", scene_map: {}, model_map: {}, long_context_threshold: 0 }
+  form.value = { key: "", provider: "", default_model: "", disabled: false, scene_map: {}, model_map: {}, long_context_threshold: 0 }
   sceneMapData.value = []; modelMapData.value = []; showDrawer.value = true
 }
 
@@ -140,6 +150,7 @@ function openEdit(row: Route) {
     key: row.key, 
     provider: row.provider, 
     default_model: row.default_model, 
+    disabled: !!row.disabled,
     long_context_threshold: row.long_context_threshold || 0 
   }
   sceneMapData.value = Object.entries(row.scene_map || {}).map(([k, v]) => ({ key: k, ...parseModelValue(v, row.provider) }))
@@ -255,7 +266,7 @@ onMounted(load)
             <el-tooltip :content="$t('routes.strategy.globalTip')"><el-icon class="text-slate-400 text-[11px] cursor-help"><QuestionFilled /></el-icon></el-tooltip>
           </div>
           <el-select v-model="defaultRoutes.default_route" :placeholder="$t('routes.strategy.notSet')" clearable filterable class="w-full!">
-            <el-option v-for="r in routes" :key="r.key" :label="r.key" :value="r.key" />
+            <el-option v-for="r in routes" :key="r.key" :label="r.key + (r.disabled ? ` (${$t('routes.table.disabled')})` : '')" :value="r.key" />
           </el-select>
         </el-col>
         <el-col :span="6">
@@ -264,7 +275,7 @@ onMounted(load)
             <el-tooltip :content="$t('routes.strategy.anthropicTip')"><el-icon class="text-slate-400 text-[11px] cursor-help"><QuestionFilled /></el-icon></el-tooltip>
           </div>
           <el-select v-model="defaultRoutes.default_anthropic_route" :placeholder="$t('routes.strategy.notSet')" clearable filterable class="w-full!">
-            <el-option v-for="r in routes" :key="r.key" :label="r.key" :value="r.key" />
+            <el-option v-for="r in routes" :key="r.key" :label="r.key + (r.disabled ? ` (${$t('routes.table.disabled')})` : '')" :value="r.key" />
           </el-select>
         </el-col>
         <el-col :span="6">
@@ -273,7 +284,7 @@ onMounted(load)
             <el-tooltip :content="$t('routes.strategy.responsesTip')"><el-icon class="text-slate-400 text-[11px] cursor-help"><QuestionFilled /></el-icon></el-tooltip>
           </div>
           <el-select v-model="defaultRoutes.default_responses_route" :placeholder="$t('routes.strategy.notSet')" clearable filterable class="w-full!">
-            <el-option v-for="r in routes" :key="r.key" :label="r.key" :value="r.key" />
+            <el-option v-for="r in routes" :key="r.key" :label="r.key + (r.disabled ? ` (${$t('routes.table.disabled')})` : '')" :value="r.key" />
           </el-select>
         </el-col>
         <el-col :span="6">
@@ -282,7 +293,7 @@ onMounted(load)
             <el-tooltip :content="$t('routes.strategy.chatTip')"><el-icon class="text-slate-400 text-[11px] cursor-help"><QuestionFilled /></el-icon></el-tooltip>
           </div>
           <el-select v-model="defaultRoutes.default_chat_route" :placeholder="$t('routes.strategy.notSet')" clearable filterable class="w-full!">
-            <el-option v-for="r in routes" :key="r.key" :label="r.key" :value="r.key" />
+            <el-option v-for="r in routes" :key="r.key" :label="r.key + (r.disabled ? ` (${$t('routes.table.disabled')})` : '')" :value="r.key" />
           </el-select>
         </el-col>
       </el-row>
@@ -290,7 +301,7 @@ onMounted(load)
 
     <!-- Table -->
     <el-card shadow="never" class="border-none!">
-      <el-table :data="filteredRoutes" v-loading="loading" stripe size="large">
+      <el-table :data="filteredRoutes" v-loading="loading" stripe size="large" :row-class-name="({ row }) => row.disabled ? 'opacity-50' : ''">
         <el-table-column :label="$t('routes.table.key')" min-width="220">
           <template #default="{ row }">
             <div class="flex items-center gap-2">
@@ -298,6 +309,7 @@ onMounted(load)
                 {{ row.key }}
               </span>
               <el-button link @click="copyToClipboard(row.key)"><el-icon><CopyDocument /></el-icon></el-button>
+              <el-tag v-if="row.disabled" size="small" type="info" effect="plain" class="ml-1">{{ $t('routes.table.disabled') }}</el-tag>
             </div>
           </template>
         </el-table-column>
@@ -308,6 +320,13 @@ onMounted(load)
           <template #default="{ row }"><span class="text-sm text-slate-600 truncate block">{{ row.default_model }}</span></template>
         </el-table-column>
         
+        <el-table-column :label="$t('routes.table.disabled')" width="100">
+          <template #default="{ row }">
+            <!-- disabled: false (active) -> green, disabled: true (inactive) -> red -->
+            <el-switch v-model="row.disabled" :active-value="true" :inactive-value="false" @change="toggleDisabled(row)" size="small" active-color="var(--el-color-danger)" inactive-color="var(--el-color-success)" />
+          </template>
+        </el-table-column>
+
         <el-table-column :label="$t('routes.drawer.form.scenes')" min-width="200">
           <template #default="{ row }">
             <div class="mapping-group">
@@ -396,9 +415,21 @@ onMounted(load)
             </el-col>
           </el-row>
 
-          <el-form-item :label="$t('routes.drawer.form.threshold')">
-            <el-input-number v-model="form.long_context_threshold" :min="0" :step="10000" controls-position="right" class="w-full!" />
-          </el-form-item>
+          <el-row :gutter="16">
+            <el-col :span="12">
+              <el-form-item :label="$t('routes.drawer.form.threshold')">
+                <el-input-number v-model="form.long_context_threshold" :min="0" :step="10000" controls-position="right" class="w-full!" />
+              </el-form-item>
+            </el-col>
+            <el-col :span="12">
+              <el-form-item :label="$t('routes.drawer.form.disabled')">
+                <div class="flex items-center h-32px">
+                  <el-switch v-model="form.disabled" :active-value="true" :inactive-value="false" active-color="var(--el-color-danger)" inactive-color="var(--el-color-success)" />
+                  <span class="ml-2 text-xs text-slate-400">{{ $t('routes.drawer.form.disabledTip') }}</span>
+                </div>
+              </el-form-item>
+            </el-col>
+          </el-row>
 
           <div class="divider my-6 border-t border-slate-100 border-dashed"></div>
 
@@ -589,5 +620,17 @@ html.dark {
 
 .w-full\! {
   width: 100% !important;
+}
+
+:deep(.disabled-row) {
+  opacity: 0.5;
+  filter: grayscale(0.8);
+  background-color: var(--el-fill-color-light) !important;
+  
+  .mono {
+    background-color: var(--el-fill-color) !important;
+    color: var(--el-text-color-secondary) !important;
+    border-color: var(--el-border-color-lighter) !important;
+  }
 }
 </style>

@@ -33,6 +33,7 @@ type Config struct {
 type RouteRule struct {
 	Provider             string            `mapstructure:"provider" yaml:"provider"`
 	DefaultModel         string            `mapstructure:"default_model" yaml:"default_model"`
+	Disabled             bool              `mapstructure:"disabled" yaml:"disabled,omitempty"`
 	SceneMap             map[string]string `mapstructure:"scene_map" yaml:"scene_map"`
 	ModelMap             map[string]string `mapstructure:"model_map" yaml:"model_map"`
 	LongContextThreshold int               `mapstructure:"long_context_threshold" yaml:"long_context_threshold,omitempty"`

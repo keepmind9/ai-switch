@@ -106,7 +106,8 @@
       "key": "Route Key",
       "provider": "Provider",
       "model": "Default Model",
-      "mappings": "Mappings"
+      "mappings": "Mappings",
+      "disabled": "Disabled"
     },
     "actions": {
       "edit": "Edit Routing Configuration",
@@ -117,7 +118,8 @@
       "successUpdate": "Route updated",
       "successDelete": "Route deleted",
       "failSave": "Failed to save route",
-      "copySuccess": "Copied to clipboard"
+      "copySuccess": "Copied to clipboard",
+      "toggleSuccess": "Status updated"
     },
     "drawer": {
       "add": "Create New Route",
@@ -130,6 +132,8 @@
         "providerPlaceholder": "Select target",
         "model": "Default Model",
         "modelPlaceholder": "Fallback model",
+        "disabled": "Disable Route",
+        "disabledTip": "When enabled, this route is inactive.",
         "threshold": "Long Context Threshold",
         "scenes": "Scene Mappings",
         "addScene": "+ Add Scene",

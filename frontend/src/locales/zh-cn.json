@@ -106,7 +106,8 @@
       "key": "路由密钥",
       "provider": "服务商",
       "model": "默认模型",
-      "mappings": "映射配置"
+      "mappings": "映射配置",
+      "disabled": "已禁用"
     },
     "actions": {
       "edit": "编辑路由配置",
@@ -117,7 +118,8 @@
       "successUpdate": "路由更新成功",
       "successDelete": "路由删除成功",
       "failSave": "保存路由失败",
-      "copySuccess": "已复制到剪贴板"
+      "copySuccess": "已复制到剪贴板",
+      "toggleSuccess": "状态更新成功"
     },
     "drawer": {
       "add": "创建新路由",
@@ -130,6 +132,8 @@
         "providerPlaceholder": "选择目标服务商",
         "model": "默认模型",
         "modelPlaceholder": "回退模型",
+        "disabled": "禁用路由",
+        "disabledTip": "开启后，该路由将失效并回退到默认路由。",
         "threshold": "长上下文阈值",
         "scenes": "场景映射",
         "addScene": "+ 添加场景",

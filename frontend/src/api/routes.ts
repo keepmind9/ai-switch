@@ -4,6 +4,7 @@ export interface Route {
   key: string
   provider: string
   default_model: string
+  disabled?: boolean
   scene_map: Record<string, string>
   model_map: Record<string, string>
   long_context_threshold: number

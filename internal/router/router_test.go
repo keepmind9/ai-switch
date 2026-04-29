@@ -282,6 +282,79 @@ func TestParseProviderModel(t *testing.T) {
 	}
 }
 
+func TestConfigRouter_DisabledRoute(t *testing.T) {
+	p := newTestProvider()
+	cfg := p.Get()
+	// Disable gw-deepseek route
+	r := cfg.Routes["gw-deepseek"]
+	r.Disabled = true
+	cfg.Routes["gw-deepseek"] = r
+
+	router := NewConfigRouter(p)
+
+	// Request with disabled route key should fall through to default route
+	result, err := router.Route("chat", "gw-deepseek", []byte(`{}`))
+	require.NoError(t, err)
+	assert.Equal(t, "https://api.default.com", result.BaseURL)
+	assert.Equal(t, "default-key", result.APIKey)
+	assert.Equal(t, "default-model", result.Model)
+}
+
+func TestConfigRouter_DisabledRouteWithProtocolDefault(t *testing.T) {
+	cfg := &config.Config{
+		DefaultRoute:          "gw-default",
+		DefaultAnthropicRoute: "gw-anth",
+		Providers: map[string]config.ProviderConfig{
+			"minimax": {
+				BaseURL: "https://api.default.com",
+				APIKey:  "default-key",
+				Format:  "chat",
+			},
+			"zhipu": {
+				BaseURL: "https://open.bigmodel.cn/api/anthropic",
+				APIKey:  "zhipu-key",
+				Format:  "anthropic",
+			},
+		},
+		Routes: map[string]config.RouteRule{
+			"gw-default": {
+				Provider:     "minimax",
+				DefaultModel: "default-model",
+			},
+			"gw-anth": {
+				Provider:     "zhipu",
+				DefaultModel: "glm-5.1",
+			},
+			"gw-disabled": {
+				Provider:     "minimax",
+				DefaultModel: "should-not-use",
+				Disabled:     true,
+			},
+		},
+	}
+	r := NewConfigRouter(config.NewProvider(cfg, ""))
+
+	// Disabled route with anthropic protocol falls through to protocol-specific default
+	result, err := r.Route("anthropic", "gw-disabled", []byte(`{"model":"claude-sonnet","messages":[]}`))
+	require.NoError(t, err)
+	assert.Equal(t, "https://open.bigmodel.cn/api/anthropic", result.BaseURL)
+	assert.Equal(t, "glm-5.1", result.Model)
+}
+
+func TestConfigRouter_DisabledNotDefault(t *testing.T) {
+	p := newTestProvider()
+	cfg := p.Get()
+	// gw-default is the default route, but it's not disabled
+	r := cfg.Routes["gw-default"]
+
+	router := NewConfigRouter(p)
+
+	result, err := router.Route("chat", "gw-default", []byte(`{}`))
+	require.NoError(t, err)
+	assert.Equal(t, "https://api.default.com", result.BaseURL)
+	assert.False(t, r.Disabled)
+}
+
 func TestConfigRouter_RouteUnknownProvider(t *testing.T) {
 	cfg := &config.Config{
 		Providers: map[string]config.ProviderConfig{
