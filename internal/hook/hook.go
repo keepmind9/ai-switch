@@ -10,7 +10,7 @@ import (
 type Point int
 
 const (
-	BeforeRoute    Point = iota
+	BeforeRoute Point = iota
 	AfterRoute
 	BeforeUpstream
 	AfterUpstream

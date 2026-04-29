@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"embed"
 	"encoding/json"
-	"fmt"
 	"io"
 	"io/fs"
 	"log/slog"
@@ -60,6 +59,11 @@ func NewHandler(provider *config.Provider, usageStore *store.UsageStore, r route
 		llmLogger:  llmLogger,
 		hooks:      hook.NewManager(),
 	}
+}
+
+// RegisterHook adds a lifecycle hook to the pipeline.
+func (h *Handler) RegisterHook(hk hook.Hook) {
+	h.hooks.Register(hk)
 }
 
 // RegisterRoutes registers all API endpoints.
@@ -678,62 +682,6 @@ func (h *Handler) streamAnthropicToResponsesSSE(c *gin.Context, resp *http.Respo
 		flusher.Flush()
 	}
 	return buf.String()
-}
-
-// convertAnthropicJSONToResponsesSSE converts a non-streaming Anthropic JSON response
-// into Responses API SSE events, writing them via the SSE writer.
-func (h *Handler) convertAnthropicJSONToResponsesSSE(w converter.SSEWriter, state *converter.AnthropicToResponsesState, body []byte) {
-	var anthResp converter.AnthropicResponse
-	if err := json.Unmarshal(body, &anthResp); err != nil {
-		slog.Error("failed to parse non-SSE anthropic response", "error", err)
-		converter.EmitCompleted(w, state)
-		return
-	}
-
-	state.ResponseID = anthResp.ID
-	state.Model = anthResp.Model
-	state.InputTokens = anthResp.Usage.InputTokens
-	state.OutputTokens = anthResp.Usage.OutputTokens
-
-	for _, block := range anthResp.Content {
-		if block.Type == "text" {
-			state.AccText += block.Text
-		}
-	}
-
-	state.CreatedSent = true
-	state.ItemSent = true
-	state.ItemID = fmt.Sprintf("item_%d", time.Now().UnixNano())
-	state.Created = time.Now().Unix()
-
-	w.WriteEvent("response.created", map[string]any{
-		"type":            "response.created",
-		"sequence_number": state.NextSeq(),
-		"response": map[string]any{
-			"id": state.ResponseID, "object": "response", "created_at": state.Created,
-			"model": state.Model, "status": "in_progress", "output": []any{}, "usage": nil,
-		},
-	})
-	w.WriteEvent("response.output_item.added", map[string]any{
-		"type": "response.output_item.added", "sequence_number": state.NextSeq(), "output_index": 0,
-		"item": map[string]any{
-			"id": state.ItemID, "type": "message", "status": "in_progress",
-			"role": "assistant", "content": []any{},
-		},
-	})
-	w.WriteEvent("response.content_part.added", map[string]any{
-		"type": "response.content_part.added", "sequence_number": state.NextSeq(),
-		"output_index": 0, "content_index": 0, "item_id": state.ItemID,
-		"part": map[string]any{"type": "output_text", "text": ""},
-	})
-	if state.AccText != "" {
-		w.WriteEvent("response.output_text.delta", map[string]any{
-			"type": "response.output_text.delta", "sequence_number": state.NextSeq(),
-			"output_index": 0, "content_index": 0, "item_id": state.ItemID, "delta": state.AccText,
-		})
-	}
-
-	converter.EmitCompleted(w, state)
 }
 
 // handleResponses handles /v1/responses endpoint (Codex CLI, OpenAI Responses API).

@@ -15,10 +15,10 @@ type Context struct {
 	StartTime time.Time
 
 	// Client side
-	ClientProtocol string // "anthropic" | "responses" | "chat"
-	ClientReqBody  []byte // original raw request body
-	ClientParsedReq any   // parsed struct (AnthropicRequest, ResponsesRequest, ChatRequest)
-	ClientModel    string // model name from client request
+	ClientProtocol  string // "anthropic" | "responses" | "chat"
+	ClientReqBody   []byte // original raw request body
+	ClientParsedReq any    // parsed struct (AnthropicRequest, ResponsesRequest, ChatRequest)
+	ClientModel     string // model name from client request
 
 	// Route
 	RouteResult *router.RouteResult
@@ -34,7 +34,7 @@ type Context struct {
 	ClientRespBody []byte // response body sent to client (after conversion)
 
 	// Stream
-	IsStream   bool
+	IsStream    bool
 	StreamState any // protocol-specific stream conversion state
 
 	// Hook mutable store

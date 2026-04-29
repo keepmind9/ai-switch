@@ -15,6 +15,8 @@ import (
 	"github.com/keepmind9/ai-switch/internal/types"
 )
 
+const noHook hook.Point = -1
+
 // executePipeline runs the unified request pipeline with hook support.
 func (h *Handler) executePipeline(c *gin.Context, protocol string, body []byte) {
 	ctx := hook.NewContext(c, protocol, body)
@@ -28,11 +30,11 @@ func (h *Handler) executePipeline(c *gin.Context, protocol string, body []byte) 
 	}
 
 	steps := []pipelineStep{
-		{"parse", h.stepParse, -1, hook.BeforeRoute},
-		{"route", h.stepRoute, -1, hook.AfterRoute},
-		{"convertReq", h.stepConvertReq, hook.BeforeUpstream, -1},
-		{"forward", h.stepForward, -1, hook.AfterUpstream},
-		{"writeResp", h.stepWriteResp, -1, hook.AfterResponse},
+		{"parse", h.stepParse, noHook, hook.BeforeRoute},
+		{"route", h.stepRoute, noHook, hook.AfterRoute},
+		{"convertReq", h.stepConvertReq, hook.BeforeUpstream, noHook},
+		{"forward", h.stepForward, noHook, hook.AfterUpstream},
+		{"writeResp", h.stepWriteResp, noHook, hook.AfterResponse},
 	}
 
 	for _, s := range steps {
