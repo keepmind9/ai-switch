@@ -121,6 +121,9 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
+	r.HEAD("/", func(c *gin.Context) {
+		c.Status(http.StatusOK)
+	})
 }
 
 // handleReload reloads configuration from disk.
