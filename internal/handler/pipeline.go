@@ -279,8 +279,186 @@ func (h *Handler) stepForward(ctx *hook.Context) error {
 	return nil
 }
 
-// stepWriteResp — stub to be implemented in Task 6
-func (h *Handler) stepWriteResp(ctx *hook.Context) error { return nil }
+// stepWriteResp writes the upstream response to the client, handling protocol
+// conversion for both streaming and non-streaming paths.
+func (h *Handler) stepWriteResp(ctx *hook.Context) error {
+	defer ctx.UpstreamResp.Body.Close()
+	upstreamURL := buildUpstreamURL(ctx.RouteResult)
+	provider := ctx.RouteResult.ProviderKey
+
+	if !ctx.IsStream {
+		return h.writeNonStreamResponse(ctx, upstreamURL, provider)
+	}
+	return h.writeStreamResponse(ctx, upstreamURL, provider)
+}
+
+// writeNonStreamResponse reads the full upstream response, converts if needed, and writes to client.
+func (h *Handler) writeNonStreamResponse(ctx *hook.Context, upstreamURL, provider string) error {
+	respBody, _ := io.ReadAll(ctx.UpstreamResp.Body)
+	h.logLLMRequest(ctx.ClientModel, provider, upstreamURL, ctx.UpstreamLatency, false, ctx.UpstreamReqBody, string(respBody))
+
+	upstream := ctx.UpstreamProtocol
+	client := ctx.ClientProtocol
+
+	if upstream == client {
+		copyUpstreamHeaders(ctx.GinCtx, ctx.UpstreamResp)
+		ctx.GinCtx.Data(http.StatusOK, "application/json", respBody)
+		return nil
+	}
+
+	switch upstream {
+	case "chat":
+		return h.writeNonStreamFromChat(ctx, respBody)
+	case "anthropic":
+		return h.writeNonStreamFromAnthropic(ctx, respBody)
+	case "responses":
+		// responses→chat and responses→anthropic are passthrough (same as original)
+		copyUpstreamHeaders(ctx.GinCtx, ctx.UpstreamResp)
+		ctx.GinCtx.Data(http.StatusOK, "application/json", respBody)
+		return nil
+	}
+
+	return fmt.Errorf("unknown upstream protocol: %s", upstream)
+}
+
+func (h *Handler) writeNonStreamFromChat(ctx *hook.Context, respBody []byte) error {
+	var chatResp types.ChatResponse
+	if err := json.Unmarshal(respBody, &chatResp); err != nil {
+		writeConversionError(ctx.GinCtx, "failed to parse chat response")
+		return err
+	}
+
+	switch ctx.ClientProtocol {
+	case "anthropic":
+		anthResp, err := h.converter.ChatToAnthropic(&chatResp, ctx.ClientModel, ctx.RouteResult.ThinkTag)
+		if err != nil {
+			writeConversionError(ctx.GinCtx, err.Error())
+			return err
+		}
+		ctx.GinCtx.JSON(http.StatusOK, anthResp)
+	case "responses":
+		responsesResp, err := h.converter.ChatToResponses(&chatResp, ctx.ClientModel, ctx.RouteResult.ThinkTag)
+		if err != nil {
+			writeConversionError(ctx.GinCtx, err.Error())
+			return err
+		}
+		ctx.GinCtx.JSON(http.StatusOK, responsesResp)
+	}
+	return nil
+}
+
+func (h *Handler) writeNonStreamFromAnthropic(ctx *hook.Context, respBody []byte) error {
+	var anthResp converter.AnthropicResponse
+	if err := json.Unmarshal(respBody, &anthResp); err != nil {
+		writeConversionError(ctx.GinCtx, "failed to parse anthropic response")
+		return err
+	}
+
+	switch ctx.ClientProtocol {
+	case "chat":
+		chatResp, err := h.converter.AnthropicResponseToChat(&anthResp)
+		if err != nil {
+			writeConversionError(ctx.GinCtx, err.Error())
+			return err
+		}
+		ctx.GinCtx.JSON(http.StatusOK, chatResp)
+	case "responses":
+		responsesResp, err := h.converter.AnthropicResponseToResponses(&anthResp, ctx.ClientModel, ctx.RouteResult.ThinkTag)
+		if err != nil {
+			writeConversionError(ctx.GinCtx, err.Error())
+			return err
+		}
+		ctx.GinCtx.JSON(http.StatusOK, responsesResp)
+	}
+	return nil
+}
+
+// writeStreamResponse handles all streaming response paths with protocol conversion.
+func (h *Handler) writeStreamResponse(ctx *hook.Context, upstreamURL, provider string) error {
+	upstream := ctx.UpstreamProtocol
+	client := ctx.ClientProtocol
+	model := ctx.ClientModel
+	thinkTag := ctx.RouteResult.ThinkTag
+
+	// Same-protocol passthrough
+	if upstream == client {
+		content := h.streamPassthrough(ctx.GinCtx, ctx.UpstreamResp, client)
+		h.logLLMRequest(model, provider, upstreamURL, ctx.UpstreamLatency, true, ctx.UpstreamReqBody, content)
+		return nil
+	}
+
+	switch upstream {
+	case "chat":
+		return h.streamFromChat(ctx, upstreamURL, provider, model, thinkTag)
+	case "anthropic":
+		return h.streamFromAnthropic(ctx, upstreamURL, provider, model, thinkTag)
+	case "responses":
+		return h.streamFromResponses(ctx, upstreamURL, provider, model, thinkTag)
+	}
+
+	return fmt.Errorf("unknown upstream protocol for streaming: %s", upstream)
+}
+
+func (h *Handler) streamFromChat(ctx *hook.Context, upstreamURL, provider, model, thinkTag string) error {
+	switch ctx.ClientProtocol {
+	case "anthropic":
+		state := &converter.AnthropicStreamState{Model: model, ThinkTag: thinkTag}
+		content := h.streamChatToClient(ctx.GinCtx, ctx.UpstreamResp, func(w converter.SSEWriter, data string) bool {
+			return converter.ConvertChatChunkToAnthropicSSE(w, state, data)
+		}, "anthropic")
+		h.recordStreamUsageFromState(ctx.GinCtx, state.Model, state.InputTokens, state.OutputTokens)
+		h.logLLMRequest(model, provider, upstreamURL, ctx.UpstreamLatency, true, ctx.UpstreamReqBody, content)
+
+	case "responses":
+		state := &converter.ResponsesStreamState{Created: time.Now().Unix(), Model: model, ThinkTag: thinkTag}
+		content := h.streamChatToClient(ctx.GinCtx, ctx.UpstreamResp, func(w converter.SSEWriter, data string) bool {
+			return converter.ConvertChatChunkToResponsesSSE(w, state, data)
+		}, "responses")
+		h.recordStreamUsageFromState(ctx.GinCtx, state.Model, state.InputTokens, state.OutputTokens)
+		h.logLLMRequest(model, provider, upstreamURL, ctx.UpstreamLatency, true, ctx.UpstreamReqBody, content)
+	}
+	return nil
+}
+
+func (h *Handler) streamFromAnthropic(ctx *hook.Context, upstreamURL, provider, model, thinkTag string) error {
+	switch ctx.ClientProtocol {
+	case "chat":
+		state := &converter.AnthropicToChatState{}
+		content := h.streamToChatSSE(ctx.GinCtx, ctx.UpstreamResp, func(s any, line string) any {
+			return converter.ConvertAnthropicLineToChat(s.(*converter.AnthropicToChatState), line)
+		}, state)
+		h.recordStreamUsageFromState(ctx.GinCtx, state.Model, state.InputTokens, state.OutputTokens)
+		h.logLLMRequest(model, provider, upstreamURL, ctx.UpstreamLatency, true, ctx.UpstreamReqBody, content)
+
+	case "responses":
+		state := &converter.AnthropicToResponsesState{ThinkTag: thinkTag}
+		content := h.streamAnthropicToResponsesSSE(ctx.GinCtx, ctx.UpstreamResp, state)
+		h.recordStreamUsageFromState(ctx.GinCtx, state.Model, state.InputTokens, state.OutputTokens)
+		h.logLLMRequest(model, provider, upstreamURL, ctx.UpstreamLatency, true, ctx.UpstreamReqBody, content)
+	}
+	return nil
+}
+
+func (h *Handler) streamFromResponses(ctx *hook.Context, upstreamURL, provider, model, thinkTag string) error {
+	switch ctx.ClientProtocol {
+	case "chat":
+		state := &converter.ResponsesToChatState{}
+		content := h.streamToChatSSE(ctx.GinCtx, ctx.UpstreamResp, func(s any, line string) any {
+			return converter.ConvertResponsesLineToChat(s.(*converter.ResponsesToChatState), line)
+		}, state)
+		h.recordStreamUsageFromState(ctx.GinCtx, state.Model, state.InputTokens, state.OutputTokens)
+		h.logLLMRequest(model, provider, upstreamURL, ctx.UpstreamLatency, true, ctx.UpstreamReqBody, content)
+
+	case "anthropic":
+		state := &converter.ResponsesToAnthropicState{}
+		content := h.streamChatToClient(ctx.GinCtx, ctx.UpstreamResp, func(w converter.SSEWriter, data string) bool {
+			return converter.ConvertResponsesEventToAnthropicSSE(w, state, data)
+		}, "anthropic")
+		h.recordStreamUsageFromState(ctx.GinCtx, state.Model, state.InputTokens, state.OutputTokens)
+		h.logLLMRequest(model, provider, upstreamURL, ctx.UpstreamLatency, true, ctx.UpstreamReqBody, content)
+	}
+	return nil
+}
 
 func writeConversionError(c *gin.Context, message string) {
 	c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": "conversion_error", "message": message}})
