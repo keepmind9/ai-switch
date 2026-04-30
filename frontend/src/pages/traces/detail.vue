@@ -2,10 +2,13 @@
 import { ref, onMounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import { ArrowDown, ArrowUp, Document } from '@element-plus/icons-vue'
 import { getTraceDetail, type TraceDetail, type TraceDetailRecord } from '@/api/traces'
 
 const { t } = useI18n()
 const route = useRoute()
+
+const goBack = () => window.history.back()
 const detail = ref<TraceDetail | null>(null)
 const loading = ref(false)
 
@@ -28,9 +31,24 @@ const formatBody = (body: string) => {
   }
 }
 
+const formatHeaders = (headers: Record<string, string>) => {
+  return JSON.stringify(headers, null, 2)
+}
+
 const sessionId = computed(() => {
   return detail.value?.records.find((r: TraceDetailRecord) => r.session_id)?.session_id
 })
+
+const viewSession = () => {
+  return {
+    name: 'Traces',
+    query: {
+      session_id: sessionId.value,
+      start_time: route.query.start_time,
+      end_time: route.query.end_time
+    }
+  }
+}
 
 onMounted(async () => {
   loading.value = true
@@ -52,8 +70,8 @@ onMounted(async () => {
           <p class="text-sm text-slate-500 mt-1">Request ID: {{ detail.ais_req_id }}</p>
         </div>
         <div class="flex gap-2">
-          <router-link to="/traces" class="el-button el-button--default">{{ t('traces.back') }}</router-link>
-          <router-link v-if="sessionId" :to="{ name: 'Traces', query: { session_id: sessionId } }" class="el-button el-button--primary">
+          <a class="el-button el-button--default" @click="goBack">{{ t('traces.back') }}</a>
+          <router-link v-if="sessionId" :to="viewSession()" class="el-button el-button--primary">
             {{ t('traces.viewSession') }}
           </router-link>
         </div>
@@ -78,11 +96,38 @@ onMounted(async () => {
               <div v-if="record.latency_ms"><strong>Latency:</strong> {{ record.latency_ms }}ms</div>
             </div>
 
-            <el-collapse>
-              <el-collapse-item :title="t('traces.detail.body')">
-                <pre class="bg-slate-100 p-3 overflow-auto text-xs rounded border border-slate-200 max-h-80">{{ formatBody(record.body) }}</pre>
-              </el-collapse-item>
-            </el-collapse>
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div v-if="record.headers" class="border border-slate-200 rounded-lg shadow-sm bg-white overflow-hidden">
+                <button 
+                  @click="record.showHeaders = !record.showHeaders"
+                  class="w-full flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100 text-slate-700 font-medium transition-all"
+                >
+                  <span class="flex items-center gap-2">
+                    <el-icon><Document /></el-icon>
+                    {{ t('traces.detail.headers') }}
+                  </span>
+                  <el-icon><ArrowDown v-if="!record.showHeaders" /><ArrowUp v-else /></el-icon>
+                </button>
+                <div v-if="record.showHeaders" class="p-3 border-t border-slate-200">
+                  <pre class="bg-slate-50 p-3 overflow-auto text-xs rounded border border-slate-200 max-h-80">{{ formatHeaders(record.headers) }}</pre>
+                </div>
+              </div>
+              <div class="border border-slate-200 rounded-lg shadow-sm bg-white overflow-hidden">
+                <button 
+                  @click="record.showBody = !record.showBody"
+                  class="w-full flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100 text-slate-700 font-medium transition-all"
+                >
+                  <span class="flex items-center gap-2">
+                    <el-icon><Document /></el-icon>
+                    {{ t('traces.detail.body') }}
+                  </span>
+                  <el-icon><ArrowDown v-if="!record.showBody" /><ArrowUp v-else /></el-icon>
+                </button>
+                <div v-if="record.showBody" class="p-3 border-t border-slate-200">
+                  <pre class="bg-slate-50 p-3 overflow-auto text-xs rounded border border-slate-200 max-h-80">{{ formatBody(record.body) }}</pre>
+                </div>
+              </div>
+            </div>
           </el-card>
         </div>
       </div>

@@ -29,6 +29,7 @@ export interface TraceDetailRecord {
   input_tokens?: number
   output_tokens?: number
   body: string
+  headers?: Record<string, string>
 }
 
 export interface TraceListResponse {

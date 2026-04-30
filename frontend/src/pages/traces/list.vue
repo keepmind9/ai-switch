@@ -50,7 +50,15 @@ const fetchList = async (c?: string) => {
   }
 }
 
-onMounted(() => {}) // Removed auto-load
+onMounted(() => {
+  if (route.query.start_time) filter.start_time = route.query.start_time as string
+  if (route.query.end_time) filter.end_time = route.query.end_time as string
+  if (route.query.session_id) filter.session_id = route.query.session_id as string
+  
+  if (filter.start_time && filter.end_time) {
+    fetchList()
+  }
+})
 </script>
 
 <template>
@@ -86,7 +94,7 @@ onMounted(() => {}) // Removed auto-load
         </el-table-column>
         <el-table-column :label="t('traces.table.requestId')" min-width="200">
           <template #default="{ row }">
-            <router-link :to="{ name: 'TraceDetail', params: { ais_req_id: row.ais_req_id } }" class="text-blue-500 hover:underline">
+            <router-link :to="{ name: 'TraceDetail', params: { ais_req_id: row.ais_req_id }, query: { start_time: filter.start_time, end_time: filter.end_time } }" class="text-blue-500 hover:underline">
               {{ row.ais_req_id }}
             </router-link>
           </template>

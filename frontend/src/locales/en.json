@@ -214,6 +214,7 @@
     "detail": {
       "title": "Trace Detail",
       "record": "Record",
+      "headers": "Show Headers",
       "body": "Show Body"
     }
   }
