@@ -85,13 +85,13 @@ func runServe(configPath string) error {
 	r.Use(gin.Logger())
 	r.Use(gin.Recovery())
 
-	if usageStore != nil {
-		r.Use(middleware.UsageMiddleware(usageStore))
-	}
-
 	cfgRouter := router.NewConfigRouter(provider)
-	traceRecorder := hook.NewTraceRecorder(llmWriter, usageStore)
+	traceRecorder := hook.NewTraceRecorder(llmWriter)
 	h := handler.NewHandler(provider, usageStore, cfgRouter, traceRecorder)
+
+	if usageStore != nil {
+		h.RegisterHook(hook.NewUsageHook(usageStore))
+	}
 	h.RegisterRoutes(r)
 
 	adminH := handler.NewAdminHandler(provider)

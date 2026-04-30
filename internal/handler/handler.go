@@ -17,7 +17,6 @@ import (
 	"github.com/keepmind9/ai-switch/internal/config"
 	"github.com/keepmind9/ai-switch/internal/converter"
 	"github.com/keepmind9/ai-switch/internal/hook"
-	"github.com/keepmind9/ai-switch/internal/middleware"
 	"github.com/keepmind9/ai-switch/internal/router"
 	"github.com/keepmind9/ai-switch/internal/store"
 	"github.com/keepmind9/ai-switch/internal/types"
@@ -345,8 +344,8 @@ func (h *Handler) streamChatToClient(c *gin.Context, resp *http.Response, conver
 	return buf.String()
 }
 
-// streamPassthrough forwards upstream SSE directly to the client. Returns accumulated upstream content.
-func (h *Handler) streamPassthrough(c *gin.Context, resp *http.Response, format string) string {
+// streamPassthrough forwards upstream SSE directly to the client. Returns accumulated content and token counts.
+func (h *Handler) streamPassthrough(c *gin.Context, resp *http.Response, format string) (string, int64, int64) {
 	copyUpstreamHeaders(c, resp)
 
 	// Upstream may return SSE data without Content-Type header.
@@ -357,37 +356,36 @@ func (h *Handler) streamPassthrough(c *gin.Context, resp *http.Response, format 
 			return h.streamBodyAsSSE(c, bytes.NewReader(respBody), format)
 		} else if !isSSEErrorData(string(respBody)) && format == converter.FormatResponses {
 			slog.Info("converting non-SSE Responses JSON to SSE events", "body_len", len(respBody))
-			return h.convertResponsesJSONToSSE(c, respBody)
+			body := h.convertResponsesJSONToSSE(c, respBody)
+			return body, 0, 0
 		}
 		// Error response — restore body for checkUpstreamStreamError
 		resp.Body = io.NopCloser(bytes.NewReader(respBody))
 	}
 
 	if body, handled := checkUpstreamStreamError(c, resp, format); handled {
-		return body
+		return body, 0, 0
 	}
 
 	return h.streamBodyAsSSE(c, resp.Body, format)
 }
 
-// streamBodyAsSSE reads SSE from body and writes it to the client.
-func (h *Handler) streamBodyAsSSE(c *gin.Context, body io.Reader, format string) string {
+// streamBodyAsSSE reads SSE from body, writes it to the client, and extracts token usage.
+func (h *Handler) streamBodyAsSSE(c *gin.Context, body io.Reader, format string) (string, int64, int64) {
 	writeSSEHeaders(c)
-
-	var acc middleware.StreamUsageAccumulator
 
 	flusher, canFlush := c.Writer.(http.Flusher)
 	scanner := bufio.NewScanner(body)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
 	var buf bytes.Buffer
+	var acc streamUsageAccumulator
 	for scanner.Scan() {
 		line := scanner.Text()
 		buf.WriteString(line + "\n")
 		c.Writer.WriteString(line + "\n")
 
-		data := converter.ParseSSEDataLine(line)
-		acc.Sniff(data, format)
+		acc.sniff(converter.ParseSSEDataLine(line), format)
 
 		if canFlush {
 			flusher.Flush()
@@ -397,7 +395,7 @@ func (h *Handler) streamBodyAsSSE(c *gin.Context, body io.Reader, format string)
 	if err := scanner.Err(); err != nil {
 		slog.Warn("SSE scanner error", "error", err)
 	}
-	return buf.String()
+	return buf.String(), acc.InputTokens, acc.OutputTokens
 }
 
 // convertResponsesJSONToSSE converts a non-streaming Responses API JSON response

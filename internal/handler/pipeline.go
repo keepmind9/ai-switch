@@ -450,10 +450,12 @@ func (h *Handler) writeStreamResponse(ctx *hook.Context) error {
 
 	// Same-protocol passthrough
 	if upstream == client {
-		content := h.streamPassthrough(ctx.GinCtx, ctx.UpstreamResp, client)
+		content, inTokens, outTokens := h.streamPassthrough(ctx.GinCtx, ctx.UpstreamResp, client)
 		ctx.UpstreamRespBody = []byte(content)
 		h.tracer().RecordUpstreamResponse(ctx, http.StatusOK)
 		ctx.ClientRespBody = ctx.UpstreamRespBody
+		ctx.InputTokens = inTokens
+		ctx.OutputTokens = outTokens
 		h.tracer().RecordResponse(ctx)
 		return nil
 	}

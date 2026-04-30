@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/keepmind9/ai-switch/internal/router"
-	"github.com/keepmind9/ai-switch/internal/store"
 )
 
 const (
@@ -21,16 +20,14 @@ const (
 	traceTimeFormat = "2006-01-02T15:04:05.000Z07:00"
 )
 
-// TraceRecorder records each pipeline stage as a JSONL line and aggregates token usage.
+// TraceRecorder records each pipeline stage as a JSONL line.
 type TraceRecorder struct {
-	writer     io.Writer // JSONL file writer (DailyRotateWriter)
-	usageStore *store.UsageStore
+	writer io.Writer // JSONL file writer (DailyRotateWriter)
 }
 
-func NewTraceRecorder(writer io.Writer, usageStore *store.UsageStore) *TraceRecorder {
+func NewTraceRecorder(writer io.Writer) *TraceRecorder {
 	return &TraceRecorder{
-		writer:     writer,
-		usageStore: usageStore,
+		writer: writer,
 	}
 }
 
@@ -128,9 +125,8 @@ func (t *TraceRecorder) RecordUpstreamResponse(ctx *Context, status int) {
 }
 
 // RecordResponse writes a "response" trace record after stepWriteResp.
-// Also records token usage to the usage store.
 func (t *TraceRecorder) RecordResponse(ctx *Context) {
-	if t.writer == nil && t.usageStore == nil {
+	if t.writer == nil {
 		return
 	}
 	provider := ""
@@ -138,21 +134,6 @@ func (t *TraceRecorder) RecordResponse(ctx *Context) {
 		provider = ctx.RouteResult.ProviderKey
 	}
 
-	if t.usageStore != nil && (ctx.InputTokens > 0 || ctx.OutputTokens > 0) {
-		t.usageStore.AsyncRecord(store.UsageRecord{
-			Provider:     provider,
-			Model:        ctx.ClientModel,
-			Date:         store.Today(),
-			Requests:     1,
-			InputTokens:  ctx.InputTokens,
-			OutputTokens: ctx.OutputTokens,
-			TotalTokens:  ctx.InputTokens + ctx.OutputTokens,
-		})
-	}
-
-	if t.writer == nil {
-		return
-	}
 	t.writeRecord(&traceRecord{
 		Type:         traceTypeResponse,
 		RequestID:    ctx.RequestID,
