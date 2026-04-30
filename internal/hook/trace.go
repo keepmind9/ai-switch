@@ -3,6 +3,8 @@ package hook
 import (
 	"encoding/json"
 	"io"
+	"net/http"
+	"strings"
 	"time"
 
 	"github.com/keepmind9/ai-switch/internal/router"
@@ -10,10 +12,10 @@ import (
 )
 
 const (
-	traceTypeRequest       = "request"
-	traceTypeUpstreamReq   = "upstream_req"
-	traceTypeUpstreamResp  = "upstream_resp"
-	traceTypeResponse      = "response"
+	traceTypeRequest      = "request"
+	traceTypeUpstreamReq  = "upstream_req"
+	traceTypeUpstreamResp = "upstream_resp"
+	traceTypeResponse     = "response"
 
 	// traceTimeFormat is RFC3339 with millisecond precision (3 digits).
 	traceTimeFormat = "2006-01-02T15:04:05.000Z07:00"
@@ -44,10 +46,11 @@ type traceRecord struct {
 	Time      string `json:"time"`
 
 	// request
-	ClientProtocol string `json:"client_protocol,omitempty"`
-	Model          string `json:"model,omitempty"`
-	Stream         bool   `json:"stream,omitempty"`
-	Body           string `json:"body,omitempty"`
+	ClientProtocol string            `json:"client_protocol,omitempty"`
+	Model          string            `json:"model,omitempty"`
+	Stream         bool              `json:"stream,omitempty"`
+	Body           string            `json:"body,omitempty"`
+	Headers        map[string]string `json:"headers,omitempty"`
 
 	// upstream_request
 	UpstreamProtocol string `json:"upstream_protocol,omitempty"`
@@ -76,6 +79,7 @@ func (t *TraceRecorder) RecordRequest(ctx *Context) {
 		Model:          ctx.ClientModel,
 		Stream:         ctx.IsStream,
 		Body:           string(ctx.ClientReqBody),
+		Headers:        headersToMap(ctx.GinCtx.Request.Header),
 	})
 }
 
@@ -96,6 +100,7 @@ func (t *TraceRecorder) RecordUpstreamRequest(ctx *Context) {
 		Provider:         ctx.RouteResult.ProviderKey,
 		URL:              router.BuildUpstreamURL(ctx.RouteResult.BaseURL, ctx.RouteResult.Path),
 		Body:             string(ctx.UpstreamReqBody),
+		Headers:          headersToMap(ctx.UpstreamReqHeader),
 	})
 }
 
@@ -111,6 +116,9 @@ func (t *TraceRecorder) RecordUpstreamResponse(ctx *Context, status int) {
 		Status:    status,
 		LatencyMs: ctx.UpstreamLatency.Milliseconds(),
 		Body:      string(ctx.UpstreamRespBody),
+	}
+	if ctx.UpstreamResp != nil {
+		rec.Headers = headersToMap(ctx.UpstreamResp.Header)
 	}
 	if ctx.RouteResult != nil {
 		rec.Provider = ctx.RouteResult.ProviderKey
@@ -154,6 +162,7 @@ func (t *TraceRecorder) RecordResponse(ctx *Context) {
 		InputTokens:  ctx.InputTokens,
 		OutputTokens: ctx.OutputTokens,
 		Body:         string(ctx.ClientRespBody),
+		Headers:      headersToMap(ctx.GinCtx.Writer.Header()),
 	})
 }
 
@@ -163,4 +172,16 @@ func (t *TraceRecorder) writeRecord(rec *traceRecord) {
 		return
 	}
 	t.writer.Write(append(data, '\n'))
+}
+
+// headersToMap converts http.Header to map[string]string by joining multi-values with comma.
+func headersToMap(h http.Header) map[string]string {
+	if len(h) == 0 {
+		return nil
+	}
+	m := make(map[string]string, len(h))
+	for k, v := range h {
+		m[strings.ToLower(k)] = strings.Join(v, ", ")
+	}
+	return m
 }

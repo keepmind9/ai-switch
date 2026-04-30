@@ -25,11 +25,12 @@ type Context struct {
 	RouteResult *router.RouteResult
 
 	// Upstream side
-	UpstreamProtocol string         // determined by RouteResult.Format
-	UpstreamReqBody  []byte         // request body sent to upstream (after conversion)
-	UpstreamResp     *http.Response // raw response from upstream
-	UpstreamRespBody []byte         // accumulated response body or raw SSE
-	UpstreamLatency  time.Duration
+	UpstreamProtocol  string         // determined by RouteResult.Format
+	UpstreamReqBody   []byte         // request body sent to upstream (after conversion)
+	UpstreamReqHeader http.Header    // headers sent to upstream
+	UpstreamResp      *http.Response // raw response from upstream
+	UpstreamRespBody  []byte         // accumulated response body or raw SSE
+	UpstreamLatency   time.Duration
 
 	// Client response
 	ClientRespBody []byte // response body sent to client (after conversion)

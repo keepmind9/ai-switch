@@ -157,7 +157,6 @@ func (h *Handler) stepConvertReq(ctx *hook.Context) error {
 			return fmt.Errorf("unknown client protocol: %s", ctx.ClientProtocol)
 		}
 	}
-	h.tracer().RecordUpstreamRequest(ctx)
 	return nil
 }
 
@@ -279,6 +278,9 @@ func (h *Handler) stepForward(ctx *hook.Context) error {
 	default:
 		req.Header.Set("Authorization", "Bearer "+ctx.RouteResult.APIKey)
 	}
+
+	ctx.UpstreamReqHeader = req.Header
+	h.tracer().RecordUpstreamRequest(ctx)
 
 	start := time.Now()
 	resp, err := h.client.Do(req)
