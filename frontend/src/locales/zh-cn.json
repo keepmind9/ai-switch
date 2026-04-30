@@ -217,6 +217,7 @@
       "headers": "请求头",
       "rawBody": "原始数据",
       "inspect": "检查",
+      "diff": "对比",
       "body": "显示请求体"
     }
   }

@@ -217,6 +217,7 @@
       "headers": "Headers",
       "rawBody": "Raw Body",
       "inspect": "Inspect",
+      "diff": "Diff",
       "body": "Show Body"
     }
   }

@@ -2,7 +2,7 @@
 import { ref, onMounted, computed, reactive } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { ArrowDown, ArrowUp, Document, View } from '@element-plus/icons-vue'
+import { ArrowDown, ArrowUp, Document, View, Switch } from '@element-plus/icons-vue'
 import { getTraceDetail, type TraceDetail, type TraceDetailRecord } from '@/api/traces'
 
 const { t } = useI18n()
@@ -64,6 +64,60 @@ const inspectSSE = computed<{ events: any[]; usage: any | null; stopReason: stri
 const openInspect = (record: TraceDetailRecord) => {
   inspectRecord.value = record
   inspectOpen.value = true
+}
+
+// Diff drawer state
+const diffOpen = ref(false)
+const diffPairs = computed(() => {
+  if (!detail.value) return []
+  const recs = detail.value.records
+  const pairs: { left: TraceDetailRecord; right: TraceDetailRecord; label: string }[] = []
+  const reqIdx = recs.findIndex(r => r.type === 'request')
+  const upReqIdx = recs.findIndex(r => r.type === 'upstream_req')
+  const upRespIdx = recs.findIndex(r => r.type === 'upstream_resp')
+  const respIdx = recs.findIndex(r => r.type === 'response')
+  if (reqIdx >= 0 && upReqIdx >= 0) pairs.push({ left: recs[reqIdx], right: recs[upReqIdx], label: 'Request vs Upstream Request' })
+  if (upRespIdx >= 0 && respIdx >= 0) pairs.push({ left: recs[upRespIdx], right: recs[respIdx], label: 'Upstream Response vs Client Response' })
+  return pairs
+})
+const canDiff = computed(() => diffPairs.value.length > 0)
+
+const openDiff = () => { diffOpen.value = true }
+
+// Simple line diff: returns { type: 'equal'|'add'|'remove'|'change', left?: string, right?: string }[]
+const lineDiff = (left: string, right: string): { type: string; left?: string; right?: string }[] => {
+  const la = left.split('\n')
+  const ra = right.split('\n')
+  const result: { type: string; left?: string; right?: string }[] = []
+  const maxLen = Math.max(la.length, ra.length)
+  for (let i = 0; i < maxLen; i++) {
+    const l = i < la.length ? la[i] : undefined
+    const r = i < ra.length ? ra[i] : undefined
+    if (l === r) {
+      result.push({ type: 'equal', left: l })
+    } else {
+      result.push({ type: 'change', left: l, right: r })
+    }
+  }
+  return result
+}
+
+const diffBody = (left: TraceDetailRecord, right: TraceDetailRecord) => {
+  const lb = formatBody(left.body)
+  const rb = formatBody(right.body)
+  return lineDiff(lb, rb)
+}
+
+const diffHeaderKeys = (left: TraceDetailRecord, right: TraceDetailRecord) => {
+  const lh = left.headers || {}
+  const rh = right.headers || {}
+  const allKeys = [...new Set([...Object.keys(lh), ...Object.keys(rh)])].sort()
+  return allKeys.map(k => ({
+    key: k,
+    left: lh[k],
+    right: rh[k],
+    type: lh[k] === rh[k] ? 'equal' : (!lh[k] ? 'add' : !rh[k] ? 'remove' : 'change')
+  }))
 }
 
 const getRecordStyle = (type: string) => {
@@ -203,6 +257,7 @@ onMounted(async () => {
         </div>
         <div class="flex gap-2">
           <a class="el-button el-button--default" @click="goBack">{{ t('traces.back') }}</a>
+          <el-button v-if="canDiff" size="default" :icon="Switch" @click="openDiff">{{ t('traces.detail.diff') }}</el-button>
           <router-link v-if="sessionId" :to="viewSession()" class="el-button el-button--primary">
             {{ t('traces.viewSession') }}
           </router-link>
@@ -446,6 +501,46 @@ onMounted(async () => {
         </template>
       </template>
     </el-drawer>
+
+    <!-- Diff Dialog -->
+    <el-dialog v-model="diffOpen" fullscreen :show-close="true">
+      <template #header>
+        <span class="text-lg font-semibold text-gray-800">{{ t('traces.detail.diff') }}</span>
+      </template>
+      <div v-for="(pair, pi) in diffPairs" :key="pi" class="mb-8">
+        <h4 class="text-sm font-semibold text-gray-600 mb-3 pb-2 border-b border-gray-200">{{ pair.label }}</h4>
+        <el-tabs>
+          <el-tab-pane label="Headers">
+            <div class="diff-table">
+              <div class="diff-row diff-row-head">
+                <div class="diff-key">Key</div>
+                <div class="diff-left">{{ pair.left.type }}</div>
+                <div class="diff-right">{{ pair.right.type }}</div>
+              </div>
+              <template v-for="h in diffHeaderKeys(pair.left, pair.right)" :key="h.key">
+                <div v-if="h.type !== 'equal'" class="diff-row" :class="'diff-' + h.type">
+                  <div class="diff-key font-mono text-xs">{{ h.key }}</div>
+                  <div class="diff-left font-mono text-xs">{{ h.left ?? '—' }}</div>
+                  <div class="diff-right font-mono text-xs">{{ h.right ?? '—' }}</div>
+                </div>
+              </template>
+            </div>
+          </el-tab-pane>
+          <el-tab-pane label="Body">
+            <div class="diff-body-view">
+              <div class="diff-body-col diff-body-left">
+                <div class="diff-col-label">{{ pair.left.type }}</div>
+                <pre class="diff-pre">{{ formatBody(pair.left.body) }}</pre>
+              </div>
+              <div class="diff-body-col diff-body-right">
+                <div class="diff-col-label">{{ pair.right.type }}</div>
+                <pre class="diff-pre">{{ formatBody(pair.right.body) }}</pre>
+              </div>
+            </div>
+          </el-tab-pane>
+        </el-tabs>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -606,4 +701,69 @@ onMounted(async () => {
 }
 .el-drawer__body .usage-cache-create .usage-value { color: #b45309; }
 .el-drawer__body .usage-cache-create .usage-label { color: #f59e0b; }
+
+/* Diff dialog styles */
+.diff-table {
+  width: 100%;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  font-size: 0.8125rem;
+}
+.diff-row {
+  display: grid;
+  grid-template-columns: 200px 1fr 1fr;
+  border-bottom: 1px solid #f3f4f6;
+}
+.diff-row:last-child { border-bottom: none; }
+.diff-row-head {
+  background: #f9fafb;
+  font-weight: 600;
+  color: #64748b;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.diff-key, .diff-left, .diff-right {
+  padding: 6px 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.diff-left { border-right: 1px solid #f3f4f6; }
+.diff-add .diff-right { background: #f0fdf4; color: #166534; }
+.diff-remove .diff-left { background: #fef2f2; color: #991b1b; }
+.diff-change .diff-left { background: #fef2f2; color: #991b1b; }
+.diff-change .diff-right { background: #f0fdf4; color: #166534; }
+.diff-body-view {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  height: calc(100vh - 260px);
+}
+.diff-body-col {
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+.diff-col-label {
+  padding: 8px 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  background: #f9fafb;
+  border-bottom: 1px solid #e5e7eb;
+  flex-shrink: 0;
+}
+.diff-pre {
+  padding: 12px;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  margin: 0;
+  flex: 1;
+}
 </style>
