@@ -2,7 +2,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { getTraceDetail, type TraceDetail } from '@/api/traces'
+import { getTraceDetail, type TraceDetail, type TraceDetailRecord } from '@/api/traces'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -29,15 +29,14 @@ const formatBody = (body: string) => {
 }
 
 const sessionId = computed(() => {
-  return detail.value?.records.find(r => r.session_id)?.session_id
+  return detail.value?.records.find((r: TraceDetailRecord) => r.session_id)?.session_id
 })
 
 onMounted(async () => {
   loading.value = true
   try {
     const ais_req_id = route.params.ais_req_id as string
-    const date = route.query.date as string
-    detail.value = await getTraceDetail(ais_req_id, date)
+    detail.value = await getTraceDetail(ais_req_id)
   } finally {
     loading.value = false
   }

@@ -539,7 +539,8 @@ func TestHandleAPIStatus(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 	var resp map[string]any
 	json.Unmarshal(w.Body.Bytes(), &resp)
-	assert.Equal(t, "gw-default", resp["default_route"])
+	data := resp["data"].(map[string]any)
+	assert.Equal(t, "gw-default", data["default_route"])
 }
 
 func TestExtractClientAPIKey(t *testing.T) {

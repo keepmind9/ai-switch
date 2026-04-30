@@ -35,12 +35,12 @@ const fetchModelsTimeout = 15 * time.Second
 func (a *AdminHandler) fetchModels(c *gin.Context) {
 	var req fetchModelsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "base_url and format are required"})
+		sendFail(c, http.StatusBadRequest, CodeBadRequest, "base_url and format are required")
 		return
 	}
 
 	if !config.ValidFormat(req.Format) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid format, must be chat, responses, or anthropic"})
+		sendFail(c, http.StatusBadRequest, CodeBadRequest, "invalid format, must be chat, responses, or anthropic")
 		return
 	}
 
@@ -53,7 +53,7 @@ func (a *AdminHandler) fetchModels(c *gin.Context) {
 		}
 	}
 	if apiKey == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "api_key is required"})
+		sendFail(c, http.StatusBadRequest, CodeBadRequest, "api_key is required")
 		return
 	}
 
@@ -72,16 +72,16 @@ func (a *AdminHandler) fetchModels(c *gin.Context) {
 
 	if err != nil {
 		slog.Warn("failed to fetch models", "base_url", req.BaseURL, "format", req.Format, "error", err)
-		c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("failed to fetch models: %s (the provider may not support automatic model listing)", userFriendlyErr(err))})
+		sendFail(c, http.StatusBadGateway, CodeInternalError, fmt.Sprintf("failed to fetch models: %s (the provider may not support automatic model listing)", userFriendlyErr(err)))
 		return
 	}
 
 	if len(models) == 0 {
-		c.JSON(http.StatusBadGateway, gin.H{"error": "provider returned an empty model list (the provider may not support automatic model listing)"})
+		sendFail(c, http.StatusBadGateway, CodeInternalError, "provider returned an empty model list (the provider may not support automatic model listing)")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"models": models})
+	sendOK(c, models)
 }
 
 // userFriendlyErr returns a user-facing error message.

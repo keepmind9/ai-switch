@@ -25,7 +25,7 @@ export interface Preset {
 }
 
 export const queryStats = (params?: { provider?: string; model?: string; start_date?: string; end_date?: string }) =>
-  client.get<{ data: UsageRecord[] }>('/stats', { params })
+  client.get<UsageRecord[]>('/stats', { params })
 
-export const listPresets = () => client.get<{ data: Preset[] }>('/admin/presets')
+export const listPresets = () => client.get<Preset[]>('/admin/presets')
 export const getAdminStatus = () => client.get('/admin/status')

@@ -28,8 +28,8 @@ async function load() {
   loading.value = true
   try {
     const [p, pr] = await Promise.all([listProviders(), listPresets()])
-    providers.value = p.data.data
-    presets.value = pr.data.data
+    providers.value = p.data
+    presets.value = pr.data
     providers.value.forEach(p => resetDelete(p.key))
   } finally {
     loading.value = false
@@ -88,7 +88,7 @@ async function handleFetchModels() {
       payload.key = form.value.key
     }
     const res = await fetchModels(payload)
-    fetchedModels.value = res.data.models
+    fetchedModels.value = res.data
     ElMessage.success(t("providers.drawer.form.fetchSuccess"))
   } catch (e: any) {
     ElMessage.error(e.response?.data?.error || t("providers.drawer.form.fetchFail"))
@@ -132,7 +132,7 @@ function handleToggleReveal(row: Provider) {
 }
 
 async function revealKey(row: Provider) {
-  const resp = await revealAPIKey(row.key); revealedKeys.value[row.key] = resp.data.data.api_key
+  const resp = await revealAPIKey(row.key); revealedKeys.value[row.key] = resp.data.api_key
 }
 
 async function handleCopyKey(row: Provider) {

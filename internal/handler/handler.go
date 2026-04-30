@@ -80,7 +80,7 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 	serveUI := func(c *gin.Context) {
 		ip := net.ParseIP(c.ClientIP())
 		if ip == nil || !ip.IsLoopback() {
-			c.JSON(http.StatusForbidden, gin.H{"error": "admin access restricted to localhost"})
+			sendFail(c, http.StatusForbidden, CodeForbidden, "admin access restricted to localhost")
 			return
 		}
 		data, err := fs.ReadFile(staticSub, "index.html")
@@ -100,7 +100,7 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 	r.GET("/ui/assets/*filepath", func(c *gin.Context) {
 		ip := net.ParseIP(c.ClientIP())
 		if ip == nil || !ip.IsLoopback() {
-			c.JSON(http.StatusForbidden, gin.H{"error": "admin access restricted to localhost"})
+			sendFail(c, http.StatusForbidden, CodeForbidden, "admin access restricted to localhost")
 			return
 		}
 		c.FileFromFS(c.Request.URL.Path[len("/ui"):], http.FS(staticSub))
@@ -111,7 +111,7 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 			serveUI(c)
 			return
 		}
-		c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+		sendFail(c, http.StatusNotFound, CodeNotFound, "not found")
 	})
 
 	r.GET("/health", func(c *gin.Context) {
@@ -126,11 +126,11 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 func (h *Handler) handleReload(c *gin.Context) {
 	if err := h.provider.Reload(); err != nil {
 		slog.Error("failed to reload config", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": "reload_error", "message": err.Error()}})
+		sendFail(c, http.StatusInternalServerError, CodeInternalError, err.Error())
 		return
 	}
 	slog.Info("config reloaded via API")
-	c.JSON(http.StatusOK, gin.H{"status": "reloaded"})
+	sendOK(c, nil)
 }
 
 // extractClientAPIKey extracts the API key from client request headers.
@@ -693,11 +693,11 @@ func (h *Handler) handleStats(c *gin.Context) {
 
 	records, err := h.usageStore.QueryUsage(provider, model, startDate, endDate)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": "query_error", "message": err.Error()}})
+		sendFail(c, http.StatusInternalServerError, CodeInternalError, err.Error())
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"data": records})
+	sendOK(c, records)
 }
 
 // handleAPIStatus returns current configuration status.
@@ -728,5 +728,5 @@ func (h *Handler) handleAPIStatus(c *gin.Context) {
 	}
 	status["providers"] = providers
 
-	c.JSON(http.StatusOK, status)
+	sendOK(c, status)
 }

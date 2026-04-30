@@ -127,8 +127,8 @@ async function load() {
       queryStats({ start_date: startDate.value, end_date: endDate.value }),
       listProviders(),
     ])
-    records.value = r.data.data
-    providers.value = p.data.data
+    records.value = r.data
+    providers.value = p.data
   } finally {
     loading.value = false
   }

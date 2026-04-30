@@ -26,11 +26,6 @@ func setupTraceTest(t *testing.T, jsonlContent string) (*gin.Engine, string) {
 	logFile := filepath.Join(logDir, "llm-"+date+".log")
 	require.NoError(t, os.WriteFile(logFile, []byte(jsonlContent), 0644))
 
-	// Create another date file to test listDates
-	otherDate := "2026-04-29"
-	otherFile := filepath.Join(logDir, "llm-"+otherDate+".log")
-	require.NoError(t, os.WriteFile(otherFile, []byte(""), 0644))
-
 	// Freeze clock to the test date
 	orig := currentClock.Now
 	currentClock.Now = func() time.Time { return time.Date(2026, 4, 30, 12, 0, 0, 0, time.Local) }
@@ -60,7 +55,7 @@ func TestListTraces(t *testing.T) {
 	tests := []struct {
 		name       string
 		query      string
-		wantTotal  int
+		wantItems  int
 		wantStatus int
 	}{
 		{"default", "", 2, http.StatusOK},
@@ -68,7 +63,6 @@ func TestListTraces(t *testing.T) {
 		{"filter by provider", "provider=anthropic", 1, http.StatusOK},
 		{"filter by status", "status=500", 1, http.StatusOK},
 		{"filter no match", "model=nonexistent", 0, http.StatusOK},
-		{"page 2", "page=2&page_size=1", 2, http.StatusOK},
 	}
 
 	for _, tt := range tests {
@@ -88,8 +82,7 @@ func TestListTraces(t *testing.T) {
 
 			data := resp["data"].(map[string]any)
 			items := data["items"].([]any)
-			assert.Equal(t, tt.wantTotal, int(data["total"].(float64)))
-			assert.Len(t, items, min(tt.wantTotal, int(data["page_size"].(float64))))
+			assert.Len(t, items, tt.wantItems)
 		})
 	}
 }
@@ -187,25 +180,6 @@ func TestGetTraceNoDateParam(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 }
 
-func TestListDates(t *testing.T) {
-	r, _ := setupTraceTest(t, testJSONL)
-
-	req := httptest.NewRequest(http.MethodGet, "/api/admin/traces/dates", nil)
-	w := httptest.NewRecorder()
-	r.ServeHTTP(w, req)
-
-	require.Equal(t, http.StatusOK, w.Code)
-
-	var resp map[string]any
-	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
-
-	dates := resp["data"].([]any)
-	require.Len(t, dates, 2)
-	// Sorted descending
-	assert.Equal(t, "2026-04-30", dates[0].(string))
-	assert.Equal(t, "2026-04-29", dates[1].(string))
-}
-
 func TestListTracesDateNotFound(t *testing.T) {
 	r, _ := setupTraceTest(t, testJSONL)
 
@@ -216,10 +190,11 @@ func TestListTracesDateNotFound(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, w.Code)
 }
 
-func TestListTracesPagination(t *testing.T) {
+func TestListTracesCursorPagination(t *testing.T) {
 	r, _ := setupTraceTest(t, testJSONL)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/admin/traces?page=2&page_size=1", nil)
+	// First page: page_size=1, should get req002 (newest) and has_next=true
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/traces?page_size=1", nil)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 
@@ -229,12 +204,31 @@ func TestListTracesPagination(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 
 	data := resp["data"].(map[string]any)
-	assert.Equal(t, float64(2), data["total"])
-	assert.Equal(t, float64(2), data["page"])
-	assert.Equal(t, float64(1), data["page_size"])
-
 	items := data["items"].([]any)
-	assert.Len(t, items, 1)
+	require.Len(t, items, 1)
+	assert.Equal(t, "req002", items[0].(map[string]any)["ais_req_id"])
+	assert.Equal(t, false, data["has_prev"])
+	assert.Equal(t, true, data["has_next"])
+
+	nextCursor := data["next_cursor"].(string)
+	require.NotEmpty(t, nextCursor)
+
+	// Second page: use next_cursor
+	req2 := httptest.NewRequest(http.MethodGet, "/api/admin/traces?page_size=1&cursor="+nextCursor, nil)
+	w2 := httptest.NewRecorder()
+	r.ServeHTTP(w2, req2)
+
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var resp2 map[string]any
+	require.NoError(t, json.Unmarshal(w2.Body.Bytes(), &resp2))
+
+	data2 := resp2["data"].(map[string]any)
+	items2 := data2["items"].([]any)
+	require.Len(t, items2, 1)
+	assert.Equal(t, "req001", items2[0].(map[string]any)["ais_req_id"])
+	assert.Equal(t, true, data2["has_prev"])
+	assert.Equal(t, false, data2["has_next"])
 }
 
 func TestTraceSummaryMerge(t *testing.T) {
@@ -268,11 +262,4 @@ func TestTraceSummaryMerge(t *testing.T) {
 		}
 	}
 	t.Fatal("req001 not found")
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }

@@ -185,6 +185,8 @@
     "viewSession": "View all in session",
     "filter": {
       "date": "Date",
+      "startTime": "Start Time",
+      "endTime": "End Time",
       "model": "Model",
       "provider": "Provider",
       "status": "Status",
@@ -203,6 +205,11 @@
       "latency": "Latency",
       "tokens": "Tokens",
       "stream": "Stream"
+    },
+    "nav": {
+      "first": "First Page",
+      "prev": "Prev",
+      "next": "Next"
     },
     "detail": {
       "title": "Trace Detail",

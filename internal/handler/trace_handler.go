@@ -2,6 +2,7 @@ package handler
 
 import (
 	"bufio"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -28,7 +29,6 @@ func NewTraceHandler(dataDir string) *TraceHandler {
 
 // RegisterRoutes registers trace API routes on the given router group.
 func (t *TraceHandler) RegisterRoutes(r *gin.RouterGroup) {
-	r.GET("/admin/traces/dates", t.listDates)
 	r.GET("/admin/traces/:ais_req_id", t.getTrace)
 	r.GET("/admin/traces", t.listTraces)
 }
@@ -54,9 +54,27 @@ type traceFilters struct {
 	Provider  string
 	Status    int
 	SessionID string
+	StartTime string
+	EndTime   string
+}
+
+func (f traceFilters) matchTime(t string) bool {
+	if t == "" {
+		return true
+	}
+	if f.StartTime != "" && t < f.StartTime {
+		return false
+	}
+	if f.EndTime != "" && t > f.EndTime {
+		return false
+	}
+	return true
 }
 
 func (f traceFilters) match(s *traceSummary) bool {
+	if !f.matchTime(s.Time) {
+		return false
+	}
 	if f.Model != "" && !strings.Contains(strings.ToLower(s.Model), strings.ToLower(f.Model)) {
 		return false
 	}
@@ -72,116 +90,169 @@ func (f traceFilters) match(s *traceSummary) bool {
 	return true
 }
 
-// listTraces handles GET /api/admin/traces
+// listTraces handles GET /api/admin/traces with cursor-based pagination.
 func (t *TraceHandler) listTraces(c *gin.Context) {
 	date := c.DefaultQuery("date", "")
 	if date == "" {
-		date = currentDate()
+		// Derive date from start_time if provided, otherwise use today
+		if st := c.Query("start_time"); st != "" {
+			if len(st) >= 10 {
+				date = st[:10]
+			}
+		}
+		if date == "" {
+			date = currentDate()
+		}
 	}
 
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
-	if page < 1 {
-		page = 1
-	}
 	if pageSize < 1 {
 		pageSize = 20
 	}
 	if pageSize > 100 {
 		pageSize = 100
 	}
+	limit := pageSize + 1
 
 	filters := traceFilters{
 		Model:     c.Query("model"),
 		Provider:  c.Query("provider"),
 		SessionID: c.Query("session_id"),
+		StartTime: strings.ReplaceAll(c.Query("start_time"), " ", "T"),
+		EndTime:   strings.ReplaceAll(c.Query("end_time"), " ", "T"),
 	}
 	if s := c.Query("status"); s != "" {
 		filters.Status, _ = strconv.Atoi(s)
 	}
 
-	filePath := logFilePath(t.dataDir, date)
-	groups, err := scanTraces(filePath, filters, false)
-	if err != nil {
-		if os.IsNotExist(err) {
-			c.JSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("no logs for date %s", date)})
+	// Decode cursor if present
+	var cursor traceCursor
+	if raw := c.Query("cursor"); raw != "" {
+		if err := cursor.decode(raw); err != nil {
+			sendFail(c, http.StatusBadRequest, CodeBadRequest, "invalid cursor")
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	}
+
+	filePath := logFilePath(t.dataDir, date)
+	all, err := scanTraces(filePath, filters, limit)
+	if err != nil {
+		if os.IsNotExist(err) {
+			sendFail(c, http.StatusNotFound, CodeNotFound, fmt.Sprintf("no logs for date %s", date))
+			return
+		}
+		sendFail(c, http.StatusInternalServerError, CodeInternalError, err.Error())
 		return
 	}
 
-	total := len(groups)
-	start := (page - 1) * pageSize
-	if start > total {
-		start = total
-	}
-	end := start + pageSize
-	if end > total {
-		end = total
+	// Apply cursor: skip items before or after the cursor position
+	var start int
+	if cursor.Time != "" {
+		for i, g := range all {
+			if g.Time == cursor.Time && g.AisReqID == cursor.AisReqID {
+				if cursor.Dir == "prev" {
+					start = i - pageSize
+					if start < 0 {
+						start = 0
+					}
+				} else {
+					start = i + 1
+				}
+				break
+			}
+		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"data": gin.H{
-			"items":     groups[start:end],
-			"total":     total,
-			"page":      page,
-			"page_size": pageSize,
-		},
+	end := start + limit
+	if end > len(all) {
+		end = len(all)
+	}
+	if start >= len(all) {
+		start = len(all)
+	}
+
+	items := all[start:end]
+	hasMore := len(items) > pageSize
+	if hasMore {
+		items = items[:pageSize]
+	}
+
+	hasPrev := start > 0
+	hasNext := hasMore
+
+	sendOK(c, gin.H{
+		"items":    items,
+		"has_prev": hasPrev,
+		"has_next": hasNext,
+		"prev_cursor": func() string {
+			if !hasPrev || len(items) == 0 {
+				return ""
+			}
+			first := items[0]
+			return (&traceCursor{Time: first.Time, AisReqID: first.AisReqID, Dir: "prev"}).encode()
+		}(),
+		"next_cursor": func() string {
+			if !hasNext || len(items) == 0 {
+				return ""
+			}
+			last := items[len(items)-1]
+			return (&traceCursor{Time: last.Time, AisReqID: last.AisReqID, Dir: "next"}).encode()
+		}(),
 	})
 }
 
-// getTrace handles GET /api/admin/traces/:request_id
+// traceCursor is an opaque pagination cursor.
+type traceCursor struct {
+	Time     string `json:"t"`
+	AisReqID string `json:"r"`
+	Dir      string `json:"d"`
+}
+
+func (c *traceCursor) encode() string {
+	b, _ := json.Marshal(c)
+	return base64.URLEncoding.EncodeToString(b)
+}
+
+func (c *traceCursor) decode(s string) error {
+	b, err := base64.URLEncoding.DecodeString(s)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(b, c)
+}
+
+// getTrace handles GET /api/admin/traces/:ais_req_id
 func (t *TraceHandler) getTrace(c *gin.Context) {
 	requestID := c.Param("ais_req_id")
-	date := c.DefaultQuery("date", "")
-	if date == "" {
-		date = currentDate()
+
+	// Derive date from request ID (format: YYYYMMDDHHMMSSxxxxx)
+	date := currentDate()
+	if len(requestID) >= 8 {
+		d := requestID[:4] + "-" + requestID[4:6] + "-" + requestID[6:8]
+		if _, err := time.Parse("2006-01-02", d); err == nil {
+			date = d
+		}
 	}
 
 	filePath := logFilePath(t.dataDir, date)
 	records, err := scanTraceByID(filePath, requestID)
 	if err != nil {
 		if os.IsNotExist(err) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "trace not found"})
+			sendFail(c, http.StatusNotFound, CodeNotFound, "trace not found")
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		sendFail(c, http.StatusInternalServerError, CodeInternalError, err.Error())
 		return
 	}
 	if len(records) == 0 {
-		c.JSON(http.StatusNotFound, gin.H{"error": "trace not found"})
+		sendFail(c, http.StatusNotFound, CodeNotFound, "trace not found")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"data": gin.H{
-			"ais_req_id": requestID,
-			"records":    records,
-		},
+	sendOK(c, gin.H{
+		"ais_req_id": requestID,
+		"records":    records,
 	})
-}
-
-// listDates handles GET /api/admin/traces/dates
-func (t *TraceHandler) listDates(c *gin.Context) {
-	files, err := log.ListLogFiles(t.dataDir, log.LLMLogFilePrefix)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	prefix := log.LLMLogFilePrefix + "-"
-	var dates []string
-	for _, f := range files {
-		name := strings.TrimPrefix(f.Name(), prefix)
-		name = strings.TrimSuffix(name, ".log")
-		dates = append(dates, name)
-	}
-	sort.Slice(dates, func(i, j int) bool {
-		return dates[i] > dates[j]
-	})
-
-	c.JSON(http.StatusOK, gin.H{"data": dates})
 }
 
 func logFilePath(dataDir, date string) string {
@@ -196,8 +267,8 @@ func currentDate() string {
 var currentClock = struct{ Now func() time.Time }{Now: time.Now}
 
 // scanTraces reads a JSONL trace file, groups records by request_id, applies filters,
-// and returns summaries sorted by time descending. When includeBody is false, body is omitted.
-func scanTraces(filePath string, filters traceFilters, includeBody bool) ([]traceSummary, error) {
+// and returns up to limit summaries sorted by time descending.
+func scanTraces(filePath string, filters traceFilters, limit int) ([]traceSummary, error) {
 	f, err := os.Open(filePath)
 	if err != nil {
 		return nil, err
@@ -206,30 +277,33 @@ func scanTraces(filePath string, filters traceFilters, includeBody bool) ([]trac
 
 	groups := make(map[string]*traceSummary)
 
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := scanner.Bytes()
-		if len(line) == 0 {
-			continue
+	reader := bufio.NewReaderSize(f, 64*1024)
+	for {
+		line, err := reader.ReadBytes('\n')
+		if len(line) > 0 {
+			if line[len(line)-1] == '\n' {
+				line = line[:len(line)-1]
+			}
+			if len(line) > 0 {
+				var rec map[string]any
+				if json.Unmarshal(line, &rec) == nil {
+					rid, _ := rec["ais_req_id"].(string)
+					if rid == "" {
+						goto next
+					}
+					g, ok := groups[rid]
+					if !ok {
+						g = &traceSummary{AisReqID: rid}
+						groups[rid] = g
+					}
+					mergeSummary(g, rec)
+				}
+			}
 		}
-
-		var rec map[string]any
-		if err := json.Unmarshal(line, &rec); err != nil {
-			continue
+	next:
+		if err != nil {
+			break
 		}
-
-		rid, _ := rec["ais_req_id"].(string)
-		if rid == "" {
-			continue
-		}
-
-		g, ok := groups[rid]
-		if !ok {
-			g = &traceSummary{AisReqID: rid}
-			groups[rid] = g
-		}
-
-		mergeSummary(g, rec)
 	}
 
 	result := make([]traceSummary, 0, len(groups))
@@ -244,6 +318,10 @@ func scanTraces(filePath string, filters traceFilters, includeBody bool) ([]trac
 		return result[i].Time > result[j].Time
 	})
 
+	if limit > 0 && len(result) > limit {
+		result = result[:limit]
+	}
+
 	return result, nil
 }
 
@@ -257,21 +335,25 @@ func scanTraceByID(filePath, requestID string) ([]map[string]any, error) {
 
 	var records []map[string]any
 
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := scanner.Bytes()
-		if len(line) == 0 {
-			continue
+	reader := bufio.NewReaderSize(f, 64*1024)
+	for {
+		line, err := reader.ReadBytes('\n')
+		if len(line) > 0 {
+			if line[len(line)-1] == '\n' {
+				line = line[:len(line)-1]
+			}
+			if len(line) > 0 {
+				var rec map[string]any
+				if json.Unmarshal(line, &rec) == nil {
+					rid, _ := rec["ais_req_id"].(string)
+					if rid == requestID {
+						records = append(records, rec)
+					}
+				}
+			}
 		}
-
-		var rec map[string]any
-		if err := json.Unmarshal(line, &rec); err != nil {
-			continue
-		}
-
-		rid, _ := rec["ais_req_id"].(string)
-		if rid == requestID {
-			records = append(records, rec)
+		if err != nil {
+			break
 		}
 	}
 
@@ -279,15 +361,16 @@ func scanTraceByID(filePath, requestID string) ([]map[string]any, error) {
 }
 
 func mergeSummary(g *traceSummary, rec map[string]any) {
+	if v, ok := rec["session_id"].(string); ok && v != "" && g.SessionID == "" {
+		g.SessionID = v
+	}
+
 	recType, _ := rec["type"].(string)
 
 	switch recType {
 	case "request":
 		if v, ok := rec["time"].(string); ok && g.Time == "" {
 			g.Time = v
-		}
-		if v, ok := rec["session_id"].(string); ok && v != "" {
-			g.SessionID = v
 		}
 		if v, ok := rec["client_protocol"].(string); ok {
 			g.ClientProtocol = v

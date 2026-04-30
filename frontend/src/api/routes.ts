@@ -10,12 +10,12 @@ export interface Route {
   long_context_threshold: number
 }
 
-export const listRoutes = () => client.get<{ data: Route[] }>('/admin/routes')
-export const createRoute = (data: Partial<Route> & { key: string; provider: string }) => client.post<{ data: { key: string }; warnings?: string[] }>('/admin/routes', data)
+export const listRoutes = () => client.get<Route[]>('/admin/routes')
+export const createRoute = (data: Partial<Route> & { key: string; provider: string }) => client.post<{ key: string; warnings?: string[] }>('/admin/routes', data)
 export const updateRoute = (key: string, data: Partial<Route>) => client.put<{ warnings?: string[] }>(`/admin/routes/${key}`, data)
 export const deleteRoute = (key: string) => client.delete(`/admin/routes/${key}`)
-export const generateKey = () => client.post<{ data: { key: string } }>('/admin/routes/generate-key')
-export const revealRouteKey = (key: string) => client.get(`/admin/apikeys/route/${key}?reveal=true`)
+export const generateKey = () => client.post<{ key: string }>('/admin/routes/generate-key')
+export const revealRouteKey = (key: string) => client.get<{ api_key: string }>(`/admin/apikeys/route/${key}?reveal=true`)
 export const updateDefaultRoutes = (data: {
   default_route?: string
   default_anthropic_route?: string

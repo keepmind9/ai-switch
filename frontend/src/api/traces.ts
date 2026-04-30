@@ -14,15 +14,6 @@ export interface TraceItem {
   output_tokens: number
 }
 
-export interface TraceListResponse {
-  data: {
-    items: TraceItem[]
-    total: number
-    page: number
-    page_size: number
-  }
-}
-
 export interface TraceDetailRecord {
   type: string
   time: string
@@ -40,34 +31,34 @@ export interface TraceDetailRecord {
   body: string
 }
 
+export interface TraceListResponse {
+  items: TraceItem[]
+  has_prev: boolean
+  has_next: boolean
+  prev_cursor: string
+  next_cursor: string
+}
+
 export interface TraceDetail {
   ais_req_id: string
   records: TraceDetailRecord[]
 }
 
-export interface TraceDetailResponse {
-  data: TraceDetail
-}
-
-export const getTraceDates = async (): Promise<string[]> => {
-  const { data } = await client.get<{ data: string[] }>('/admin/traces/dates')
-  return data.data
-}
-
 export const getTraces = async (params: {
-  date?: string
+  start_time?: string
+  end_time?: string
   model?: string
   provider?: string
   status?: number
   session_id?: string
-  page?: number
+  cursor?: string
   page_size?: number
 }): Promise<TraceListResponse> => {
   const { data } = await client.get<TraceListResponse>('/admin/traces', { params })
   return data
 }
 
-export const getTraceDetail = async (ais_req_id: string, date?: string): Promise<TraceDetail> => {
-  const { data } = await client.get<TraceDetailResponse>(`/admin/traces/${ais_req_id}`, { params: { date } })
-  return data.data
+export const getTraceDetail = async (ais_req_id: string): Promise<TraceDetail> => {
+  const { data } = await client.get<TraceDetail>(`/admin/traces/${ais_req_id}`)
+  return data
 }

@@ -71,8 +71,8 @@ async function load() {
   loading.value = true
   try { 
     const [r, p, s] = await Promise.all([listRoutes(), listProviders(), getAdminStatus()])
-    routes.value = (r.data.data || []).map(route => ({ ...route, disabled: !!route.disabled }))
-    providers.value = p.data.data 
+    routes.value = (r.data || []).map(route => ({ ...route, disabled: !!route.disabled }))
+    providers.value = p.data
     
     const status = s.data
     if (status) {
@@ -159,7 +159,7 @@ function openEdit(row: Route) {
 }
 
 async function handleGenerateKey() { 
-  const { data } = await generateKey()
+  const data = await generateKey()
   form.value.key = data.data.key 
 }
 
@@ -194,7 +194,7 @@ async function handleSubmit() {
       ElMessage.success(t("routes.actions.successAdd")) 
     }
 
-    const warnings = res.data?.warnings
+    const warnings = res.data.warnings
     if (Array.isArray(warnings) && warnings.length > 0) {
       warnings.forEach(w => ElMessage.warning({ message: w, duration: 5000, showClose: true }))
     }

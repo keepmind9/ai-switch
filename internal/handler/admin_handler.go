@@ -77,7 +77,7 @@ func (a *AdminHandler) listProviders(c *gin.Context) {
 			Models:   p.Models,
 		})
 	}
-	c.JSON(http.StatusOK, gin.H{"data": items})
+	sendOK(c, items)
 }
 
 func (a *AdminHandler) createProvider(c *gin.Context) {
@@ -94,7 +94,7 @@ func (a *AdminHandler) createProvider(c *gin.Context) {
 		Models   []string `json:"models"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		sendBindErr(c, err)
 		return
 	}
 
@@ -102,7 +102,7 @@ func (a *AdminHandler) createProvider(c *gin.Context) {
 		req.Format = converter.FormatChat
 	}
 	if !config.ValidFormat(req.Format) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid format, must be chat, responses, or anthropic"})
+		sendFail(c, http.StatusBadRequest, CodeBadRequest, "invalid format, must be chat, responses, or anthropic")
 		return
 	}
 
@@ -111,7 +111,7 @@ func (a *AdminHandler) createProvider(c *gin.Context) {
 
 	cfg := copyConfig(a.provider.Get())
 	if _, exists := cfg.Providers[req.Key]; exists {
-		c.JSON(http.StatusConflict, gin.H{"error": fmt.Sprintf("provider %q already exists", req.Key)})
+		sendFail(c, http.StatusConflict, CodeConflict, fmt.Sprintf("provider %q already exists", req.Key))
 		return
 	}
 
@@ -128,11 +128,11 @@ func (a *AdminHandler) createProvider(c *gin.Context) {
 	}
 
 	if err := a.writeAndReload(cfg); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		sendFail(c, http.StatusInternalServerError, CodeInternalError, err.Error())
 		return
 	}
 
-	c.JSON(http.StatusCreated, gin.H{"data": gin.H{"key": req.Key, "name": req.Name}})
+	sendCreated(c, gin.H{"key": req.Key, "name": req.Name})
 }
 
 func (a *AdminHandler) updateProvider(c *gin.Context) {
@@ -150,12 +150,12 @@ func (a *AdminHandler) updateProvider(c *gin.Context) {
 		Models   []string `json:"models"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		sendBindErr(c, err)
 		return
 	}
 
 	if req.Format != nil && !config.ValidFormat(*req.Format) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid format"})
+		sendFail(c, http.StatusBadRequest, CodeBadRequest, "invalid format")
 		return
 	}
 
@@ -163,9 +163,9 @@ func (a *AdminHandler) updateProvider(c *gin.Context) {
 	defer a.mu.Unlock()
 
 	cfg := copyConfig(a.provider.Get())
-	p, ok := cfg.Providers[key]
-	if !ok {
-		c.JSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("provider %q not found", key)})
+	p, exists := cfg.Providers[key]
+	if !exists {
+		sendFail(c, http.StatusNotFound, CodeNotFound, fmt.Sprintf("provider %q not found", key))
 		return
 	}
 
@@ -200,11 +200,11 @@ func (a *AdminHandler) updateProvider(c *gin.Context) {
 	cfg.Providers[key] = p
 
 	if err := a.writeAndReload(cfg); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		sendFail(c, http.StatusInternalServerError, CodeInternalError, err.Error())
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"data": gin.H{"key": key}})
+	sendOK(c, gin.H{"key": key})
 }
 
 func (a *AdminHandler) deleteProvider(c *gin.Context) {
@@ -214,14 +214,13 @@ func (a *AdminHandler) deleteProvider(c *gin.Context) {
 	defer a.mu.Unlock()
 
 	cfg := copyConfig(a.provider.Get())
-	if _, ok := cfg.Providers[key]; !ok {
-		c.JSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("provider %q not found", key)})
+	if _, exists := cfg.Providers[key]; !exists {
+		sendFail(c, http.StatusNotFound, CodeNotFound, fmt.Sprintf("provider %q not found", key))
 		return
 	}
 
 	delete(cfg.Providers, key)
 
-	// Clear default routes if they reference a route whose provider was deleted
 	for _, dk := range []*string{&cfg.DefaultRoute, &cfg.DefaultAnthropicRoute, &cfg.DefaultResponsesRoute, &cfg.DefaultChatRoute} {
 		if *dk != "" {
 			if dr, ok := cfg.Routes[*dk]; ok && dr.Provider == key {
@@ -231,11 +230,11 @@ func (a *AdminHandler) deleteProvider(c *gin.Context) {
 	}
 
 	if err := a.writeAndReload(cfg); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		sendFail(c, http.StatusInternalServerError, CodeInternalError, err.Error())
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"status": "deleted"})
+	sendOK(c, nil)
 }
 
 func (a *AdminHandler) listRoutes(c *gin.Context) {
@@ -268,7 +267,7 @@ func (a *AdminHandler) listRoutes(c *gin.Context) {
 			LongContextThreshold: r.LongContextThreshold,
 		})
 	}
-	c.JSON(http.StatusOK, gin.H{"data": items})
+	sendOK(c, items)
 }
 
 func (a *AdminHandler) createRoute(c *gin.Context) {
@@ -282,7 +281,7 @@ func (a *AdminHandler) createRoute(c *gin.Context) {
 		Disabled             bool              `json:"disabled"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		sendBindErr(c, err)
 		return
 	}
 
@@ -292,7 +291,7 @@ func (a *AdminHandler) createRoute(c *gin.Context) {
 	cfg := copyConfig(a.provider.Get())
 
 	if _, exists := cfg.Providers[req.Provider]; !exists {
-		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("provider %q not found", req.Provider)})
+		sendFail(c, http.StatusBadRequest, CodeBadRequest, fmt.Sprintf("provider %q not found", req.Provider))
 		return
 	}
 
@@ -300,7 +299,7 @@ func (a *AdminHandler) createRoute(c *gin.Context) {
 		cfg.Routes = make(map[string]config.RouteRule)
 	}
 	if _, exists := cfg.Routes[req.Key]; exists {
-		c.JSON(http.StatusConflict, gin.H{"error": fmt.Sprintf("route with key %q already exists", req.Key)})
+		sendFail(c, http.StatusConflict, CodeConflict, fmt.Sprintf("route with key %q already exists", req.Key))
 		return
 	}
 
@@ -318,15 +317,16 @@ func (a *AdminHandler) createRoute(c *gin.Context) {
 	cfg.Routes[req.Key] = route
 
 	if err := a.writeAndReload(cfg); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		sendFail(c, http.StatusInternalServerError, CodeInternalError, err.Error())
 		return
 	}
 
-	resp := gin.H{"data": gin.H{"key": req.Key}}
+	data := gin.H{"key": req.Key}
 	if w := validateRouteModels(cfg, route); len(w) > 0 {
-		resp["warnings"] = w
+		sendCreated(c, gin.H{"key": req.Key, "warnings": w})
+	} else {
+		sendCreated(c, data)
 	}
-	c.JSON(http.StatusCreated, resp)
 }
 
 func (a *AdminHandler) updateRoute(c *gin.Context) {
@@ -341,7 +341,7 @@ func (a *AdminHandler) updateRoute(c *gin.Context) {
 		Disabled             *bool              `json:"disabled"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		sendBindErr(c, err)
 		return
 	}
 
@@ -350,15 +350,15 @@ func (a *AdminHandler) updateRoute(c *gin.Context) {
 
 	cfg := copyConfig(a.provider.Get())
 
-	rule, ok := cfg.Routes[key]
-	if !ok {
-		c.JSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("route %q not found", key)})
+	rule, exists := cfg.Routes[key]
+	if !exists {
+		sendFail(c, http.StatusNotFound, CodeNotFound, fmt.Sprintf("route %q not found", key))
 		return
 	}
 
 	if req.Provider != nil {
-		if _, exists := cfg.Providers[*req.Provider]; !exists {
-			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("provider %q not found", *req.Provider)})
+		if _, provExists := cfg.Providers[*req.Provider]; !provExists {
+			sendFail(c, http.StatusBadRequest, CodeBadRequest, fmt.Sprintf("provider %q not found", *req.Provider))
 			return
 		}
 		rule.Provider = *req.Provider
@@ -382,15 +382,16 @@ func (a *AdminHandler) updateRoute(c *gin.Context) {
 	cfg.Routes[key] = rule
 
 	if err := a.writeAndReload(cfg); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		sendFail(c, http.StatusInternalServerError, CodeInternalError, err.Error())
 		return
 	}
 
-	resp := gin.H{"data": gin.H{"key": key}}
+	data := gin.H{"key": key}
 	if w := validateRouteModels(cfg, rule); len(w) > 0 {
-		resp["warnings"] = w
+		sendOK(c, gin.H{"key": key, "warnings": w})
+	} else {
+		sendOK(c, data)
 	}
-	c.JSON(http.StatusOK, resp)
 }
 
 func (a *AdminHandler) deleteRoute(c *gin.Context) {
@@ -401,8 +402,8 @@ func (a *AdminHandler) deleteRoute(c *gin.Context) {
 
 	cfg := copyConfig(a.provider.Get())
 
-	if _, ok := cfg.Routes[key]; !ok {
-		c.JSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("route %q not found", key)})
+	if _, exists := cfg.Routes[key]; !exists {
+		sendFail(c, http.StatusNotFound, CodeNotFound, fmt.Sprintf("route %q not found", key))
 		return
 	}
 
@@ -422,21 +423,21 @@ func (a *AdminHandler) deleteRoute(c *gin.Context) {
 	}
 
 	if err := a.writeAndReload(cfg); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		sendFail(c, http.StatusInternalServerError, CodeInternalError, err.Error())
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"status": "deleted"})
+	sendOK(c, nil)
 }
 
 func (a *AdminHandler) generateKey(c *gin.Context) {
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate key"})
+		sendFail(c, http.StatusInternalServerError, CodeInternalError, "failed to generate key")
 		return
 	}
 	key := "ais-" + hex.EncodeToString(b)
-	c.JSON(http.StatusOK, gin.H{"data": gin.H{"key": key}})
+	sendOK(c, gin.H{"key": key})
 }
 
 func (a *AdminHandler) updateDefaultRoutes(c *gin.Context) {
@@ -447,7 +448,7 @@ func (a *AdminHandler) updateDefaultRoutes(c *gin.Context) {
 		DefaultChatRoute      *string `json:"default_chat_route"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		sendBindErr(c, err)
 		return
 	}
 
@@ -476,8 +477,8 @@ func (a *AdminHandler) updateDefaultRoutes(c *gin.Context) {
 
 	for _, f := range fields {
 		if f.val != "" {
-			if _, ok := cfg.Routes[f.val]; !ok {
-				c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("route %q not found", f.val)})
+			if _, exists := cfg.Routes[f.val]; !exists {
+				sendFail(c, http.StatusBadRequest, CodeBadRequest, fmt.Sprintf("route %q not found", f.val))
 				return
 			}
 		}
@@ -497,25 +498,25 @@ func (a *AdminHandler) updateDefaultRoutes(c *gin.Context) {
 	}
 
 	if err := a.writeAndReload(cfg); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		sendFail(c, http.StatusInternalServerError, CodeInternalError, err.Error())
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"data": gin.H{
+	sendOK(c, gin.H{
 		"default_route":           cfg.DefaultRoute,
 		"default_anthropic_route": cfg.DefaultAnthropicRoute,
 		"default_responses_route": cfg.DefaultResponsesRoute,
 		"default_chat_route":      cfg.DefaultChatRoute,
-	}})
+	})
 }
 
 func (a *AdminHandler) listPresets(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"data": config.ProviderPresets})
+	sendOK(c, config.ProviderPresets)
 }
 
 func (a *AdminHandler) adminStatus(c *gin.Context) {
 	cfg := a.provider.Get()
-	c.JSON(http.StatusOK, gin.H{
+	sendOK(c, gin.H{
 		"server":                  cfg.Server,
 		"default_route":           cfg.DefaultRoute,
 		"default_anthropic_route": cfg.DefaultAnthropicRoute,
@@ -532,7 +533,7 @@ func (a *AdminHandler) revealAPIKey(c *gin.Context) {
 	reveal := c.Query("reveal") == "true"
 
 	if !reveal {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "reveal parameter required"})
+		sendFail(c, http.StatusBadRequest, CodeBadRequest, "reveal parameter required")
 		return
 	}
 
@@ -540,21 +541,21 @@ func (a *AdminHandler) revealAPIKey(c *gin.Context) {
 
 	switch typ {
 	case "provider":
-		p, ok := cfg.Providers[key]
-		if !ok {
-			c.JSON(http.StatusNotFound, gin.H{"error": "provider not found"})
+		p, exists := cfg.Providers[key]
+		if !exists {
+			sendFail(c, http.StatusNotFound, CodeNotFound, "provider not found")
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"data": gin.H{"api_key": p.APIKey}})
+		sendOK(c, gin.H{"api_key": p.APIKey})
 	case "route":
-		_, ok := cfg.Routes[key]
-		if !ok {
-			c.JSON(http.StatusNotFound, gin.H{"error": "route not found"})
+		_, exists := cfg.Routes[key]
+		if !exists {
+			sendFail(c, http.StatusNotFound, CodeNotFound, "route not found")
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"data": gin.H{"key": key}})
+		sendOK(c, gin.H{"key": key})
 	default:
-		c.JSON(http.StatusBadRequest, gin.H{"error": "type must be provider or route"})
+		sendFail(c, http.StatusBadRequest, CodeBadRequest, "type must be provider or route")
 	}
 }
 

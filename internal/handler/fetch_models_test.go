@@ -133,7 +133,7 @@ func TestFetchModelsHandler_Success(t *testing.T) {
 
 	var resp map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
-	models := resp["models"].([]any)
+	models := resp["data"].([]any)
 	assert.Len(t, models, 1)
 }
 
@@ -164,7 +164,7 @@ func TestFetchModelsHandler_MissingAPIKeyAndKey(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 	var resp map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
-	assert.Contains(t, resp["error"], "api_key")
+	assert.Contains(t, resp["msg"], "api_key")
 }
 
 func TestFetchModelsHandler_ResolvesKeyFromExistingProvider(t *testing.T) {
@@ -196,7 +196,7 @@ func TestFetchModelsHandler_ResolvesKeyFromExistingProvider(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 	var resp map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
-	models := resp["models"].([]any)
+	models := resp["data"].([]any)
 	assert.Len(t, models, 1)
 }
 
@@ -270,7 +270,7 @@ func TestFetchModelsHandler_AnthropicFormatUsesBearer(t *testing.T) {
 
 	var resp map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
-	models := resp["models"].([]any)
+	models := resp["data"].([]any)
 	assert.Len(t, models, 1)
 }
 

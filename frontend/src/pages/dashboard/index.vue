@@ -11,7 +11,7 @@ onMounted(async () => {
   try {
     const [s, pr] = await Promise.all([getAdminStatus(), listPresets()])
     status.value = s.data
-    presets.value = pr.data.data
+    presets.value = pr.data
   } finally {
     loading.value = false
   }
