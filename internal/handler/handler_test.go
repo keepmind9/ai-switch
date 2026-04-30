@@ -590,12 +590,3 @@ func TestExtractClientAPIKey(t *testing.T) {
 		})
 	}
 }
-
-func TestTruncateString(t *testing.T) {
-	assert.Equal(t, "abc", truncateString("abc", 10))
-	assert.Equal(t, "abc", truncateString("abc", 3))
-	long := strings.Repeat("x", 100)
-	result := truncateString(long, 10)
-	assert.Equal(t, "xxxxxxxxxx...(truncated)", result)
-	assert.Equal(t, "", truncateString("", 10))
-}

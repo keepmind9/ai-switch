@@ -17,6 +17,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/keepmind9/ai-switch/internal/config"
 	"github.com/keepmind9/ai-switch/internal/handler"
+	"github.com/keepmind9/ai-switch/internal/hook"
 	"github.com/keepmind9/ai-switch/internal/log"
 	"github.com/keepmind9/ai-switch/internal/middleware"
 	"github.com/keepmind9/ai-switch/internal/router"
@@ -52,9 +53,9 @@ func runServe(configPath string) error {
 		slog.Warn("failed to setup file logger", "error", err)
 	}
 
-	llmLogger, err := log.NewLLMLogger(dataDir)
+	llmWriter, err := log.NewLLMWriter(dataDir)
 	if err != nil {
-		slog.Warn("failed to setup LLM logger", "error", err)
+		slog.Warn("failed to setup LLM trace writer", "error", err)
 	}
 
 	resolvedPath, err := config.DefaultConfigPath(configPath)
@@ -89,7 +90,8 @@ func runServe(configPath string) error {
 	}
 
 	cfgRouter := router.NewConfigRouter(provider)
-	h := handler.NewHandler(provider, usageStore, cfgRouter, llmLogger)
+	traceRecorder := hook.NewTraceRecorder(llmWriter, usageStore)
+	h := handler.NewHandler(provider, usageStore, cfgRouter, traceRecorder)
 	h.RegisterRoutes(r)
 
 	adminH := handler.NewAdminHandler(provider)

@@ -2,6 +2,7 @@ package log
 
 import (
 	"context"
+	"io"
 	"log/slog"
 	"os"
 )
@@ -28,6 +29,11 @@ func NewLLMLogger(dataDir string) (*slog.Logger, error) {
 		return nil, err
 	}
 	return slog.New(slog.NewJSONHandler(w, nil)), nil
+}
+
+// NewLLMWriter creates a rotating file writer for LLM trace JSONL logging.
+func NewLLMWriter(dataDir string) (io.Writer, error) {
+	return NewDailyRotateWriter(dataDir, LLMLogFilePrefix)
 }
 
 // multiHandler duplicates log records to both file and fallback handlers.

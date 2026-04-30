@@ -1,7 +1,8 @@
 package hook
 
 import (
-	"fmt"
+	"crypto/rand"
+	"encoding/hex"
 	"net/http"
 	"time"
 
@@ -33,6 +34,12 @@ type Context struct {
 	// Client response
 	ClientRespBody []byte // response body sent to client (after conversion)
 
+	// Token usage (populated by stepWriteResp)
+	InputTokens       int64
+	OutputTokens      int64
+	CacheReadTokens   int64
+	CacheCreateTokens int64
+
 	// Stream
 	IsStream    bool
 	StreamState any // protocol-specific stream conversion state
@@ -44,7 +51,7 @@ type Context struct {
 func NewContext(c *gin.Context, protocol string, body []byte) *Context {
 	return &Context{
 		GinCtx:         c,
-		RequestID:      generateRequestID(),
+		RequestID:      NewRequestID(),
 		StartTime:      time.Now(),
 		ClientProtocol: protocol,
 		ClientReqBody:  body,
@@ -52,6 +59,10 @@ func NewContext(c *gin.Context, protocol string, body []byte) *Context {
 	}
 }
 
-func generateRequestID() string {
-	return fmt.Sprintf("req_%d", time.Now().UnixNano())
+// NewRequestID generates a globally unique request ID with a datetime prefix.
+// Format: YYYYMMDDHHmmss + 6 random hex chars (e.g. "20260430075235a3f1b2c").
+func NewRequestID() string {
+	b := make([]byte, 3)
+	rand.Read(b)
+	return time.Now().Format("20060102150405") + hex.EncodeToString(b)
 }

@@ -29,10 +29,7 @@ var staticFS embed.FS
 const ctxProviderKey = "provider_key"
 
 const (
-	maxLogReqBodyLen  = 16384
-	maxLogRespBodyLen = 4096
-	maxStreamLogLen   = 512
-	upstreamTimeout   = 30 * time.Second // connection + first-byte timeout for upstream requests
+	upstreamTimeout = 30 * time.Second // connection + first-byte timeout for upstream requests
 )
 
 type Handler struct {
@@ -41,11 +38,11 @@ type Handler struct {
 	client     *http.Client
 	usageStore *store.UsageStore
 	router     router.Router
-	llmLogger  *slog.Logger
 	hooks      *hook.Manager
+	trace      *hook.TraceRecorder
 }
 
-func NewHandler(provider *config.Provider, usageStore *store.UsageStore, r router.Router, llmLogger *slog.Logger) *Handler {
+func NewHandler(provider *config.Provider, usageStore *store.UsageStore, r router.Router, trace *hook.TraceRecorder) *Handler {
 	return &Handler{
 		provider:  provider,
 		converter: converter.NewConverter(),
@@ -56,8 +53,8 @@ func NewHandler(provider *config.Provider, usageStore *store.UsageStore, r route
 		},
 		usageStore: usageStore,
 		router:     r,
-		llmLogger:  llmLogger,
 		hooks:      hook.NewManager(),
+		trace:      trace,
 	}
 }
 
@@ -348,55 +345,6 @@ func (h *Handler) streamChatToClient(c *gin.Context, resp *http.Response, conver
 	return buf.String()
 }
 
-// logLLMRequest writes a structured LLM log entry with request/response details.
-func (h *Handler) logLLMRequest(model, provider, url string, latency time.Duration, stream bool, reqBody []byte, respBody string) {
-	if h.llmLogger == nil {
-		return
-	}
-	maxResp := maxLogRespBodyLen
-	if stream {
-		maxResp = maxStreamLogLen
-	}
-	h.llmLogger.Info("llm request",
-		slog.String("model", model),
-		slog.String("provider", provider),
-		slog.String("url", url),
-		slog.Int64("latency_ms", latency.Milliseconds()),
-		slog.Bool("stream", stream),
-		slog.String("request", truncateString(string(reqBody), maxLogReqBodyLen)),
-		slog.String("response", truncateString(respBody, maxResp)),
-	)
-}
-
-// recordStreamUsage records token usage for a streaming response.
-func (h *Handler) recordStreamUsage(model, provider string, inputTokens, outputTokens int) {
-	if h.usageStore == nil {
-		return
-	}
-	if inputTokens == 0 && outputTokens == 0 {
-		slog.Debug("stream usage skipped: zero tokens", "provider", provider, "model", model)
-		return
-	}
-	slog.Debug("recorded stream usage", "provider", provider, "model", model,
-		"input", inputTokens, "output", outputTokens)
-	h.usageStore.AsyncRecord(store.UsageRecord{
-		Provider:     provider,
-		Model:        model,
-		Date:         store.Today(),
-		Requests:     1,
-		InputTokens:  int64(inputTokens),
-		OutputTokens: int64(outputTokens),
-		TotalTokens:  int64(inputTokens + outputTokens),
-	})
-}
-
-// recordStreamUsageFromState extracts provider from context and records usage.
-func (h *Handler) recordStreamUsageFromState(c *gin.Context, model string, inputTokens, outputTokens int) {
-	provider, _ := c.Get(ctxProviderKey)
-	providerStr, _ := provider.(string)
-	h.recordStreamUsage(model, providerStr, inputTokens, outputTokens)
-}
-
 // streamPassthrough forwards upstream SSE directly to the client. Returns accumulated upstream content.
 func (h *Handler) streamPassthrough(c *gin.Context, resp *http.Response, format string) string {
 	copyUpstreamHeaders(c, resp)
@@ -427,8 +375,6 @@ func (h *Handler) streamBodyAsSSE(c *gin.Context, body io.Reader, format string)
 	writeSSEHeaders(c)
 
 	var acc middleware.StreamUsageAccumulator
-	provider, _ := c.Get(ctxProviderKey)
-	providerStr, _ := provider.(string)
 
 	flusher, canFlush := c.Writer.(http.Flusher)
 	scanner := bufio.NewScanner(body)
@@ -451,7 +397,6 @@ func (h *Handler) streamBodyAsSSE(c *gin.Context, body io.Reader, format string)
 	if err := scanner.Err(); err != nil {
 		slog.Warn("SSE scanner error", "error", err)
 	}
-	h.recordStreamUsage(acc.Model, providerStr, int(acc.InputTokens), int(acc.OutputTokens))
 	return buf.String()
 }
 
@@ -786,12 +731,4 @@ func (h *Handler) handleAPIStatus(c *gin.Context) {
 	status["providers"] = providers
 
 	c.JSON(http.StatusOK, status)
-}
-
-func truncateString(s string, maxRunes int) string {
-	runes := []rune(s)
-	if len(runes) <= maxRunes {
-		return s
-	}
-	return string(runes[:maxRunes]) + "...(truncated)"
 }
