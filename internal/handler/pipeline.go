@@ -44,8 +44,6 @@ func (h *Handler) executePipeline(c *gin.Context, protocol string, body []byte) 
 		{"writeResp", h.stepWriteResp, noHook, hook.AfterResponse},
 	}
 
-	h.tracer().RecordRequest(ctx)
-
 	for _, s := range steps {
 		if s.pre >= 0 {
 			if err := hooks.Fire(ctx, s.pre); err != nil {
@@ -100,6 +98,7 @@ func (h *Handler) stepParse(ctx *hook.Context) error {
 		writeBadRequest(ctx.GinCtx, ctx.ClientProtocol, "unsupported protocol: "+ctx.ClientProtocol)
 		return fmt.Errorf("unsupported protocol: %s", ctx.ClientProtocol)
 	}
+	h.tracer().RecordRequest(ctx)
 	return nil
 }
 
