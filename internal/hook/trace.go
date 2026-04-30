@@ -22,12 +22,14 @@ const (
 
 // TraceRecorder records each pipeline stage as a JSONL line.
 type TraceRecorder struct {
-	writer io.Writer // JSONL file writer (DailyRotateWriter)
+	writer      io.Writer // JSONL file writer (DailyRotateWriter)
+	indexWriter io.Writer // index file writer (DailyRotateWriter), may be nil
 }
 
-func NewTraceRecorder(writer io.Writer) *TraceRecorder {
+func NewTraceRecorder(writer io.Writer, indexWriter io.Writer) *TraceRecorder {
 	return &TraceRecorder{
-		writer: writer,
+		writer:      writer,
+		indexWriter: indexWriter,
 	}
 }
 
@@ -64,12 +66,28 @@ type traceRecord struct {
 	OutputTokens int64 `json:"output_tokens,omitempty"`
 }
 
+// traceIndex is a single index entry written once per request (on RecordResponse).
+type traceIndex struct {
+	AisReqID       string `json:"ais_req_id"`
+	Time           string `json:"time"`
+	SessionID      string `json:"session_id,omitempty"`
+	ClientProtocol string `json:"client_protocol,omitempty"`
+	Model          string `json:"model,omitempty"`
+	Stream         bool   `json:"stream,omitempty"`
+	Provider       string `json:"provider,omitempty"`
+	Status         int    `json:"status,omitempty"`
+	LatencyMs      int64  `json:"latency_ms,omitempty"`
+	InputTokens    int64  `json:"input_tokens,omitempty"`
+	OutputTokens   int64  `json:"output_tokens,omitempty"`
+	Offset         int64  `json:"offset"`
+}
+
 // RecordRequest writes a "request" trace record after stepParse.
 func (t *TraceRecorder) RecordRequest(ctx *Context) {
 	if t.writer == nil {
 		return
 	}
-	t.writeRecord(&traceRecord{
+	ctx.traceOffset = t.writeRecord(&traceRecord{
 		Type:           traceTypeRequest,
 		RequestID:      ctx.RequestID,
 		Time:           ctx.StartTime.Format(traceTimeFormat),
@@ -150,14 +168,46 @@ func (t *TraceRecorder) RecordResponse(ctx *Context) {
 		Body:         redactBody(string(ctx.ClientRespBody)),
 		Headers:      headersToMap(ctx.GinCtx.Writer.Header()),
 	})
+
+	if t.indexWriter != nil {
+		status := 0
+		if ctx.UpstreamResp != nil {
+			status = ctx.UpstreamResp.StatusCode
+		}
+		idx := traceIndex{
+			AisReqID:       ctx.RequestID,
+			Time:           ctx.StartTime.Format(traceTimeFormat),
+			SessionID:      ctx.SessionID,
+			ClientProtocol: ctx.ClientProtocol,
+			Model:          ctx.ClientModel,
+			Stream:         ctx.IsStream,
+			Provider:       provider,
+			Status:         status,
+			LatencyMs:      ctx.UpstreamLatency.Milliseconds(),
+			InputTokens:    ctx.InputTokens,
+			OutputTokens:   ctx.OutputTokens,
+			Offset:         ctx.traceOffset,
+		}
+		data, _ := json.Marshal(idx)
+		t.indexWriter.Write(append(data, '\n'))
+	}
 }
 
-func (t *TraceRecorder) writeRecord(rec *traceRecord) {
+func (t *TraceRecorder) writeRecord(rec *traceRecord) int64 {
 	data, err := json.Marshal(rec)
 	if err != nil {
-		return
+		return 0
 	}
-	t.writer.Write(append(data, '\n'))
+	buf := append(data, '\n')
+
+	if ow, ok := t.writer.(interface {
+		WriteWithOffset(p []byte) (int, int64, error)
+	}); ok {
+		_, offset, _ := ow.WriteWithOffset(buf)
+		return offset
+	}
+	t.writer.Write(buf)
+	return 0
 }
 
 // redactBody redacts sensitive keys from a JSON body string (keys shown, values masked).

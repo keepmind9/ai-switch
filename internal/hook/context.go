@@ -48,6 +48,9 @@ type Context struct {
 
 	// Hook mutable store
 	Extra map[string]any
+
+	// Internal: byte offset of the first trace record in JSONL file.
+	traceOffset int64
 }
 
 func NewContext(c *gin.Context, protocol string, body []byte) *Context {

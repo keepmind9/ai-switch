@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -135,7 +136,16 @@ func (t *TraceHandler) listTraces(c *gin.Context) {
 	}
 
 	filePath := logFilePath(t.dataDir, date)
-	all, err := scanTraces(filePath, filters, limit)
+	idxPath := indexFilePath(t.dataDir, date)
+
+	// Try index file first, fall back to full scan for old data.
+	var all []traceSummary
+	var err error
+	if _, statErr := os.Stat(idxPath); statErr == nil {
+		all, err = scanIndex(idxPath, filters, limit)
+	} else {
+		all, err = scanTracesLegacy(filePath, filters, limit)
+	}
 	if err != nil {
 		if os.IsNotExist(err) {
 			sendFail(c, http.StatusNotFound, CodeNotFound, fmt.Sprintf("no logs for date %s", date))
@@ -161,6 +171,17 @@ func (t *TraceHandler) listTraces(c *gin.Context) {
 				break
 			}
 		}
+	}
+
+	if len(all) == 0 {
+		sendOK(c, gin.H{
+			"items":       []traceSummary{},
+			"has_prev":    false,
+			"has_next":    false,
+			"prev_cursor": "",
+			"next_cursor": "",
+		})
+		return
 	}
 
 	end := start + limit
@@ -235,7 +256,17 @@ func (t *TraceHandler) getTrace(c *gin.Context) {
 	}
 
 	filePath := logFilePath(t.dataDir, date)
-	records, err := scanTraceByID(filePath, requestID)
+	idxPath := indexFilePath(t.dataDir, date)
+
+	var records []map[string]any
+	var err error
+
+	// Try index-based lookup first.
+	if offset, lookupErr := lookupOffset(idxPath, requestID); lookupErr == nil && offset > 0 {
+		records, err = scanTraceByOffset(filePath, requestID, offset)
+	} else {
+		records, err = scanTraceByIDLegacy(filePath, requestID)
+	}
 	if err != nil {
 		if os.IsNotExist(err) {
 			sendFail(c, http.StatusNotFound, CodeNotFound, "trace not found")
@@ -259,6 +290,10 @@ func logFilePath(dataDir, date string) string {
 	return filepath.Join(log.LogDir(dataDir), log.LLMLogFilePrefix+"-"+date+".log")
 }
 
+func indexFilePath(dataDir, date string) string {
+	return filepath.Join(log.LogDir(dataDir), "llm-idx"+"-"+date+".log")
+}
+
 func currentDate() string {
 	return currentClock.Now().Format("2006-01-02")
 }
@@ -266,9 +301,124 @@ func currentDate() string {
 // clock abstraction for testing
 var currentClock = struct{ Now func() time.Time }{Now: time.Now}
 
+const maxScanLines = 200
+
+// scanIndex reads the index file and returns filtered summaries sorted by time descending.
+func scanIndex(filePath string, filters traceFilters, limit int) ([]traceSummary, error) {
+	f, err := os.Open(filePath)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	result := make([]traceSummary, 0)
+	reader := bufio.NewReaderSize(f, 64*1024)
+	for {
+		line, err := reader.ReadBytes('\n')
+		if len(line) > 0 {
+			if line[len(line)-1] == '\n' {
+				line = line[:len(line)-1]
+			}
+			if len(line) > 0 {
+				var s traceSummary
+				if json.Unmarshal(line, &s) == nil {
+					if filters.match(&s) {
+						result = append(result, s)
+					}
+				}
+			}
+		}
+		if err != nil {
+			break
+		}
+	}
+
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Time > result[j].Time
+	})
+
+	if limit > 0 && len(result) > limit {
+		result = result[:limit]
+	}
+
+	return result, nil
+}
+
+// scanTraceByOffset seeks to offset in the JSONL file and collects records for requestID.
+func scanTraceByOffset(filePath string, requestID string, offset int64) ([]map[string]any, error) {
+	f, err := os.Open(filePath)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	if _, err := f.Seek(offset, io.SeekStart); err != nil {
+		return nil, err
+	}
+
+	var records []map[string]any
+	scanned := 0
+	reader := bufio.NewReaderSize(f, 64*1024)
+	for scanned < maxScanLines {
+		line, err := reader.ReadBytes('\n')
+		if len(line) > 0 {
+			if line[len(line)-1] == '\n' {
+				line = line[:len(line)-1]
+			}
+			if len(line) > 0 {
+				scanned++
+				var rec map[string]any
+				if json.Unmarshal(line, &rec) == nil {
+					rid, _ := rec["ais_req_id"].(string)
+					if rid == requestID {
+						records = append(records, rec)
+					}
+				}
+			}
+		}
+		if err != nil {
+			break
+		}
+	}
+
+	return records, nil
+}
+
+// lookupOffset searches the index file for a request_id and returns its offset.
+func lookupOffset(filePath, requestID string) (int64, error) {
+	f, err := os.Open(filePath)
+	if err != nil {
+		return 0, err
+	}
+	defer f.Close()
+
+	reader := bufio.NewReaderSize(f, 64*1024)
+	for {
+		line, err := reader.ReadBytes('\n')
+		if len(line) > 0 {
+			if line[len(line)-1] == '\n' {
+				line = line[:len(line)-1]
+			}
+			if len(line) > 0 {
+				var idx struct {
+					AisReqID string `json:"ais_req_id"`
+					Offset   int64  `json:"offset"`
+				}
+				if json.Unmarshal(line, &idx) == nil && idx.AisReqID == requestID {
+					return idx.Offset, nil
+				}
+			}
+		}
+		if err != nil {
+			break
+		}
+	}
+	return 0, os.ErrNotExist
+}
+
 // scanTraces reads a JSONL trace file, groups records by request_id, applies filters,
 // and returns up to limit summaries sorted by time descending.
-func scanTraces(filePath string, filters traceFilters, limit int) ([]traceSummary, error) {
+func scanTracesLegacy(filePath string, filters traceFilters, limit int) ([]traceSummary, error) {
 	f, err := os.Open(filePath)
 	if err != nil {
 		return nil, err
@@ -326,7 +476,7 @@ func scanTraces(filePath string, filters traceFilters, limit int) ([]traceSummar
 }
 
 // scanTraceByID reads a JSONL trace file and returns all records for the given request_id.
-func scanTraceByID(filePath, requestID string) ([]map[string]any, error) {
+func scanTraceByIDLegacy(filePath, requestID string) ([]map[string]any, error) {
 	f, err := os.Open(filePath)
 	if err != nil {
 		return nil, err

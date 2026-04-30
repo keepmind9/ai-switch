@@ -2,6 +2,7 @@ package log
 
 import (
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -56,16 +57,25 @@ func NewDailyRotateWriter(dir, prefix string) (*DailyRotateWriter, error) {
 
 // Write implements io.Writer. It rotates the file when the date changes.
 func (w *DailyRotateWriter) Write(p []byte) (int, error) {
+	n, _, err := w.WriteWithOffset(p)
+	return n, err
+}
+
+// WriteWithOffset writes p and returns the file offset before the write.
+// The offset is the byte position of p in the current day's log file.
+func (w *DailyRotateWriter) WriteWithOffset(p []byte) (n int, offset int64, err error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
 	today := time.Now().Format("2006-01-02")
 	if today != w.current {
 		if err := w.rotate(time.Now()); err != nil {
-			return 0, err
+			return 0, 0, err
 		}
 	}
-	return w.file.Write(p)
+	offset, _ = w.file.Seek(0, io.SeekCurrent)
+	n, err = w.file.Write(p)
+	return
 }
 
 // Close closes the current log file.

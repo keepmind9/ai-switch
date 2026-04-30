@@ -58,6 +58,11 @@ func runServe(configPath string) error {
 		slog.Warn("failed to setup LLM trace writer", "error", err)
 	}
 
+	idxWriter, err := log.NewDailyRotateWriter(dataDir, "llm-idx")
+	if err != nil {
+		slog.Warn("failed to setup LLM index writer", "error", err)
+	}
+
 	resolvedPath, err := config.DefaultConfigPath(configPath)
 	if err != nil {
 		return fmt.Errorf("failed to resolve config path: %w", err)
@@ -86,7 +91,7 @@ func runServe(configPath string) error {
 	r.Use(gin.Recovery())
 
 	cfgRouter := router.NewConfigRouter(provider)
-	traceRecorder := hook.NewTraceRecorder(llmWriter)
+	traceRecorder := hook.NewTraceRecorder(llmWriter, idxWriter)
 	h := handler.NewHandler(provider, usageStore, cfgRouter, traceRecorder)
 
 	if usageStore != nil {

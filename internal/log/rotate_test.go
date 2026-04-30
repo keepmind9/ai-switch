@@ -167,3 +167,31 @@ func TestListLogFiles(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, otherFiles, 0)
 }
+
+func TestDailyRotateWriter_WriteWithOffset(t *testing.T) {
+	tmpDir := t.TempDir()
+	w, err := NewDailyRotateWriter(tmpDir, "test")
+	require.NoError(t, err)
+	defer w.Close()
+
+	n, off1, err := w.WriteWithOffset([]byte("first\n"))
+	require.NoError(t, err)
+	assert.Equal(t, 6, n)
+	assert.Equal(t, int64(0), off1)
+
+	n, off2, err := w.WriteWithOffset([]byte("second\n"))
+	require.NoError(t, err)
+	assert.Equal(t, 7, n)
+	assert.Equal(t, int64(6), off2)
+
+	n, off3, err := w.WriteWithOffset([]byte("third\n"))
+	require.NoError(t, err)
+	assert.Equal(t, 6, n)
+	assert.Equal(t, int64(13), off3)
+
+	// Verify file content
+	today := time.Now().Format("2006-01-02")
+	data, err := os.ReadFile(filepath.Join(tmpDir, LogSubDir, "test-"+today+".log"))
+	require.NoError(t, err)
+	assert.Equal(t, "first\nsecond\nthird\n", string(data))
+}
