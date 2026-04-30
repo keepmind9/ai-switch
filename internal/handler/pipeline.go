@@ -271,7 +271,19 @@ func (h *Handler) stepForward(ctx *hook.Context) error {
 		return err
 	}
 
+	// Forward client headers, then override auth/host/content-length.
+	for k, vv := range ctx.GinCtx.Request.Header {
+		for _, v := range vv {
+			req.Header.Add(k, v)
+		}
+	}
+	// Strip client credentials before setting upstream auth
+	for _, h := range []string{"Authorization", "X-Api-Key", "Cookie", "Proxy-Authorization"} {
+		req.Header.Del(h)
+	}
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Del("Content-Length")
+	req.Header.Del("Host")
 	switch ctx.UpstreamProtocol {
 	case converter.FormatAnthropic:
 		req.Header.Set("x-api-key", ctx.RouteResult.APIKey)
@@ -321,11 +333,12 @@ func (h *Handler) writeNonStreamResponse(ctx *hook.Context) error {
 	ctx.UpstreamRespBody = respBody
 	h.tracer().RecordUpstreamResponse(ctx, ctx.UpstreamResp.StatusCode)
 
+	copyUpstreamHeaders(ctx.GinCtx, ctx.UpstreamResp)
+
 	upstream := ctx.UpstreamProtocol
 	client := ctx.ClientProtocol
 
 	if upstream == client {
-		copyUpstreamHeaders(ctx.GinCtx, ctx.UpstreamResp)
 		ctx.GinCtx.Data(http.StatusOK, "application/json", respBody)
 		ctx.ClientRespBody = respBody
 		h.setNonStreamTokenUsage(ctx, respBody)
@@ -339,7 +352,6 @@ func (h *Handler) writeNonStreamResponse(ctx *hook.Context) error {
 	case converter.FormatAnthropic:
 		return h.writeNonStreamFromAnthropic(ctx, respBody)
 	case converter.FormatResponses:
-		copyUpstreamHeaders(ctx.GinCtx, ctx.UpstreamResp)
 		ctx.GinCtx.Data(http.StatusOK, "application/json", respBody)
 		ctx.ClientRespBody = respBody
 		h.setNonStreamTokenUsage(ctx, respBody)
@@ -444,6 +456,8 @@ func toInt64(v any) int64 {
 
 // writeStreamResponse handles all streaming response paths with protocol conversion.
 func (h *Handler) writeStreamResponse(ctx *hook.Context) error {
+	copyUpstreamHeaders(ctx.GinCtx, ctx.UpstreamResp)
+
 	upstream := ctx.UpstreamProtocol
 	client := ctx.ClientProtocol
 	model := ctx.ClientModel
