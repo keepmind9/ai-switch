@@ -70,6 +70,24 @@ export const constantRoutes: RouteRecordRaw[] = [
         meta: { title: "stats", elIcon: "DataAnalysis" }
       }
     ]
+  },
+  {
+    path: "/traces",
+    component: Layouts,
+    children: [
+      {
+        path: "",
+        component: () => import("@/pages/traces/list.vue"),
+        name: "Traces",
+        meta: { title: "traces", elIcon: "Monitor" }
+      },
+      {
+        path: ":ais_req_id",
+        component: () => import("@/pages/traces/detail.vue"),
+        name: "TraceDetail",
+        meta: { title: "traceDetail", hidden: true }
+      }
+    ]
   }
 ]
 

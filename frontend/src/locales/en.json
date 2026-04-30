@@ -3,7 +3,8 @@
     "dashboard": "Dashboard",
     "providers": "Providers",
     "routes": "Routes",
-    "stats": "Usage Stats"
+    "stats": "Usage Stats",
+    "traces": "Trace Viewer"
   },
   "navbar": {
     "screenfull": "Full Screen",
@@ -175,6 +176,38 @@
       "input": "Input",
       "output": "Output",
       "total": "Total"
+    }
+  },
+  "traces": {
+    "title": "Trace Viewer",
+    "desc": "Debug LLM proxy requests.",
+    "back": "Back to list",
+    "viewSession": "View all in session",
+    "filter": {
+      "date": "Date",
+      "model": "Model",
+      "provider": "Provider",
+      "status": "Status",
+      "all": "All",
+      "sessionId": "Session ID",
+      "apply": "Filter"
+    },
+    "table": {
+      "time": "Time",
+      "requestId": "Request ID",
+      "sessionId": "Session ID",
+      "protocol": "Protocol",
+      "model": "Model",
+      "provider": "Provider",
+      "status": "Status",
+      "latency": "Latency",
+      "tokens": "Tokens",
+      "stream": "Stream"
+    },
+    "detail": {
+      "title": "Trace Detail",
+      "record": "Record",
+      "body": "Show Body"
     }
   }
 }

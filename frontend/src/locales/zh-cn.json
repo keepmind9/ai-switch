@@ -3,7 +3,8 @@
     "dashboard": "控制台",
     "providers": "服务商",
     "routes": "路由密钥",
-    "stats": "使用统计"
+    "stats": "使用统计",
+    "traces": "Trace 查看器"
   },
   "navbar": {
     "screenfull": "全屏",
@@ -175,6 +176,38 @@
       "input": "输入",
       "output": "输出",
       "total": "总计"
+    }
+  },
+  "traces": {
+    "title": "Trace 查看器",
+    "desc": "调试 LLM 代理请求。",
+    "back": "返回列表",
+    "viewSession": "查看同会话所有请求",
+    "filter": {
+      "date": "日期",
+      "model": "模型",
+      "provider": "服务商",
+      "status": "状态",
+      "all": "全部",
+      "sessionId": "会话 ID",
+      "apply": "过滤"
+    },
+    "table": {
+      "time": "时间",
+      "requestId": "请求 ID",
+      "sessionId": "会话 ID",
+      "protocol": "协议",
+      "model": "模型",
+      "provider": "服务商",
+      "status": "状态",
+      "latency": "延迟",
+      "tokens": "Token 数",
+      "stream": "流模式"
+    },
+    "detail": {
+      "title": "Trace 详情",
+      "record": "记录",
+      "body": "显示请求体"
     }
   }
 }
