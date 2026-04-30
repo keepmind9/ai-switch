@@ -98,6 +98,9 @@ func runServe(configPath string) error {
 	adminGroup := r.Group("/api", middleware.LocalhostOnly())
 	adminH.RegisterRoutes(adminGroup)
 
+	traceH := handler.NewTraceHandler(dataDir)
+	traceH.RegisterRoutes(adminGroup)
+
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
 	srv := &http.Server{
 		Addr:    addr,
