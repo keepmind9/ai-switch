@@ -214,7 +214,9 @@
     "detail": {
       "title": "Trace 详情",
       "record": "记录",
-      "headers": "显示请求头",
+      "headers": "请求头",
+      "rawBody": "原始数据",
+      "inspect": "检查",
       "body": "显示请求体"
     }
   }
