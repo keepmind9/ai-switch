@@ -29,13 +29,13 @@ func NewTraceHandler(dataDir string) *TraceHandler {
 // RegisterRoutes registers trace API routes on the given router group.
 func (t *TraceHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.GET("/admin/traces/dates", t.listDates)
-	r.GET("/admin/traces/:request_id", t.getTrace)
+	r.GET("/admin/traces/:ais_req_id", t.getTrace)
 	r.GET("/admin/traces", t.listTraces)
 }
 
 // traceSummary is the merged summary for a single request shown in list view.
 type traceSummary struct {
-	RequestID      string `json:"request_id"`
+	AisReqID       string `json:"ais_req_id"`
 	Time           string `json:"time"`
 	SessionID      string `json:"session_id,omitempty"`
 	ClientProtocol string `json:"client_protocol,omitempty"`
@@ -133,7 +133,7 @@ func (t *TraceHandler) listTraces(c *gin.Context) {
 
 // getTrace handles GET /api/admin/traces/:request_id
 func (t *TraceHandler) getTrace(c *gin.Context) {
-	requestID := c.Param("request_id")
+	requestID := c.Param("ais_req_id")
 	date := c.DefaultQuery("date", "")
 	if date == "" {
 		date = currentDate()
@@ -156,7 +156,7 @@ func (t *TraceHandler) getTrace(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"data": gin.H{
-			"request_id": requestID,
+			"ais_req_id": requestID,
 			"records":    records,
 		},
 	})
@@ -218,14 +218,14 @@ func scanTraces(filePath string, filters traceFilters, includeBody bool) ([]trac
 			continue
 		}
 
-		rid, _ := rec["request_id"].(string)
+		rid, _ := rec["ais_req_id"].(string)
 		if rid == "" {
 			continue
 		}
 
 		g, ok := groups[rid]
 		if !ok {
-			g = &traceSummary{RequestID: rid}
+			g = &traceSummary{AisReqID: rid}
 			groups[rid] = g
 		}
 
@@ -269,7 +269,7 @@ func scanTraceByID(filePath, requestID string) ([]map[string]any, error) {
 			continue
 		}
 
-		rid, _ := rec["request_id"].(string)
+		rid, _ := rec["ais_req_id"].(string)
 		if rid == requestID {
 			records = append(records, rec)
 		}

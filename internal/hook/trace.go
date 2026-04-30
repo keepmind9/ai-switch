@@ -39,7 +39,7 @@ func NoopTraceRecorder() *TraceRecorder {
 // traceRecord is a single JSONL trace line.
 type traceRecord struct {
 	Type      string `json:"type"`
-	RequestID string `json:"request_id"`
+	RequestID string `json:"ais_req_id"`
 	Time      string `json:"time"`
 	SessionID string `json:"session_id,omitempty"`
 

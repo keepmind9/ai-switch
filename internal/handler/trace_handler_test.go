@@ -44,14 +44,14 @@ func setupTraceTest(t *testing.T, jsonlContent string) (*gin.Engine, string) {
 	return r, tmpDir
 }
 
-const testJSONL = `{"type":"request","request_id":"req001","time":"2026-04-30T07:52:35.123+08:00","client_protocol":"anthropic","model":"claude-sonnet-4-6","stream":true,"body":"{\"messages\":[]}"}
-{"type":"upstream_req","request_id":"req001","time":"2026-04-30T07:52:35.156+08:00","upstream_protocol":"chat","model":"claude-sonnet-4-6","provider":"minimax","url":"https://api.minimax.chat/v1/chat","body":"{\"model\":\"MiniMax-M2.5\"}"}
-{"type":"upstream_resp","request_id":"req001","time":"2026-04-30T07:52:36.390+08:00","status":200,"latency_ms":1234,"provider":"minimax","url":"https://api.minimax.chat/v1/chat","body":"data: [DONE]"}
-{"type":"response","request_id":"req001","time":"2026-04-30T07:52:36.456+08:00","model":"claude-sonnet-4-6","provider":"minimax","input_tokens":100,"output_tokens":50,"body":"data: [DONE]"}
-{"type":"request","request_id":"req002","time":"2026-04-30T08:00:00.001+08:00","client_protocol":"chat","model":"gpt-4o","stream":false,"body":"{}"}
-{"type":"upstream_req","request_id":"req002","time":"2026-04-30T08:00:00.010+08:00","upstream_protocol":"anthropic","model":"gpt-4o","provider":"anthropic","url":"https://api.anthropic.com/v1/messages","body":"{}"}
-{"type":"upstream_resp","request_id":"req002","time":"2026-04-30T08:00:01.500+08:00","status":500,"latency_ms":1490,"provider":"anthropic","url":"https://api.anthropic.com/v1/messages","body":"error"}
-{"type":"response","request_id":"req002","time":"2026-04-30T08:00:01.550+08:00","model":"gpt-4o","provider":"anthropic","body":"error"}
+const testJSONL = `{"type":"request","ais_req_id":"req001","time":"2026-04-30T07:52:35.123+08:00","client_protocol":"anthropic","model":"claude-sonnet-4-6","stream":true,"body":"{\"messages\":[]}"}
+{"type":"upstream_req","ais_req_id":"req001","time":"2026-04-30T07:52:35.156+08:00","upstream_protocol":"chat","model":"claude-sonnet-4-6","provider":"minimax","url":"https://api.minimax.chat/v1/chat","body":"{\"model\":\"MiniMax-M2.5\"}"}
+{"type":"upstream_resp","ais_req_id":"req001","time":"2026-04-30T07:52:36.390+08:00","status":200,"latency_ms":1234,"provider":"minimax","url":"https://api.minimax.chat/v1/chat","body":"data: [DONE]"}
+{"type":"response","ais_req_id":"req001","time":"2026-04-30T07:52:36.456+08:00","model":"claude-sonnet-4-6","provider":"minimax","input_tokens":100,"output_tokens":50,"body":"data: [DONE]"}
+{"type":"request","ais_req_id":"req002","time":"2026-04-30T08:00:00.001+08:00","client_protocol":"chat","model":"gpt-4o","stream":false,"body":"{}"}
+{"type":"upstream_req","ais_req_id":"req002","time":"2026-04-30T08:00:00.010+08:00","upstream_protocol":"anthropic","model":"gpt-4o","provider":"anthropic","url":"https://api.anthropic.com/v1/messages","body":"{}"}
+{"type":"upstream_resp","ais_req_id":"req002","time":"2026-04-30T08:00:01.500+08:00","status":500,"latency_ms":1490,"provider":"anthropic","url":"https://api.anthropic.com/v1/messages","body":"error"}
+{"type":"response","ais_req_id":"req002","time":"2026-04-30T08:00:01.550+08:00","model":"gpt-4o","provider":"anthropic","body":"error"}
 `
 
 func TestListTraces(t *testing.T) {
@@ -132,9 +132,9 @@ func TestListTracesSortedByTimeDesc(t *testing.T) {
 
 	// req002 (08:00) should come before req001 (07:52)
 	first := items[0].(map[string]any)
-	assert.Equal(t, "req002", first["request_id"])
+	assert.Equal(t, "req002", first["ais_req_id"])
 	second := items[1].(map[string]any)
-	assert.Equal(t, "req001", second["request_id"])
+	assert.Equal(t, "req001", second["ais_req_id"])
 }
 
 func TestGetTrace(t *testing.T) {
@@ -150,7 +150,7 @@ func TestGetTrace(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 
 	data := resp["data"].(map[string]any)
-	assert.Equal(t, "req001", data["request_id"])
+	assert.Equal(t, "req001", data["ais_req_id"])
 
 	records := data["records"].([]any)
 	assert.Len(t, records, 4)
@@ -255,7 +255,7 @@ func TestTraceSummaryMerge(t *testing.T) {
 	// Find req001
 	for _, item := range items {
 		s := item.(map[string]any)
-		if s["request_id"] == "req001" {
+		if s["ais_req_id"] == "req001" {
 			assert.Equal(t, "anthropic", s["client_protocol"])
 			assert.Equal(t, "claude-sonnet-4-6", s["model"])
 			assert.Equal(t, true, s["stream"])
