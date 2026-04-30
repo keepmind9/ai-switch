@@ -41,6 +41,7 @@ type traceRecord struct {
 	Type      string `json:"type"`
 	RequestID string `json:"request_id"`
 	Time      string `json:"time"`
+	SessionID string `json:"session_id,omitempty"`
 
 	// request
 	ClientProtocol string            `json:"client_protocol,omitempty"`
@@ -72,6 +73,7 @@ func (t *TraceRecorder) RecordRequest(ctx *Context) {
 		Type:           traceTypeRequest,
 		RequestID:      ctx.RequestID,
 		Time:           ctx.StartTime.Format(traceTimeFormat),
+		SessionID:      ctx.SessionID,
 		ClientProtocol: ctx.ClientProtocol,
 		Model:          ctx.ClientModel,
 		Stream:         ctx.IsStream,
@@ -92,6 +94,7 @@ func (t *TraceRecorder) RecordUpstreamRequest(ctx *Context) {
 		Type:             traceTypeUpstreamReq,
 		RequestID:        ctx.RequestID,
 		Time:             time.Now().Format(traceTimeFormat),
+		SessionID:        ctx.SessionID,
 		UpstreamProtocol: ctx.UpstreamProtocol,
 		Model:            ctx.ClientModel,
 		Provider:         ctx.RouteResult.ProviderKey,
@@ -110,6 +113,7 @@ func (t *TraceRecorder) RecordUpstreamResponse(ctx *Context, status int) {
 		Type:      traceTypeUpstreamResp,
 		RequestID: ctx.RequestID,
 		Time:      time.Now().Format(traceTimeFormat),
+		SessionID: ctx.SessionID,
 		Status:    status,
 		LatencyMs: ctx.UpstreamLatency.Milliseconds(),
 		Body:      string(ctx.UpstreamRespBody),
@@ -138,6 +142,7 @@ func (t *TraceRecorder) RecordResponse(ctx *Context) {
 		Type:         traceTypeResponse,
 		RequestID:    ctx.RequestID,
 		Time:         time.Now().Format(traceTimeFormat),
+		SessionID:    ctx.SessionID,
 		Provider:     provider,
 		Model:        ctx.ClientModel,
 		InputTokens:  ctx.InputTokens,

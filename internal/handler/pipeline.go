@@ -76,6 +76,7 @@ func (h *Handler) stepParse(ctx *hook.Context) error {
 		ctx.ClientParsedReq = &req
 		ctx.ClientModel = req.Model
 		ctx.IsStream = req.Stream
+		ctx.SessionID = extractSessionID(req.Metadata, converter.FormatAnthropic)
 	case converter.FormatResponses:
 		var req types.ResponsesRequest
 		if err := json.Unmarshal(ctx.ClientReqBody, &req); err != nil {
@@ -85,6 +86,7 @@ func (h *Handler) stepParse(ctx *hook.Context) error {
 		ctx.ClientParsedReq = &req
 		ctx.ClientModel = req.Model
 		ctx.IsStream = req.Stream
+		ctx.SessionID = req.PreviousResponseID
 	case converter.FormatChat:
 		var req types.ChatRequest
 		if err := json.Unmarshal(ctx.ClientReqBody, &req); err != nil {
@@ -565,4 +567,28 @@ func writeBadRequest(c *gin.Context, protocol, message string) {
 
 func writeRouteError(c *gin.Context, message string) {
 	c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": "route_error", "message": message}})
+}
+
+// extractSessionID extracts a session identifier from request metadata.
+// Anthropic (Claude Code): metadata.user_id is a JSON string containing session_id.
+func extractSessionID(metadata map[string]any, protocol string) string {
+	if metadata == nil {
+		return ""
+	}
+
+	switch protocol {
+	case converter.FormatAnthropic:
+		// Claude Code sends: metadata.user_id = "{\"session_id\":\"...\", ...}"
+		raw, _ := metadata["user_id"].(string)
+		if raw == "" {
+			return ""
+		}
+		var parsed map[string]any
+		if json.Unmarshal([]byte(raw), &parsed) != nil {
+			return ""
+		}
+		sid, _ := parsed["session_id"].(string)
+		return sid
+	}
+	return ""
 }

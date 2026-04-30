@@ -20,6 +20,7 @@ type Context struct {
 	ClientReqBody   []byte // original raw request body
 	ClientParsedReq any    // parsed struct (AnthropicRequest, ResponsesRequest, ChatRequest)
 	ClientModel     string // model name from client request
+	SessionID       string // conversation session ID extracted from request metadata
 
 	// Route
 	RouteResult *router.RouteResult

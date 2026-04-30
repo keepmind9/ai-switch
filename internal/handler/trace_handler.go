@@ -37,6 +37,7 @@ func (t *TraceHandler) RegisterRoutes(r *gin.RouterGroup) {
 type traceSummary struct {
 	RequestID      string `json:"request_id"`
 	Time           string `json:"time"`
+	SessionID      string `json:"session_id,omitempty"`
 	ClientProtocol string `json:"client_protocol,omitempty"`
 	Model          string `json:"model,omitempty"`
 	Stream         bool   `json:"stream,omitempty"`
@@ -49,9 +50,10 @@ type traceSummary struct {
 
 // traceFilters holds optional query filters for the list endpoint.
 type traceFilters struct {
-	Model    string
-	Provider string
-	Status   int
+	Model     string
+	Provider  string
+	Status    int
+	SessionID string
 }
 
 func (f traceFilters) match(s *traceSummary) bool {
@@ -62,6 +64,9 @@ func (f traceFilters) match(s *traceSummary) bool {
 		return false
 	}
 	if f.Status != 0 && s.Status != f.Status {
+		return false
+	}
+	if f.SessionID != "" && s.SessionID != f.SessionID {
 		return false
 	}
 	return true
@@ -87,8 +92,9 @@ func (t *TraceHandler) listTraces(c *gin.Context) {
 	}
 
 	filters := traceFilters{
-		Model:    c.Query("model"),
-		Provider: c.Query("provider"),
+		Model:     c.Query("model"),
+		Provider:  c.Query("provider"),
+		SessionID: c.Query("session_id"),
 	}
 	if s := c.Query("status"); s != "" {
 		filters.Status, _ = strconv.Atoi(s)
@@ -279,6 +285,9 @@ func mergeSummary(g *traceSummary, rec map[string]any) {
 	case "request":
 		if v, ok := rec["time"].(string); ok && g.Time == "" {
 			g.Time = v
+		}
+		if v, ok := rec["session_id"].(string); ok && v != "" {
+			g.SessionID = v
 		}
 		if v, ok := rec["client_protocol"].(string); ok {
 			g.ClientProtocol = v
