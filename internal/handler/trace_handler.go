@@ -144,7 +144,7 @@ func (t *TraceHandler) listTraces(c *gin.Context) {
 	var all []traceSummary
 	var err error
 	if _, statErr := os.Stat(idxPath); statErr == nil {
-		all, err = scanIndex(idxPath, filters, limit)
+		all, err = scanIndex(idxPath, filters)
 	} else {
 		all, err = scanTracesLegacy(filePath, filters, limit)
 	}
@@ -306,7 +306,7 @@ var currentClock = struct{ Now func() time.Time }{Now: time.Now}
 const maxScanLines = 200
 
 // scanIndex reads the index file and returns filtered summaries sorted by time descending.
-func scanIndex(filePath string, filters traceFilters, limit int) ([]traceSummary, error) {
+func scanIndex(filePath string, filters traceFilters) ([]traceSummary, error) {
 	f, err := os.Open(filePath)
 	if err != nil {
 		return nil, err
@@ -338,10 +338,6 @@ func scanIndex(filePath string, filters traceFilters, limit int) ([]traceSummary
 	sort.Slice(result, func(i, j int) bool {
 		return result[i].Time > result[j].Time
 	})
-
-	if limit > 0 && len(result) > limit {
-		result = result[:limit]
-	}
 
 	return result, nil
 }
