@@ -16,7 +16,9 @@
 - **模型映射**：在路由层将客户端模型名映射为上游模型名
 - **跨 Provider 路由**：不同场景路由到不同 Provider（如思考 → DeepSeek，联网 → 智谱）
 - **热重载**：无需重启即可更新配置（`POST /api/reload` 或 `kill -HUP`）
-- **管理面板**：内置 Web 管理界面，可视化管理 Provider 和 Route
+- **管理面板**：内置 Web 管理界面，可视化管理 Provider、Route，查看用量统计和调试请求
+- **请求追踪**：记录每个请求/响应对，支持原始查看、Diff 对比、TTFB 瀑布流图
+- **用量统计**：按 Provider 和模型统计 token 用量（含缓存 token），配合趋势图表
 - **轻量**：纯 Go 实现，单二进制，无 CGO 依赖
 
 ## 安装
@@ -206,7 +208,7 @@ routes:
 
 ### 跨 Provider 路由
 
-使用 `provider:model` 格式在同一 Route 中路由到其他 Provider：
+使用 `provider|model` 格式在同一 Route 中路由到其他 Provider：
 
 ```yaml
 routes:
@@ -215,8 +217,8 @@ routes:
     default_model: "MiniMax-M2.5"
     scene_map:
       default: "MiniMax-M2.5"
-      think: "deepseek:deepseek-chat"
-      websearch: "zhipu:glm-4.7"
+      think: "deepseek|deepseek-chat"
+      websearch: "zhipu|glm-4.7"
 ```
 
 ### 模型解析优先级
@@ -260,7 +262,19 @@ Checking config.yaml ...
 
 ## 管理面板
 
-在浏览器打开 `http://localhost:12345`，使用内置管理面板管理 Provider、Route，以及查看用量统计。
+在浏览器打开 `http://localhost:12345`，使用内置管理面板管理 Provider、Route，查看用量统计，以及检查请求追踪记录。
+
+### 请求追踪（Trace）
+
+每个请求都会完整记录请求/响应详情。点击任意追踪记录可以查看：
+
+- **原始查看器**：查看请求和响应的完整载荷
+- **Diff 对比**：请求和响应的并排对比
+- **TTFB 瀑布流**：可视化首字节时间和上游延迟
+
+### 用量统计
+
+统计页面按 Provider 和模型展示 token 用量明细，包含缓存 token 指标和每日趋势图表。
 
 ## 构建
 

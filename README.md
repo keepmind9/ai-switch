@@ -16,7 +16,9 @@ A lightweight local proxy that lets any AI CLI tool (Claude Code, Codex CLI, etc
 - **Model mapping**: Map client model names to upstream model names at the route level
 - **Cross-provider routing**: Route different scenes to different providers (e.g. thinking → DeepSeek, web search → Zhipu)
 - **Hot reload**: Update config without restart (`POST /api/reload` or `kill -HUP`)
-- **Admin UI**: Built-in web dashboard for managing providers and routes
+- **Admin UI**: Built-in web dashboard for managing providers, routes, viewing usage statistics, and debugging requests
+- **Request tracing**: Inspect every request/response pair with raw viewer, Diff view, and TTFB waterfall chart
+- **Usage statistics**: Track token usage (input, output, cache) by provider and model with dashboard charts
 - **Lightweight**: Pure Go, single binary, no CGO
 
 ## Installation
@@ -205,7 +207,7 @@ routes:
 
 ### Cross-Provider Routing
 
-Use `provider:model` to route to a different provider within the same route:
+Use `provider|model` to route to a different provider within the same route:
 
 ```yaml
 routes:
@@ -214,8 +216,8 @@ routes:
     default_model: "MiniMax-M2.5"
     scene_map:
       default: "MiniMax-M2.5"
-      think: "deepseek:deepseek-chat"
-      websearch: "zhipu:glm-4.7"
+      think: "deepseek|deepseek-chat"
+      websearch: "zhipu|glm-4.7"
 ```
 
 ### Model Resolution Priority
@@ -259,7 +261,19 @@ Exit codes: `0` = valid, `1` = has errors, `2` = warnings only.
 
 ## Admin UI
 
-Open `http://localhost:12345` in your browser for a built-in dashboard to manage providers, routes, and view usage statistics.
+Open `http://localhost:12345` in your browser for a built-in dashboard to manage providers, routes, view usage statistics, and inspect request traces.
+
+### Traces
+
+Every request is recorded with full request/response details. Click any trace to inspect:
+
+- **Raw viewer**: See the exact request and response payloads
+- **Diff view**: Side-by-side comparison of request and response
+- **TTFB waterfall**: Visualize time-to-first-byte and upstream latency
+
+### Usage Stats
+
+The stats page shows token usage broken down by provider and model, including cache token metrics, with daily trend charts.
 
 ## Build
 
