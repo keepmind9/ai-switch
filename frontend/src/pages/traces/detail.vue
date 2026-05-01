@@ -82,6 +82,54 @@ const diffPairs = computed(() => {
 })
 const canDiff = computed(() => diffPairs.value.length > 0)
 
+// Waterfall chart data
+interface WaterfallPhase {
+  key: string
+  label: string
+  color: string
+  durationMs: number
+  startMs: number
+  endMs: number
+}
+
+const waterfallPhases = computed<{ phases: WaterfallPhase[]; totalMs: number } | null>(() => {
+  if (!detail.value) return null
+  const recs = detail.value.records
+  const req = recs.find(r => r.type === 'request')
+  const upReq = recs.find(r => r.type === 'upstream_req')
+  const upResp = recs.find(r => r.type === 'upstream_resp')
+  const resp = recs.find(r => r.type === 'response')
+  if (!req || !resp) return null
+
+  const t0 = new Date(req.time).getTime()
+  const phases: WaterfallPhase[] = []
+
+  const addPhase = (key: string, label: string, color: string, from: TraceDetailRecord, to: TraceDetailRecord) => {
+    const startMs = new Date(from.time).getTime() - t0
+    const endMs = new Date(to.time).getTime() - t0
+    const durationMs = endMs - startMs
+    if (durationMs >= 0) {
+      phases.push({ key, label, color, durationMs, startMs, endMs })
+    }
+  }
+
+  if (upReq) addPhase('route', t('traces.detail.waterfall.route'), '#d97706', req, upReq)
+  if (upReq && upResp) addPhase('upstream', t('traces.detail.waterfall.upstream'), '#059669', upReq, upResp)
+  if (upResp && resp) addPhase('response', t('traces.detail.waterfall.response'), '#7c3aed', upResp, resp)
+
+  if (phases.length === 0) return null
+  const totalMs = new Date(resp.time).getTime() - t0
+  if (totalMs <= 0) return null
+  return { phases, totalMs }
+})
+
+const requestTtfb = computed<number | null>(() => {
+  if (!detail.value) return null
+  const resp = detail.value.records.find(r => r.type === 'response')
+  if (!resp || resp.client_ttfb_ms == null) return null
+  return resp.client_ttfb_ms
+})
+
 const openDiff = () => { diffOpen.value = true }
 
 // Simple line diff: returns { type: 'equal'|'add'|'remove'|'change', left?: string, right?: string }[]
@@ -264,6 +312,41 @@ onMounted(async () => {
         </div>
       </div>
 
+      <!-- Waterfall chart -->
+      <el-card v-if="waterfallPhases" shadow="never" class="mb-4">
+        <template #header>
+          <div class="flex items-center justify-between">
+            <span class="text-sm font-semibold text-gray-700">{{ t('traces.detail.waterfall.title') }}</span>
+            <span class="text-xs text-gray-400">{{ t('traces.detail.waterfall.total') }}: {{ waterfallPhases.totalMs.toLocaleString() }}ms</span>
+          </div>
+        </template>
+        <!-- Single stacked bar -->
+        <div class="flex h-8 rounded-lg overflow-hidden" style="min-width: 200px">
+          <template v-for="phase in waterfallPhases.phases" :key="phase.key">
+            <div
+              class="flex items-center justify-center text-white text-xs font-medium transition-all duration-300"
+              :style="{
+                width: `${Math.max((phase.durationMs / waterfallPhases.totalMs) * 100, 1)}%`,
+                backgroundColor: phase.color,
+              }"
+              :title="`${phase.label}: ${phase.durationMs.toLocaleString()}ms`"
+            >
+              <span v-if="phase.durationMs >= waterfallPhases.totalMs * 0.12" class="whitespace-nowrap px-1">
+                {{ phase.label }} {{ phase.durationMs.toLocaleString() }}ms
+              </span>
+            </div>
+          </template>
+        </div>
+        <!-- Legend -->
+        <div class="flex flex-wrap gap-4 mt-3 text-xs text-gray-600">
+          <div v-for="phase in waterfallPhases.phases" :key="phase.key" class="flex items-center gap-1.5">
+            <span class="inline-block w-3 h-3 rounded-sm" :style="{ backgroundColor: phase.color }"></span>
+            <span>{{ phase.label }}</span>
+            <span class="text-gray-400">{{ phase.durationMs.toLocaleString() }}ms</span>
+          </div>
+        </div>
+      </el-card>
+
       <div class="space-y-6">
         <div v-for="(record, index) in detail.records" :key="index" class="relative">
           <div v-if="index < detail.records.length - 1" class="absolute left-6 top-10 w-0.5 h-12 bg-gray-300"></div>
@@ -287,7 +370,8 @@ onMounted(async () => {
               <div v-if="record.provider"><strong>Provider:</strong> {{ record.provider }}</div>
               <div v-if="record.model"><strong>Model:</strong> {{ record.model }}</div>
               <div v-if="record.status"><strong>Status:</strong> {{ record.status }}</div>
-              <div v-if="record.latency_ms"><strong>Latency:</strong> {{ record.latency_ms }}ms</div>
+              <div v-if="record.latency_ms"><strong>TTFB:</strong> {{ record.latency_ms.toLocaleString() }} ms</div>
+              <div v-if="record.type === 'request' && requestTtfb != null"><strong>TTFB:</strong> {{ requestTtfb.toLocaleString() }} ms</div>
             </div>
 
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">

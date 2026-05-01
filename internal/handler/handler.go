@@ -289,6 +289,9 @@ func writeSSEHeaders(c *gin.Context) {
 	c.Header("Connection", "keep-alive")
 	c.Header("X-Accel-Buffering", "no")
 	c.Writer.WriteHeader(http.StatusOK)
+	if t, ok := c.Get("_startTime"); ok {
+		c.Set("_clientTTFB", time.Since(t.(time.Time)))
+	}
 }
 
 // streamChatToClient reads Chat SSE from upstream and converts to the target

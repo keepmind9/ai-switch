@@ -34,7 +34,8 @@ type Context struct {
 	UpstreamLatency   time.Duration
 
 	// Client response
-	ClientRespBody []byte // response body sent to client (after conversion)
+	ClientRespBody []byte        // response body sent to client (after conversion)
+	ClientTTFB     time.Duration // time from request start to first byte written to client
 
 	// Token usage (populated by stepWriteResp)
 	InputTokens       int64

@@ -47,6 +47,8 @@ type traceSummary struct {
 	LatencyMs      int64  `json:"latency_ms,omitempty"`
 	InputTokens    int64  `json:"input_tokens,omitempty"`
 	OutputTokens   int64  `json:"output_tokens,omitempty"`
+
+	reqTime string // unexported: stores request time for latency calculation
 }
 
 // traceFilters holds optional query filters for the list endpoint.
@@ -521,6 +523,7 @@ func mergeSummary(g *traceSummary, rec map[string]any) {
 	case "request":
 		if v, ok := rec["time"].(string); ok && g.Time == "" {
 			g.Time = v
+			g.reqTime = v
 		}
 		if v, ok := rec["client_protocol"].(string); ok {
 			g.ClientProtocol = v
@@ -539,9 +542,6 @@ func mergeSummary(g *traceSummary, rec map[string]any) {
 		if v, ok := rec["status"].(float64); ok {
 			g.Status = int(v)
 		}
-		if v, ok := rec["latency_ms"].(float64); ok {
-			g.LatencyMs = int64(v)
-		}
 	case "response":
 		if v, ok := rec["model"].(string); ok && v != "" {
 			g.Model = v
@@ -554,6 +554,14 @@ func mergeSummary(g *traceSummary, rec map[string]any) {
 		}
 		if v, ok := rec["output_tokens"].(float64); ok {
 			g.OutputTokens = int64(v)
+		}
+		// Compute full lifecycle latency: response time - request time
+		if v, ok := rec["time"].(string); ok && g.reqTime != "" {
+			if t1, err1 := time.Parse(time.RFC3339Nano, g.reqTime); err1 == nil {
+				if t2, err2 := time.Parse(time.RFC3339Nano, v); err2 == nil {
+					g.LatencyMs = t2.Sub(t1).Milliseconds()
+				}
+			}
 		}
 	}
 }

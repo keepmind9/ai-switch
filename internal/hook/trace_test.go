@@ -78,7 +78,7 @@ func TestTraceRecorder_RecordResponse_WritesIndex(t *testing.T) {
 	assert.Equal(t, "claude-sonnet-4-6", idx.Model)
 	assert.Equal(t, int64(offset), idx.Offset)
 	assert.Equal(t, 200, idx.Status)
-	assert.Equal(t, int64(1234), idx.LatencyMs)
+	assert.Greater(t, idx.LatencyMs, int64(0))
 	assert.Equal(t, int64(100), idx.InputTokens)
 	assert.Equal(t, int64(50), idx.OutputTokens)
 }
@@ -148,7 +148,7 @@ func TestTraceRecorder_IndexEntryWithProvider(t *testing.T) {
 	assert.Equal(t, "sess-abc", idx.SessionID)
 	assert.Equal(t, "gpt-4o", idx.Model)
 	assert.Equal(t, "anthropic", idx.Provider)
-	assert.Equal(t, int64(500), idx.LatencyMs)
+	assert.Greater(t, idx.LatencyMs, int64(0))
 }
 
 // offsetStubWriter simulates WriteWithOffset for testing.

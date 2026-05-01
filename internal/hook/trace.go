@@ -62,6 +62,7 @@ type traceRecord struct {
 	LatencyMs int64 `json:"latency_ms,omitempty"`
 
 	// response
+	ClientTTFBMs int64 `json:"client_ttfb_ms,omitempty"`
 	InputTokens  int64 `json:"input_tokens,omitempty"`
 	OutputTokens int64 `json:"output_tokens,omitempty"`
 }
@@ -77,6 +78,7 @@ type traceIndex struct {
 	Provider       string `json:"provider,omitempty"`
 	Status         int    `json:"status,omitempty"`
 	LatencyMs      int64  `json:"latency_ms,omitempty"`
+	ClientTTFBMs   int64  `json:"client_ttfb_ms,omitempty"`
 	InputTokens    int64  `json:"input_tokens,omitempty"`
 	OutputTokens   int64  `json:"output_tokens,omitempty"`
 	Offset         int64  `json:"offset"`
@@ -163,6 +165,7 @@ func (t *TraceRecorder) RecordResponse(ctx *Context) {
 		SessionID:    ctx.SessionID,
 		Provider:     provider,
 		Model:        ctx.ClientModel,
+		ClientTTFBMs: ctx.ClientTTFB.Milliseconds(),
 		InputTokens:  ctx.InputTokens,
 		OutputTokens: ctx.OutputTokens,
 		Body:         redactBody(string(ctx.ClientRespBody)),
@@ -183,7 +186,8 @@ func (t *TraceRecorder) RecordResponse(ctx *Context) {
 			Stream:         ctx.IsStream,
 			Provider:       provider,
 			Status:         status,
-			LatencyMs:      ctx.UpstreamLatency.Milliseconds(),
+			LatencyMs:      time.Since(ctx.StartTime).Milliseconds(),
+			ClientTTFBMs:   ctx.ClientTTFB.Milliseconds(),
 			InputTokens:    ctx.InputTokens,
 			OutputTokens:   ctx.OutputTokens,
 			Offset:         ctx.traceOffset,

@@ -218,7 +218,14 @@
       "rawBody": "原始数据",
       "inspect": "检查",
       "diff": "对比",
-      "body": "显示请求体"
+      "body": "显示请求体",
+      "waterfall": {
+        "title": "耗时分布",
+        "total": "总计",
+        "route": "路由",
+        "upstream": "上游调用",
+        "response": "响应回写"
+      }
     }
   }
 }

@@ -27,7 +27,7 @@ const formatTime = (time: string) => {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${d.toLocaleTimeString('en-US', { hour12: false })}`
 }
 
-const formatLatency = (ms: number | undefined) => (!ms || ms <= 0) ? '-' : (ms >= 1000 ? `${(ms/1000).toFixed(1)}s` : `${ms}ms`)
+const formatLatency = (ms: number | undefined) => (!ms || ms <= 0) ? '-' : `${ms.toLocaleString()} ms`
 
 const canApply = computed(() => filter.start_time && filter.end_time)
 

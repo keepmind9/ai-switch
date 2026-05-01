@@ -26,6 +26,7 @@ export interface TraceDetailRecord {
   url?: string
   status?: number
   latency_ms?: number
+  client_ttfb_ms?: number
   input_tokens?: number
   output_tokens?: number
   body: string

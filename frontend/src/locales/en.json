@@ -218,7 +218,14 @@
       "rawBody": "Raw Body",
       "inspect": "Inspect",
       "diff": "Diff",
-      "body": "Show Body"
+      "body": "Show Body",
+      "waterfall": {
+        "title": "Timing Breakdown",
+        "total": "Total",
+        "route": "Route",
+        "upstream": "Upstream",
+        "response": "Response"
+      }
     }
   }
 }

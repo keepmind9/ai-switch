@@ -322,6 +322,7 @@ func (h *Handler) stepWriteResp(ctx *hook.Context) error {
 	defer ctx.UpstreamResp.Body.Close()
 
 	if !ctx.IsStream {
+		ctx.ClientTTFB = time.Since(ctx.StartTime)
 		return h.writeNonStreamResponse(ctx)
 	}
 	return h.writeStreamResponse(ctx)
@@ -457,12 +458,14 @@ func toInt64(v any) int64 {
 // writeStreamResponse handles all streaming response paths with protocol conversion.
 func (h *Handler) writeStreamResponse(ctx *hook.Context) error {
 	copyUpstreamHeaders(ctx.GinCtx, ctx.UpstreamResp)
+	ctx.GinCtx.Set("_startTime", ctx.StartTime)
 
 	upstream := ctx.UpstreamProtocol
 	client := ctx.ClientProtocol
 	model := ctx.ClientModel
 	thinkTag := ctx.RouteResult.ThinkTag
 
+	var err error
 	// Same-protocol passthrough
 	if upstream == client {
 		content, inTokens, outTokens := h.streamPassthrough(ctx.GinCtx, ctx.UpstreamResp, client)
@@ -471,20 +474,24 @@ func (h *Handler) writeStreamResponse(ctx *hook.Context) error {
 		ctx.ClientRespBody = ctx.UpstreamRespBody
 		ctx.InputTokens = inTokens
 		ctx.OutputTokens = outTokens
-		h.tracer().RecordResponse(ctx)
-		return nil
+	} else {
+		switch upstream {
+		case converter.FormatChat:
+			err = h.streamFromChat(ctx, model, thinkTag)
+		case converter.FormatAnthropic:
+			err = h.streamFromAnthropic(ctx, model, thinkTag)
+		case converter.FormatResponses:
+			err = h.streamFromResponses(ctx, model, thinkTag)
+		default:
+			err = fmt.Errorf("unknown upstream protocol for streaming: %s", upstream)
+		}
 	}
 
-	switch upstream {
-	case converter.FormatChat:
-		return h.streamFromChat(ctx, model, thinkTag)
-	case converter.FormatAnthropic:
-		return h.streamFromAnthropic(ctx, model, thinkTag)
-	case converter.FormatResponses:
-		return h.streamFromResponses(ctx, model, thinkTag)
+	if ttfb, ok := ctx.GinCtx.Get("_clientTTFB"); ok {
+		ctx.ClientTTFB = ttfb.(time.Duration)
 	}
-
-	return fmt.Errorf("unknown upstream protocol for streaming: %s", upstream)
+	h.tracer().RecordResponse(ctx)
+	return err
 }
 
 func (h *Handler) streamFromChat(ctx *hook.Context, model, thinkTag string) error {
@@ -509,7 +516,6 @@ func (h *Handler) streamFromChat(ctx *hook.Context, model, thinkTag string) erro
 	}
 	h.tracer().RecordUpstreamResponse(ctx, http.StatusOK)
 	ctx.ClientRespBody = ctx.UpstreamRespBody
-	h.tracer().RecordResponse(ctx)
 	return nil
 }
 
@@ -532,7 +538,6 @@ func (h *Handler) streamFromAnthropic(ctx *hook.Context, model, thinkTag string)
 		ctx.OutputTokens = int64(state.OutputTokens)
 	}
 	h.tracer().RecordUpstreamResponse(ctx, http.StatusOK)
-	h.tracer().RecordResponse(ctx)
 	return nil
 }
 
@@ -557,7 +562,6 @@ func (h *Handler) streamFromResponses(ctx *hook.Context, model, thinkTag string)
 		ctx.OutputTokens = int64(state.OutputTokens)
 	}
 	h.tracer().RecordUpstreamResponse(ctx, http.StatusOK)
-	h.tracer().RecordResponse(ctx)
 	return nil
 }
 

@@ -49,3 +49,5 @@ internal/handler/static/*
 
 .gemini
 .mcp.json
+
+.superpowers
