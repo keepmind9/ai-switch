@@ -156,14 +156,26 @@
     "end": "End",
     "provider": "Provider",
     "apply": "Apply",
+    "range": {
+      "today": "Today",
+      "days7": "7 Days",
+      "days30": "30 Days",
+      "custom": "Custom"
+    },
     "cards": {
       "requests": "Requests",
       "totalTokens": "Total Tokens",
       "inputTokens": "Input Tokens",
-      "outputTokens": "Output Tokens"
+      "outputTokens": "Output Tokens",
+      "cacheTokens": "Cache Tokens",
+      "estCost": "Est. Cost",
+      "costDisclaimer": "Estimated based on public pricing. Actual costs may vary."
     },
     "chart": {
-      "title": "Daily Consumption",
+      "dailyTrend": "Daily Token Trends",
+      "providerDist": "Provider Distribution",
+      "cacheWrite": "Cache Write",
+      "cacheRead": "Cache Read",
       "unit": "Values in tokens"
     },
     "table": {
@@ -175,7 +187,11 @@
       "requests": "Requests",
       "input": "Input",
       "output": "Output",
-      "total": "Total"
+      "cacheWrite": "Cache Write",
+      "cacheRead": "Cache Read",
+      "total": "Total",
+      "estCost": "Est. Cost",
+      "totalRow": "Total"
     }
   },
   "traces": {

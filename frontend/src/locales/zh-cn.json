@@ -156,14 +156,26 @@
     "end": "结束日期",
     "provider": "服务商",
     "apply": "查询",
+    "range": {
+      "today": "今天",
+      "days7": "近 7 天",
+      "days30": "近 30 天",
+      "custom": "自定义"
+    },
     "cards": {
       "requests": "请求数",
       "totalTokens": "总 Token",
       "inputTokens": "输入 Token",
-      "outputTokens": "输出 Token"
+      "outputTokens": "输出 Token",
+      "cacheTokens": "缓存 Token",
+      "estCost": "预估费用",
+      "costDisclaimer": "基于公开价格估算，实际费用可能不同。"
     },
     "chart": {
-      "title": "每日消耗趋势",
+      "dailyTrend": "每日 Token 趋势",
+      "providerDist": "服务商分布",
+      "cacheWrite": "缓存写入",
+      "cacheRead": "缓存读取",
       "unit": "数值单位为 Token"
     },
     "table": {
@@ -175,7 +187,11 @@
       "requests": "请求数",
       "input": "输入",
       "output": "输出",
-      "total": "总计"
+      "cacheWrite": "缓存写入",
+      "cacheRead": "缓存读取",
+      "total": "总计",
+      "estCost": "预估费用",
+      "totalRow": "合计"
     }
   },
   "traces": {

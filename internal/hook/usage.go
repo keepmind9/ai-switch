@@ -26,13 +26,15 @@ func NewUsageHook(usageStore *store.UsageStore) Hook {
 			}
 
 			usageStore.AsyncRecord(store.UsageRecord{
-				Provider:     provider,
-				Model:        ctx.ClientModel,
-				Date:         store.Today(),
-				Requests:     1,
-				InputTokens:  ctx.InputTokens,
-				OutputTokens: ctx.OutputTokens,
-				TotalTokens:  ctx.InputTokens + ctx.OutputTokens,
+				Provider:            provider,
+				Model:               ctx.ClientModel,
+				Date:                store.Today(),
+				Requests:            1,
+				InputTokens:         ctx.InputTokens,
+				OutputTokens:        ctx.OutputTokens,
+				CacheCreationTokens: ctx.CacheCreateTokens,
+				CacheReadTokens:     ctx.CacheReadTokens,
+				TotalTokens:         ctx.InputTokens + ctx.OutputTokens,
 			})
 
 			slog.Debug("recorded usage", "provider", provider, "model", ctx.ClientModel,
