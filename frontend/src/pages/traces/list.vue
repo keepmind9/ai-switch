@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, reactive, computed } from 'vue'
+import { ref, onMounted, onActivated, onUnmounted, reactive, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { getTraces, type TraceItem } from '@/api/traces'
@@ -24,6 +24,12 @@ const filter = reactive({
   page_size: 20
 })
 
+// Track browser back/forward via popstate to distinguish from sidebar navigation
+let isBrowserNav = false
+const onPopState = () => { isBrowserNav = true }
+window.addEventListener('popstate', onPopState)
+onUnmounted(() => window.removeEventListener('popstate', onPopState))
+
 const formatTime = (time: string) => {
   const d = new Date(time)
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${d.toLocaleTimeString('en-US', { hour12: false })}`
@@ -32,6 +38,14 @@ const formatTime = (time: string) => {
 const formatLatency = (ms: number | undefined) => (!ms || ms <= 0) ? '-' : `${ms.toLocaleString()} ms`
 
 const canApply = computed(() => filter.start_time && filter.end_time)
+
+const clearList = () => {
+  items.value = []
+  has_prev.value = false
+  has_next.value = false
+  prev_cursor.value = ''
+  next_cursor.value = ''
+}
 
 const fetchList = async (c?: string) => {
   if (!filter.start_time || !filter.end_time) return
@@ -62,6 +76,22 @@ onMounted(() => {
   syncFromQuery()
   if (filter.start_time && filter.end_time) {
     fetchList()
+  }
+})
+
+onActivated(() => {
+  if (isBrowserNav) {
+    // Browser back/forward: preserve cached data from keep-alive
+    isBrowserNav = false
+  } else {
+    // Sidebar navigation or programmatic navigation: clear to show empty page
+    filter.start_time = ''
+    filter.end_time = ''
+    filter.model = ''
+    filter.provider = ''
+    filter.status = undefined
+    filter.session_id = ''
+    clearList()
   }
 })
 </script>
