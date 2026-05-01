@@ -569,6 +569,7 @@ func (h *Handler) streamFromAnthropic(ctx *hook.Context, model, thinkTag string)
 		ctx.CacheReadTokens = int64(state.CacheReadTokens)
 	}
 	h.tracer().RecordUpstreamResponse(ctx, http.StatusOK)
+	ctx.ClientRespBody = ctx.UpstreamRespBody
 	return nil
 }
 
@@ -597,6 +598,7 @@ func (h *Handler) streamFromResponses(ctx *hook.Context, model, thinkTag string)
 		ctx.CacheReadTokens = int64(state.CacheReadTokens)
 	}
 	h.tracer().RecordUpstreamResponse(ctx, http.StatusOK)
+	ctx.ClientRespBody = ctx.UpstreamRespBody
 	return nil
 }
 
