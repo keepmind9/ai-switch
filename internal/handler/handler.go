@@ -348,7 +348,7 @@ func (h *Handler) streamChatToClient(c *gin.Context, resp *http.Response, conver
 }
 
 // streamPassthrough forwards upstream SSE directly to the client. Returns accumulated content and token counts.
-func (h *Handler) streamPassthrough(c *gin.Context, resp *http.Response, format string) (string, int64, int64) {
+func (h *Handler) streamPassthrough(c *gin.Context, resp *http.Response, format string) (string, int64, int64, int64, int64) {
 	copyUpstreamHeaders(c, resp)
 
 	// Upstream may return SSE data without Content-Type header.
@@ -360,21 +360,21 @@ func (h *Handler) streamPassthrough(c *gin.Context, resp *http.Response, format 
 		} else if !isSSEErrorData(string(respBody)) && format == converter.FormatResponses {
 			slog.Info("converting non-SSE Responses JSON to SSE events", "body_len", len(respBody))
 			body := h.convertResponsesJSONToSSE(c, respBody)
-			return body, 0, 0
+			return body, 0, 0, 0, 0
 		}
 		// Error response — restore body for checkUpstreamStreamError
 		resp.Body = io.NopCloser(bytes.NewReader(respBody))
 	}
 
 	if body, handled := checkUpstreamStreamError(c, resp, format); handled {
-		return body, 0, 0
+		return body, 0, 0, 0, 0
 	}
 
 	return h.streamBodyAsSSE(c, resp.Body, format)
 }
 
 // streamBodyAsSSE reads SSE from body, writes it to the client, and extracts token usage.
-func (h *Handler) streamBodyAsSSE(c *gin.Context, body io.Reader, format string) (string, int64, int64) {
+func (h *Handler) streamBodyAsSSE(c *gin.Context, body io.Reader, format string) (string, int64, int64, int64, int64) {
 	writeSSEHeaders(c)
 
 	flusher, canFlush := c.Writer.(http.Flusher)
@@ -398,7 +398,7 @@ func (h *Handler) streamBodyAsSSE(c *gin.Context, body io.Reader, format string)
 	if err := scanner.Err(); err != nil {
 		slog.Warn("SSE scanner error", "error", err)
 	}
-	return buf.String(), acc.InputTokens, acc.OutputTokens
+	return buf.String(), acc.InputTokens, acc.OutputTokens, acc.CacheCreateTokens, acc.CacheReadTokens
 }
 
 // convertResponsesJSONToSSE converts a non-streaming Responses API JSON response

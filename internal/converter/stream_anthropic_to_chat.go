@@ -11,14 +11,16 @@ import (
 
 // AnthropicToChatState tracks state when converting Anthropic SSE to Chat SSE.
 type AnthropicToChatState struct {
-	ID           string
-	Model        string
-	Created      int64
-	AccText      string
-	StopReason   string
-	InputTokens  int
-	OutputTokens int
-	Started      bool
+	ID                string
+	Model             string
+	Created           int64
+	AccText           string
+	StopReason        string
+	InputTokens       int
+	OutputTokens      int
+	CacheCreateTokens int
+	CacheReadTokens   int
+	Started           bool
 
 	// Tool use tracking: Anthropic block index → tool block info
 	ToolBlocks      map[int]*anthropicToolBlock
@@ -64,6 +66,8 @@ func ConvertAnthropicLineToChat(state *AnthropicToChatState, line string) any {
 			state.Model, _ = msg["model"].(string)
 			if usage, ok := msg["usage"].(map[string]any); ok {
 				state.InputTokens = int(toFloat64(usage["input_tokens"]))
+				state.CacheCreateTokens = int(toFloat64(usage["cache_creation_input_tokens"]))
+				state.CacheReadTokens = int(toFloat64(usage["cache_read_input_tokens"]))
 			}
 		}
 		state.Created = time.Now().Unix()
@@ -194,6 +198,12 @@ func ConvertAnthropicLineToChat(state *AnthropicToChatState, line string) any {
 			state.OutputTokens = int(toFloat64(usage["output_tokens"]))
 			if in := int(toFloat64(usage["input_tokens"])); in > 0 {
 				state.InputTokens = in
+			}
+			if c := int(toFloat64(usage["cache_creation_input_tokens"])); c > 0 {
+				state.CacheCreateTokens = c
+			}
+			if c := int(toFloat64(usage["cache_read_input_tokens"])); c > 0 {
+				state.CacheReadTokens = c
 			}
 		}
 

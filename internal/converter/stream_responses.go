@@ -120,6 +120,12 @@ func ConvertChatChunkToResponsesSSE(w SSEWriter, state *ResponsesStreamState, da
 	if chunk.Usage != nil {
 		state.InputTokens = chunk.Usage.PromptTokens
 		state.OutputTokens = chunk.Usage.CompletionTokens
+		if chunk.Usage.PromptTokensDetails != nil {
+			state.CacheReadTokens = chunk.Usage.PromptTokensDetails.CachedTokens
+		}
+		if chunk.Usage.PromptCacheHitTokens > 0 {
+			state.CacheReadTokens = chunk.Usage.PromptCacheHitTokens
+		}
 	}
 
 	return false

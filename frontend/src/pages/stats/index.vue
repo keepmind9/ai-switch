@@ -60,6 +60,7 @@ const summary = computed(() => {
     input_tokens: d.reduce((s, r) => s + r.input_tokens, 0),
     output_tokens: d.reduce((s, r) => s + r.output_tokens, 0),
     total_tokens: d.reduce((s, r) => s + r.total_tokens, 0),
+    cache_read_tokens: d.reduce((s, r) => s + r.cache_read_tokens, 0),
   }
 })
 
@@ -198,6 +199,7 @@ function getSummaries(param: { columns: { property: string }[]; data: UsageRecor
     if (p === "requests") { sums.push(fmtNum(param.data.reduce((s, r) => s + r.requests, 0))); continue }
     if (p === "input_tokens") { sums.push(fmtNum(param.data.reduce((s, r) => s + r.input_tokens, 0))); continue }
     if (p === "output_tokens") { sums.push(fmtNum(param.data.reduce((s, r) => s + r.output_tokens, 0))); continue }
+    if (p === "cache_read_tokens") { sums.push(fmtNum(param.data.reduce((s, r) => s + r.cache_read_tokens, 0))); continue }
     if (p === "total_tokens") { sums.push(fmtNum(param.data.reduce((s, r) => s + r.total_tokens, 0))); continue }
     sums.push("")
   }
@@ -290,6 +292,13 @@ onMounted(load)
           <span class="stat-value" style="color: #458854">{{ fmtNum(summary.output_tokens) }}</span>
         </div>
       </div>
+      <div class="stat-card" data-accent="purple">
+        <div class="stat-accent" />
+        <div class="stat-body">
+          <span class="stat-label">{{ t("stats.cards.cacheTokens") }}</span>
+          <span class="stat-value" style="color: #8b5cf6">{{ fmtNum(summary.cache_read_tokens) }}</span>
+        </div>
+      </div>
     </div>
 
     <!-- Charts -->
@@ -329,6 +338,12 @@ onMounted(load)
         </el-table-column>
         <el-table-column prop="output_tokens" :label="t('stats.table.output')" width="120" align="right">
           <template #default="{ row }">{{ fmtNum(row.output_tokens) }}</template>
+        </el-table-column>
+        <el-table-column prop="cache_read_tokens" :label="t('stats.table.cacheRead')" width="120" align="right">
+          <template #default="{ row }">
+            <span v-if="row.cache_read_tokens > 0" style="color: #8b5cf6">{{ fmtNum(row.cache_read_tokens) }}</span>
+            <span v-else class="text-slate-400">-</span>
+          </template>
         </el-table-column>
         <el-table-column prop="total_tokens" :label="t('stats.table.total')" width="120" align="right">
           <template #default="{ row }">
@@ -371,7 +386,7 @@ onMounted(load)
 // Stat Cards
 .cards-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 16px;
   margin-bottom: 24px;
 
@@ -399,6 +414,7 @@ onMounted(load)
   [data-accent="blue"] & { background: linear-gradient(90deg, #3b82f6, #93c5fd); }
   [data-accent="slate"] & { background: linear-gradient(90deg, #64748b, #94a3b8); }
   [data-accent="green"] & { background: linear-gradient(90deg, #458854, #86efac); }
+  [data-accent="purple"] & { background: linear-gradient(90deg, #8b5cf6, #c4b5fd); }
 }
 
 .stat-body {

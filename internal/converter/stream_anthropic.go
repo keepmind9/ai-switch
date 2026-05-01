@@ -143,6 +143,12 @@ func ConvertChatChunkToAnthropicSSE(w SSEWriter, state *AnthropicStreamState, da
 	if chunk.Usage != nil {
 		state.InputTokens = chunk.Usage.PromptTokens
 		state.OutputTokens = chunk.Usage.CompletionTokens
+		if chunk.Usage.PromptTokensDetails != nil {
+			state.CacheReadTokens = chunk.Usage.PromptTokensDetails.CachedTokens
+		}
+		if chunk.Usage.PromptCacheHitTokens > 0 {
+			state.CacheReadTokens = chunk.Usage.PromptCacheHitTokens
+		}
 		slog.Debug("anthropic stream: upstream usage",
 			"prompt_tokens", chunk.Usage.PromptTokens,
 			"completion_tokens", chunk.Usage.CompletionTokens,

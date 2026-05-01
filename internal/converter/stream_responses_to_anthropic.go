@@ -6,15 +6,17 @@ import (
 
 // ResponsesToAnthropicState tracks state when converting Responses SSE to Anthropic SSE.
 type ResponsesToAnthropicState struct {
-	MessageID       string
-	Model           string
-	InputTokens     int
-	OutputTokens    int
-	AccText         string
-	ContentSent     bool
-	MessageStarted  bool
-	CurrentBlockIdx int
-	HasToolUse      bool
+	MessageID         string
+	Model             string
+	InputTokens       int
+	OutputTokens      int
+	CacheCreateTokens int
+	CacheReadTokens   int
+	AccText           string
+	ContentSent       bool
+	MessageStarted    bool
+	CurrentBlockIdx   int
+	HasToolUse        bool
 }
 
 // ConvertResponsesEventToAnthropicSSE processes a raw Responses SSE data line and emits

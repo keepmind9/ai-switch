@@ -38,7 +38,8 @@ func NewUsageHook(usageStore *store.UsageStore) Hook {
 			})
 
 			slog.Debug("recorded usage", "provider", provider, "model", ctx.ClientModel,
-				"input", ctx.InputTokens, "output", ctx.OutputTokens)
+				"input", ctx.InputTokens, "output", ctx.OutputTokens,
+				"cache_create", ctx.CacheCreateTokens, "cache_read", ctx.CacheReadTokens)
 			return nil
 		},
 	}

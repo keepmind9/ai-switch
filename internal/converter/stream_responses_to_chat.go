@@ -9,14 +9,16 @@ import (
 
 // ResponsesToChatState tracks state when converting Responses SSE to Chat SSE.
 type ResponsesToChatState struct {
-	ID           string
-	Model        string
-	Created      int64
-	AccText      string
-	Started      bool
-	InputTokens  int
-	OutputTokens int
-	HasToolCalls bool
+	ID                string
+	Model             string
+	Created           int64
+	AccText           string
+	Started           bool
+	InputTokens       int
+	OutputTokens      int
+	CacheCreateTokens int
+	CacheReadTokens   int
+	HasToolCalls      bool
 
 	// Tool call tracking: item_id -> call info
 	ToolCallItems map[string]*responsesToChatTC

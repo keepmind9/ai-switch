@@ -7,19 +7,21 @@ type SSEWriter interface {
 
 // ResponsesStreamState tracks state across SSE chunks for Responses API conversion.
 type ResponsesStreamState struct {
-	ResponseID   string
-	Created      int64
-	OutputIndex  int
-	ContentIndex int
-	ItemID       string
-	CreatedSent  bool
-	AccText      string
-	SeqNum       int
-	Model        string
-	InputTokens  int
-	OutputTokens int
-	ThinkTag     string
-	TagState     ThinkTagState
+	ResponseID        string
+	Created           int64
+	OutputIndex       int
+	ContentIndex      int
+	ItemID            string
+	CreatedSent       bool
+	AccText           string
+	SeqNum            int
+	Model             string
+	InputTokens       int
+	OutputTokens      int
+	CacheCreateTokens int
+	CacheReadTokens   int
+	ThinkTag          string
+	TagState          ThinkTagState
 
 	// Tool call tracking for Chat→Responses streaming
 	ToolCalls     map[int]*chatToolCallState
@@ -42,23 +44,25 @@ func (s *ResponsesStreamState) nextSeq() int {
 
 // AnthropicStreamState tracks state across SSE chunks for Anthropic conversion.
 type AnthropicStreamState struct {
-	MessageID        string
-	Model            string
-	BlockIndex       int
-	ContentSent      bool
-	AccText          string
-	InputTokens      int
-	OutputTokens     int
-	ThinkTag         string
-	TagState         ThinkTagState
-	FinishReason     string
-	DeltaSent        bool
-	TextBlockClosed  bool
-	TextBlockStarted bool
-	TextBlockIdx     int
-	ReasoningStarted bool
-	ReasoningClosed  bool
-	ToolBlocks       map[int]*toolBlockState
+	MessageID         string
+	Model             string
+	BlockIndex        int
+	ContentSent       bool
+	AccText           string
+	InputTokens       int
+	OutputTokens      int
+	CacheCreateTokens int
+	CacheReadTokens   int
+	ThinkTag          string
+	TagState          ThinkTagState
+	FinishReason      string
+	DeltaSent         bool
+	TextBlockClosed   bool
+	TextBlockStarted  bool
+	TextBlockIdx      int
+	ReasoningStarted  bool
+	ReasoningClosed   bool
+	ToolBlocks        map[int]*toolBlockState
 }
 
 type toolBlockState struct {

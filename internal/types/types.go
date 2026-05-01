@@ -53,9 +53,11 @@ type ContentBlock struct {
 }
 
 type Usage struct {
-	InputTokens  int `json:"input_tokens"`
-	OutputTokens int `json:"output_tokens"`
-	TotalTokens  int `json:"total_tokens"`
+	InputTokens         int `json:"input_tokens"`
+	OutputTokens        int `json:"output_tokens"`
+	TotalTokens         int `json:"total_tokens"`
+	CacheCreationTokens int `json:"cache_creation_tokens,omitempty"`
+	CacheReadTokens     int `json:"cache_read_tokens,omitempty"`
 }
 
 // Chat Completions API Types
@@ -101,9 +103,15 @@ type ChatChoice struct {
 }
 
 type ChatUsage struct {
-	PromptTokens     int `json:"prompt_tokens"`
-	CompletionTokens int `json:"completion_tokens"`
-	TotalTokens      int `json:"total_tokens"`
+	PromptTokens         int                  `json:"prompt_tokens"`
+	CompletionTokens     int                  `json:"completion_tokens"`
+	TotalTokens          int                  `json:"total_tokens"`
+	PromptTokensDetails  *PromptTokensDetails `json:"prompt_tokens_details,omitempty"`
+	PromptCacheHitTokens int                  `json:"prompt_cache_hit_tokens,omitempty"`
+}
+
+type PromptTokensDetails struct {
+	CachedTokens int `json:"cached_tokens"`
 }
 
 // Stream event types

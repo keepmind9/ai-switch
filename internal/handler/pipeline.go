@@ -404,6 +404,8 @@ func (h *Handler) writeNonStreamFromAnthropic(ctx *hook.Context, respBody []byte
 	}
 	ctx.InputTokens = int64(anthResp.Usage.InputTokens)
 	ctx.OutputTokens = int64(anthResp.Usage.OutputTokens)
+	ctx.CacheCreateTokens = int64(anthResp.Usage.CacheCreationInputTokens)
+	ctx.CacheReadTokens = int64(anthResp.Usage.CacheReadInputTokens)
 
 	switch ctx.ClientProtocol {
 	case converter.FormatChat:
@@ -441,6 +443,17 @@ func (h *Handler) setNonStreamTokenUsage(ctx *hook.Context, body []byte) {
 	}
 	ctx.InputTokens = toInt64(usage["input_tokens"]) + toInt64(usage["prompt_tokens"])
 	ctx.OutputTokens = toInt64(usage["output_tokens"]) + toInt64(usage["completion_tokens"])
+	// Anthropic format
+	ctx.CacheCreateTokens = toInt64(usage["cache_creation_input_tokens"])
+	ctx.CacheReadTokens = toInt64(usage["cache_read_input_tokens"])
+	// OpenAI/DeepSeek/MiniMax format: prompt_tokens_details.cached_tokens
+	if details, ok := usage["prompt_tokens_details"].(map[string]any); ok {
+		ctx.CacheReadTokens = toInt64(details["cached_tokens"])
+	}
+	// DeepSeek/MiniMax format: prompt_cache_hit_tokens
+	if hit := toInt64(usage["prompt_cache_hit_tokens"]); hit > 0 {
+		ctx.CacheReadTokens = hit
+	}
 }
 
 func toInt64(v any) int64 {
@@ -468,12 +481,14 @@ func (h *Handler) writeStreamResponse(ctx *hook.Context) error {
 	var err error
 	// Same-protocol passthrough
 	if upstream == client {
-		content, inTokens, outTokens := h.streamPassthrough(ctx.GinCtx, ctx.UpstreamResp, client)
+		content, inTokens, outTokens, cacheCreate, cacheRead := h.streamPassthrough(ctx.GinCtx, ctx.UpstreamResp, client)
 		ctx.UpstreamRespBody = []byte(content)
 		h.tracer().RecordUpstreamResponse(ctx, http.StatusOK)
 		ctx.ClientRespBody = ctx.UpstreamRespBody
 		ctx.InputTokens = inTokens
 		ctx.OutputTokens = outTokens
+		ctx.CacheCreateTokens = cacheCreate
+		ctx.CacheReadTokens = cacheRead
 	} else {
 		switch upstream {
 		case converter.FormatChat:
@@ -504,6 +519,8 @@ func (h *Handler) streamFromChat(ctx *hook.Context, model, thinkTag string) erro
 		ctx.UpstreamRespBody = []byte(content)
 		ctx.InputTokens = int64(state.InputTokens)
 		ctx.OutputTokens = int64(state.OutputTokens)
+		ctx.CacheCreateTokens = int64(state.CacheCreateTokens)
+		ctx.CacheReadTokens = int64(state.CacheReadTokens)
 
 	case converter.FormatResponses:
 		state := &converter.ResponsesStreamState{Created: time.Now().Unix(), Model: model, ThinkTag: thinkTag}
@@ -513,6 +530,8 @@ func (h *Handler) streamFromChat(ctx *hook.Context, model, thinkTag string) erro
 		ctx.UpstreamRespBody = []byte(content)
 		ctx.InputTokens = int64(state.InputTokens)
 		ctx.OutputTokens = int64(state.OutputTokens)
+		ctx.CacheCreateTokens = int64(state.CacheCreateTokens)
+		ctx.CacheReadTokens = int64(state.CacheReadTokens)
 	}
 	h.tracer().RecordUpstreamResponse(ctx, http.StatusOK)
 	ctx.ClientRespBody = ctx.UpstreamRespBody
@@ -529,6 +548,8 @@ func (h *Handler) streamFromAnthropic(ctx *hook.Context, model, thinkTag string)
 		ctx.UpstreamRespBody = []byte(content)
 		ctx.InputTokens = int64(state.InputTokens)
 		ctx.OutputTokens = int64(state.OutputTokens)
+		ctx.CacheCreateTokens = int64(state.CacheCreateTokens)
+		ctx.CacheReadTokens = int64(state.CacheReadTokens)
 
 	case converter.FormatResponses:
 		state := &converter.AnthropicToResponsesState{ThinkTag: thinkTag}
@@ -536,6 +557,8 @@ func (h *Handler) streamFromAnthropic(ctx *hook.Context, model, thinkTag string)
 		ctx.UpstreamRespBody = []byte(content)
 		ctx.InputTokens = int64(state.InputTokens)
 		ctx.OutputTokens = int64(state.OutputTokens)
+		ctx.CacheCreateTokens = int64(state.CacheCreateTokens)
+		ctx.CacheReadTokens = int64(state.CacheReadTokens)
 	}
 	h.tracer().RecordUpstreamResponse(ctx, http.StatusOK)
 	return nil
@@ -551,6 +574,8 @@ func (h *Handler) streamFromResponses(ctx *hook.Context, model, thinkTag string)
 		ctx.UpstreamRespBody = []byte(content)
 		ctx.InputTokens = int64(state.InputTokens)
 		ctx.OutputTokens = int64(state.OutputTokens)
+		ctx.CacheCreateTokens = int64(state.CacheCreateTokens)
+		ctx.CacheReadTokens = int64(state.CacheReadTokens)
 
 	case converter.FormatAnthropic:
 		state := &converter.ResponsesToAnthropicState{}
@@ -560,6 +585,8 @@ func (h *Handler) streamFromResponses(ctx *hook.Context, model, thinkTag string)
 		ctx.UpstreamRespBody = []byte(content)
 		ctx.InputTokens = int64(state.InputTokens)
 		ctx.OutputTokens = int64(state.OutputTokens)
+		ctx.CacheCreateTokens = int64(state.CacheCreateTokens)
+		ctx.CacheReadTokens = int64(state.CacheReadTokens)
 	}
 	h.tracer().RecordUpstreamResponse(ctx, http.StatusOK)
 	return nil

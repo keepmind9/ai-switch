@@ -10,19 +10,21 @@ import (
 
 // AnthropicToResponsesState tracks state when converting Anthropic SSE to Responses SSE.
 type AnthropicToResponsesState struct {
-	ResponseID    string
-	ItemID        string
-	Model         string
-	Created       int64
-	AccText       string
-	CreatedSent   bool
-	ItemSent      bool
-	CompletedSent bool
-	SeqNum        int
-	InputTokens   int
-	OutputTokens  int
-	ThinkTag      string
-	TagState      ThinkTagState
+	ResponseID        string
+	ItemID            string
+	Model             string
+	Created           int64
+	AccText           string
+	CreatedSent       bool
+	ItemSent          bool
+	CompletedSent     bool
+	SeqNum            int
+	InputTokens       int
+	OutputTokens      int
+	CacheCreateTokens int
+	CacheReadTokens   int
+	ThinkTag          string
+	TagState          ThinkTagState
 
 	// Tool use tracking
 	CurrentBlockType string
@@ -228,6 +230,8 @@ func ConvertAnthropicLineToResponses(w SSEWriter, state *AnthropicToResponsesSta
 			state.Model, _ = msg["model"].(string)
 			if usage, ok := msg["usage"].(map[string]any); ok {
 				state.InputTokens = int(toFloat64(usage["input_tokens"]))
+				state.CacheCreateTokens = int(toFloat64(usage["cache_creation_input_tokens"]))
+				state.CacheReadTokens = int(toFloat64(usage["cache_read_input_tokens"]))
 			}
 		}
 		state.Created = time.Now().Unix()
@@ -442,6 +446,12 @@ func ConvertAnthropicLineToResponses(w SSEWriter, state *AnthropicToResponsesSta
 			state.OutputTokens = int(toFloat64(usage["output_tokens"]))
 			if in := int(toFloat64(usage["input_tokens"])); in > 0 {
 				state.InputTokens = in
+			}
+			if c := int(toFloat64(usage["cache_creation_input_tokens"])); c > 0 {
+				state.CacheCreateTokens = c
+			}
+			if c := int(toFloat64(usage["cache_read_input_tokens"])); c > 0 {
+				state.CacheReadTokens = c
 			}
 		}
 		EmitCompleted(w, state)
