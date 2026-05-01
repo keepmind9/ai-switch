@@ -264,7 +264,7 @@ func (t *TraceHandler) getTrace(c *gin.Context) {
 	var err error
 
 	// Try index-based lookup first.
-	if offset, lookupErr := lookupOffset(idxPath, requestID); lookupErr == nil && offset > 0 {
+	if offset, lookupErr := lookupOffset(idxPath, requestID); lookupErr == nil && offset >= 0 {
 		records, err = scanTraceByOffset(filePath, requestID, offset)
 	} else {
 		records, err = scanTraceByIDLegacy(filePath, requestID)

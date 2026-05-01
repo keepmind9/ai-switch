@@ -74,7 +74,7 @@ func (h *Handler) stepParse(ctx *hook.Context) error {
 		ctx.ClientParsedReq = &req
 		ctx.ClientModel = req.Model
 		ctx.IsStream = req.Stream
-		ctx.SessionID = extractSessionID(req.Metadata, converter.FormatAnthropic)
+		ctx.SessionID = extractSessionIDFromRequest(ctx.GinCtx, req.Metadata)
 	case converter.FormatResponses:
 		var req types.ResponsesRequest
 		if err := json.Unmarshal(ctx.ClientReqBody, &req); err != nil {
@@ -84,7 +84,13 @@ func (h *Handler) stepParse(ctx *hook.Context) error {
 		ctx.ClientParsedReq = &req
 		ctx.ClientModel = req.Model
 		ctx.IsStream = req.Stream
-		ctx.SessionID = req.PreviousResponseID
+		// PreviousResponseID is the conversation chain identifier in Responses API.
+		// Fall back to header/metadata extraction if not present.
+		if req.PreviousResponseID != "" {
+			ctx.SessionID = req.PreviousResponseID
+		} else {
+			ctx.SessionID = extractSessionIDFromRequest(ctx.GinCtx, req.Metadata)
+		}
 	case converter.FormatChat:
 		var req types.ChatRequest
 		if err := json.Unmarshal(ctx.ClientReqBody, &req); err != nil {
@@ -94,6 +100,7 @@ func (h *Handler) stepParse(ctx *hook.Context) error {
 		ctx.ClientParsedReq = &req
 		ctx.ClientModel = req.Model
 		ctx.IsStream = req.Stream
+		ctx.SessionID = extractSessionIDFromHeaders(ctx.GinCtx)
 	default:
 		writeBadRequest(ctx.GinCtx, ctx.ClientProtocol, "unsupported protocol: "+ctx.ClientProtocol)
 		return fmt.Errorf("unsupported protocol: %s", ctx.ClientProtocol)
@@ -614,25 +621,46 @@ func writeRouteError(c *gin.Context, message string) {
 	c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": "route_error", "message": message}})
 }
 
-// extractSessionID extracts a session identifier from request metadata.
-// Anthropic (Claude Code): metadata.user_id is a JSON string containing session_id.
-func extractSessionID(metadata map[string]any, protocol string) string {
-	if metadata == nil {
-		return ""
+// extractSessionIDFromRequest extracts session ID from multiple sources:
+// 1. Anthropic metadata.user_id (JSON with session_id)
+// 2. HTTP headers: Session_id (Codex), X-Session-ID, X-Client-Request-Id
+// 3. Request metadata fields
+func extractSessionIDFromRequest(c *gin.Context, metadata map[string]any) string {
+	// 1. Anthropic (Claude Code): metadata.user_id = JSON with session_id
+	if metadata != nil {
+		if raw, _ := metadata["user_id"].(string); raw != "" {
+			var parsed map[string]any
+			if json.Unmarshal([]byte(raw), &parsed) == nil {
+				if sid, _ := parsed["session_id"].(string); sid != "" {
+					return sid
+				}
+			}
+		}
 	}
 
-	switch protocol {
-	case converter.FormatAnthropic:
-		// Claude Code sends: metadata.user_id = "{\"session_id\":\"...\", ...}"
-		raw, _ := metadata["user_id"].(string)
-		if raw == "" {
-			return ""
+	if sid := extractSessionIDFromHeaders(c); sid != "" {
+		return sid
+	}
+
+	// 3. Metadata fallback
+	if metadata != nil {
+		if sid, _ := metadata["session_id"].(string); sid != "" {
+			return sid
 		}
-		var parsed map[string]any
-		if json.Unmarshal([]byte(raw), &parsed) != nil {
-			return ""
-		}
-		sid, _ := parsed["session_id"].(string)
+	}
+
+	return ""
+}
+
+// extractSessionIDFromHeaders extracts session ID from common HTTP headers.
+func extractSessionIDFromHeaders(c *gin.Context) string {
+	if sid := c.GetHeader("Session_id"); sid != "" {
+		return sid
+	}
+	if sid := c.GetHeader("X-Session-ID"); sid != "" {
+		return sid
+	}
+	if sid := c.GetHeader("X-Client-Request-Id"); sid != "" {
 		return sid
 	}
 	return ""

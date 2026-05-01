@@ -275,7 +275,11 @@ func checkUpstreamStreamError(c *gin.Context, resp *http.Response, clientFormat 
 		if isSSEErrorData(data) {
 			msg, errType := parseUpstreamError([]byte(data))
 			slog.Warn("SSE error in first upstream event", "message", msg, "type", errType, "client_format", clientFormat)
-			writeStreamErrorJSON(c, errorTypeToStatus(errType), msg, errType, clientFormat)
+			status := resp.StatusCode
+			if status < 400 {
+				status = errorTypeToStatus(errType)
+			}
+			writeStreamErrorJSON(c, status, msg, errType, clientFormat)
 			return buf.String(), true
 		}
 		break

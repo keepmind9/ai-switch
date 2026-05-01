@@ -147,6 +147,8 @@ func (c *Converter) ResponsesToChat(req *types.ResponsesRequest) (*types.ChatReq
 }
 
 // convertResponsesInputToChatMessages converts Responses API input items to Chat messages.
+// Consecutive function_call items are merged into one assistant message (multiple tool_calls),
+// as required by the Chat Completions API.
 func convertResponsesInputToChatMessages(input any) []types.ChatMessage {
 	if input == nil {
 		return nil
@@ -160,9 +162,23 @@ func convertResponsesInputToChatMessages(input any) []types.ChatMessage {
 		return []types.ChatMessage{{Role: "user", Content: strPtr(v)}}
 	case []any:
 		var msgs []types.ChatMessage
+		var pendingToolCalls []types.ToolCall
+
+		flushToolCalls := func() {
+			if len(pendingToolCalls) > 0 {
+				msgs = append(msgs, types.ChatMessage{
+					Role:      "assistant",
+					Content:   strPtr(""),
+					ToolCalls: pendingToolCalls,
+				})
+				pendingToolCalls = nil
+			}
+		}
+
 		for _, item := range v {
 			switch val := item.(type) {
 			case string:
+				flushToolCalls()
 				if val != "" {
 					msgs = append(msgs, types.ChatMessage{Role: "user", Content: strPtr(val)})
 				}
@@ -173,14 +189,16 @@ func convertResponsesInputToChatMessages(input any) []types.ChatMessage {
 					callID, _ := val["call_id"].(string)
 					name, _ := val["name"].(string)
 					args, _ := val["arguments"].(string)
-					msgs = append(msgs, types.ChatMessage{
-						Role:    "assistant",
-						Content: strPtr(""),
-						ToolCalls: []types.ToolCall{
-							{ID: callID, Type: "function", Function: types.FunctionCall{Name: name, Arguments: args}},
+					pendingToolCalls = append(pendingToolCalls, types.ToolCall{
+						ID:   callID,
+						Type: "function",
+						Function: types.FunctionCall{
+							Name:      name,
+							Arguments: args,
 						},
 					})
 				case "function_call_output":
+					flushToolCalls()
 					callID, _ := val["call_id"].(string)
 					output, _ := val["output"].(string)
 					msgs = append(msgs, types.ChatMessage{
@@ -189,7 +207,7 @@ func convertResponsesInputToChatMessages(input any) []types.ChatMessage {
 						Content:    strPtr(output),
 					})
 				default:
-					// message format
+					flushToolCalls()
 					role := NormalizeRole(val["role"].(string))
 					text := extractInputTextMessage(val)
 					if text != "" {
@@ -198,6 +216,7 @@ func convertResponsesInputToChatMessages(input any) []types.ChatMessage {
 				}
 			}
 		}
+		flushToolCalls()
 		return msgs
 	}
 	return nil

@@ -592,6 +592,9 @@ func (c *Converter) ResponsesToAnthropic(req *types.ResponsesRequest) (*Anthropi
 }
 
 // convertResponsesInputToAnthropicMessages converts Responses API input items to Anthropic messages.
+// Consecutive function_call items are merged into one assistant message,
+// and the following function_call_output items are merged into one user message,
+// as required by the Anthropic Messages API.
 func convertResponsesInputToAnthropicMessages(input any) []AnthropicMessage {
 	if input == nil {
 		return nil
@@ -605,9 +608,27 @@ func convertResponsesInputToAnthropicMessages(input any) []AnthropicMessage {
 		return []AnthropicMessage{{Role: "user", Content: v}}
 	case []any:
 		var msgs []AnthropicMessage
+		var toolUseBlocks []any
+		var toolResultBlocks []any
+
+		flushToolUse := func() {
+			if len(toolUseBlocks) > 0 {
+				msgs = append(msgs, AnthropicMessage{Role: "assistant", Content: toolUseBlocks})
+				toolUseBlocks = nil
+			}
+		}
+		flushToolResult := func() {
+			if len(toolResultBlocks) > 0 {
+				msgs = append(msgs, AnthropicMessage{Role: "user", Content: toolResultBlocks})
+				toolResultBlocks = nil
+			}
+		}
+
 		for _, item := range v {
 			switch val := item.(type) {
 			case string:
+				flushToolUse()
+				flushToolResult()
 				if val != "" {
 					msgs = append(msgs, AnthropicMessage{Role: "user", Content: val})
 				}
@@ -615,35 +636,32 @@ func convertResponsesInputToAnthropicMessages(input any) []AnthropicMessage {
 				itemType, _ := val["type"].(string)
 				switch itemType {
 				case "function_call":
+					flushToolResult()
 					callID, _ := val["call_id"].(string)
 					name, _ := val["name"].(string)
 					argsStr, _ := val["arguments"].(string)
-					var input any = map[string]any{}
+					var inp any = map[string]any{}
 					if argsStr != "" {
-						json.Unmarshal([]byte(argsStr), &input)
+						json.Unmarshal([]byte(argsStr), &inp)
 					}
-					msgs = append(msgs, AnthropicMessage{
-						Role: "assistant",
-						Content: []any{map[string]any{
-							"type":  "tool_use",
-							"id":    callID,
-							"name":  name,
-							"input": input,
-						}},
+					toolUseBlocks = append(toolUseBlocks, map[string]any{
+						"type":  "tool_use",
+						"id":    callID,
+						"name":  name,
+						"input": inp,
 					})
 				case "function_call_output":
+					flushToolUse()
 					callID, _ := val["call_id"].(string)
 					output, _ := val["output"].(string)
-					msgs = append(msgs, AnthropicMessage{
-						Role: "user",
-						Content: []any{map[string]any{
-							"type":        "tool_result",
-							"tool_use_id": callID,
-							"content":     output,
-						}},
+					toolResultBlocks = append(toolResultBlocks, map[string]any{
+						"type":        "tool_result",
+						"tool_use_id": callID,
+						"content":     output,
 					})
 				default:
-					// message format: extract text from content array
+					flushToolUse()
+					flushToolResult()
 					role := NormalizeRole(val["role"].(string))
 					text := extractMessageContentText(val)
 					if text != "" {
@@ -652,6 +670,8 @@ func convertResponsesInputToAnthropicMessages(input any) []AnthropicMessage {
 				}
 			}
 		}
+		flushToolUse()
+		flushToolResult()
 		return msgs
 	}
 	return nil

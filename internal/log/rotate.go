@@ -102,6 +102,10 @@ func (w *DailyRotateWriter) rotate(now time.Time) error {
 		return fmt.Errorf("failed to open log file: %w", err)
 	}
 
+	// Sync seek position with actual file size so WriteWithOffset returns
+	// correct offsets after reopening an existing file with O_APPEND.
+	f.Seek(0, io.SeekEnd)
+
 	w.file = f
 	w.current = dateStr
 
