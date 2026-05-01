@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"embed"
 	"encoding/json"
+	"fmt"
 	"io"
 	"io/fs"
 	"log/slog"
@@ -28,7 +29,9 @@ var staticFS embed.FS
 const ctxProviderKey = "provider_key"
 
 const (
-	upstreamTimeout = 30 * time.Second // connection + first-byte timeout for upstream requests
+	upstreamTimeout     = 30 * time.Second // connection + first-byte timeout for upstream requests
+	upstreamBodyTimeout = 10 * time.Minute // overall timeout for upstream response body
+	maxRequestBodyBytes = 50 * 1024 * 1024 // 50 MiB max request body
 )
 
 type Handler struct {
@@ -573,8 +576,6 @@ func (h *Handler) streamToChatSSE(c *gin.Context, resp *http.Response, convertFn
 	c.Writer.WriteString("data: [DONE]\n\n")
 	if canFlush {
 		flusher.Flush()
-		c.Writer.WriteString("data: [DONE]\n\n")
-		flusher.Flush()
 	}
 	return buf.String()
 }
@@ -633,23 +634,42 @@ func (h *Handler) streamAnthropicToResponsesSSE(c *gin.Context, resp *http.Respo
 	return buf.String()
 }
 
+// readBody reads the request body with a size limit. Returns 413 if the body exceeds the limit.
+func readBody(c *gin.Context) ([]byte, error) {
+	body, err := io.ReadAll(io.LimitReader(c.Request.Body, maxRequestBodyBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(body) > maxRequestBodyBytes {
+		return nil, fmt.Errorf("request body exceeds %d bytes limit", maxRequestBodyBytes)
+	}
+	return body, nil
+}
+
 // handleResponses handles /v1/responses endpoint (Codex CLI, OpenAI Responses API).
 func (h *Handler) handleResponses(c *gin.Context) {
-	body, err := io.ReadAll(c.Request.Body)
+	body, err := readBody(c)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"code": "invalid_request", "message": "failed to read request body"}})
+		status := http.StatusBadRequest
+		if len(body) > maxRequestBodyBytes {
+			status = http.StatusRequestEntityTooLarge
+		}
+		c.JSON(status, gin.H{"error": gin.H{"code": "invalid_request", "message": err.Error()}})
 		return
 	}
 	h.executePipeline(c, converter.FormatResponses, body)
 }
 
-// handleAnthropic handles /v1/messages endpoint (Claude Code, Anthropic Messages API).
 // handleCountTokens implements POST /v1/messages/count_tokens.
 // It counts tokens for an Anthropic-format request body without calling the model.
 func (h *Handler) handleCountTokens(c *gin.Context) {
-	body, err := io.ReadAll(c.Request.Body)
+	body, err := readBody(c)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"type": "invalid_request_error", "message": "failed to read request body"}})
+		status := http.StatusBadRequest
+		if len(body) > maxRequestBodyBytes {
+			status = http.StatusRequestEntityTooLarge
+		}
+		c.JSON(status, gin.H{"error": gin.H{"type": "invalid_request_error", "message": err.Error()}})
 		return
 	}
 	count := router.CountTokens(body)
@@ -657,9 +677,13 @@ func (h *Handler) handleCountTokens(c *gin.Context) {
 }
 
 func (h *Handler) handleAnthropic(c *gin.Context) {
-	body, err := io.ReadAll(c.Request.Body)
+	body, err := readBody(c)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"type": "invalid_request_error", "message": "failed to read request body"}})
+		status := http.StatusBadRequest
+		if len(body) > maxRequestBodyBytes {
+			status = http.StatusRequestEntityTooLarge
+		}
+		c.JSON(status, gin.H{"error": gin.H{"type": "invalid_request_error", "message": err.Error()}})
 		return
 	}
 	h.executePipeline(c, converter.FormatAnthropic, body)
@@ -667,9 +691,13 @@ func (h *Handler) handleAnthropic(c *gin.Context) {
 
 // handleChat handles /v1/chat/completions endpoint (Chat Completions passthrough).
 func (h *Handler) handleChat(c *gin.Context) {
-	body, err := io.ReadAll(c.Request.Body)
+	body, err := readBody(c)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"code": "invalid_request", "message": "failed to read request body"}})
+		status := http.StatusBadRequest
+		if len(body) > maxRequestBodyBytes {
+			status = http.StatusRequestEntityTooLarge
+		}
+		c.JSON(status, gin.H{"error": gin.H{"code": "invalid_request", "message": err.Error()}})
 		return
 	}
 	h.executePipeline(c, converter.FormatChat, body)

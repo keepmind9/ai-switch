@@ -1,7 +1,6 @@
 package converter
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -25,181 +24,16 @@ type ConvertedRequest struct {
 	IsStreaming  bool
 }
 
-// ConvertRequest converts a client request to upstream format.
-// clientFormat is "responses", "anthropic", or "chat".
-// upstreamFormat is from config. body is raw JSON.
-func (c *Converter) ConvertRequest(clientFormat, upstreamFormat string, body []byte, defaultModel string, modelMap map[string]string) (*ConvertedRequest, error) {
-	resolveModel := func(m string) string {
-		if modelMap != nil {
-			if mapped, ok := modelMap[m]; ok {
-				return mapped
-			}
-		}
-		return m
-	}
-
-	// Same format: passthrough with model resolution
-	if clientFormat == upstreamFormat || (upstreamFormat == "" && clientFormat == FormatChat) {
-		var raw map[string]any
-		if err := json.Unmarshal(body, &raw); err != nil {
-			return nil, err
-		}
-
-		model := defaultModel
-		if m, ok := raw["model"].(string); ok && m != "" {
-			model = m
-		}
-		model = resolveModel(model)
-		raw["model"] = model
-
-		isStreaming := false
-		if s, ok := raw["stream"].(bool); ok {
-			isStreaming = s
-		}
-
-		newBody, err := json.Marshal(raw)
-		if err != nil {
-			return nil, err
-		}
-
-		return &ConvertedRequest{
-			UpstreamBody: newBody,
-			Model:        model,
-			IsStreaming:  isStreaming,
-		}, nil
-	}
-
-	// Cross-format conversion through Chat hub
-	switch clientFormat {
-	case FormatResponses:
-		return c.convertResponsesRequest(upstreamFormat, body, defaultModel, resolveModel)
-	case FormatAnthropic:
-		return c.convertAnthropicRequest(upstreamFormat, body, defaultModel, resolveModel)
-	case FormatChat:
-		return c.convertChatRequest(upstreamFormat, body, defaultModel, resolveModel)
-	}
-
-	return nil, fmt.Errorf("unsupported client format: %s", clientFormat)
+func NewConverter() *Converter {
+	return &Converter{}
 }
 
-func (c *Converter) convertResponsesRequest(upstreamFormat string, body []byte, defaultModel string, resolveModel func(string) string) (*ConvertedRequest, error) {
-	var req types.ResponsesRequest
-	if err := json.Unmarshal(body, &req); err != nil {
-		return nil, err
+// NormalizeRole maps unsupported roles to "user".
+func NormalizeRole(role string) string {
+	if role == "" || role == "system" || role == "developer" {
+		return "user"
 	}
-
-	model := req.Model
-	if model == "" {
-		model = defaultModel
-	}
-
-	switch upstreamFormat {
-	case FormatChat, "":
-		chatReq, err := c.ResponsesToChat(&req)
-		if err != nil {
-			return nil, err
-		}
-		chatReq.Model = resolveModel(defaultModel)
-		chatBody, err := json.Marshal(chatReq)
-		if err != nil {
-			return nil, err
-		}
-		return &ConvertedRequest{UpstreamBody: chatBody, Model: model, IsStreaming: req.Stream}, nil
-
-	case FormatAnthropic:
-		anthReq, err := c.ResponsesToAnthropic(&req)
-		if err != nil {
-			return nil, err
-		}
-		anthReq.Model = resolveModel(model)
-		anthReq.Stream = req.Stream
-		anthBody, err := json.Marshal(anthReq)
-		if err != nil {
-			return nil, err
-		}
-		return &ConvertedRequest{UpstreamBody: anthBody, Model: model, IsStreaming: req.Stream}, nil
-
-	case FormatResponses:
-		// Passthrough handled above, shouldn't reach here
-	}
-
-	return nil, fmt.Errorf("unsupported upstream format for responses client: %s", upstreamFormat)
-}
-
-func (c *Converter) convertAnthropicRequest(upstreamFormat string, body []byte, defaultModel string, resolveModel func(string) string) (*ConvertedRequest, error) {
-	var req AnthropicRequest
-	if err := json.Unmarshal(body, &req); err != nil {
-		return nil, err
-	}
-
-	model := req.Model
-	if model == "" {
-		model = defaultModel
-	}
-
-	switch upstreamFormat {
-	case FormatChat, "":
-		chatReq, err := c.AnthropicToChat(&req)
-		if err != nil {
-			return nil, err
-		}
-		chatReq.Model = resolveModel(defaultModel)
-		chatBody, err := json.Marshal(chatReq)
-		if err != nil {
-			return nil, err
-		}
-		return &ConvertedRequest{UpstreamBody: chatBody, Model: model, IsStreaming: req.Stream}, nil
-
-	case FormatResponses:
-		respReq, err := c.AnthropicToResponses(&req)
-		if err != nil {
-			return nil, err
-		}
-		respReq.Model = resolveModel(model)
-		respBody, err := json.Marshal(respReq)
-		if err != nil {
-			return nil, err
-		}
-		return &ConvertedRequest{UpstreamBody: respBody, Model: model, IsStreaming: req.Stream}, nil
-
-	case FormatAnthropic:
-		// Passthrough handled above
-	}
-
-	return nil, fmt.Errorf("unsupported upstream format for anthropic client: %s", upstreamFormat)
-}
-
-func (c *Converter) convertChatRequest(upstreamFormat string, body []byte, defaultModel string, resolveModel func(string) string) (*ConvertedRequest, error) {
-	var req types.ChatRequest
-	if err := json.Unmarshal(body, &req); err != nil {
-		return nil, err
-	}
-
-	model := req.Model
-	if model == "" {
-		model = defaultModel
-	}
-
-	switch upstreamFormat {
-	case FormatAnthropic:
-		anthReq, err := c.ChatRequestToAnthropic(&req)
-		if err != nil {
-			return nil, err
-		}
-		anthReq.Model = resolveModel(model)
-		anthReq.Stream = req.Stream
-		anthBody, err := json.Marshal(anthReq)
-		if err != nil {
-			return nil, err
-		}
-		return &ConvertedRequest{UpstreamBody: anthBody, Model: model, IsStreaming: req.Stream}, nil
-
-	case FormatChat, "":
-	case FormatResponses:
-		// Passthrough for both
-	}
-
-	return nil, fmt.Errorf("unsupported upstream format for chat client: %s", upstreamFormat)
+	return role
 }
 
 func BuildResponsesFromChat(chatReq *types.ChatRequest, stream bool) *types.ResponsesRequest {
@@ -269,70 +103,6 @@ func BuildResponsesFromChat(chatReq *types.ChatRequest, stream bool) *types.Resp
 		Tools:        tools,
 		ToolChoice:   chatReq.ToolChoice,
 	}
-}
-
-// ResponsesToChatResponse converts a Responses API response back to Chat Completions format.
-func (c *Converter) ResponsesToChatResponse(resp *types.ResponsesResponse) (*types.ChatResponse, error) {
-	chatResp := &types.ChatResponse{
-		ID:      resp.ID,
-		Object:  "chat.completion",
-		Created: resp.Created,
-		Model:   resp.Model,
-	}
-	if resp.Usage != nil {
-		chatResp.Usage = types.ChatUsage{
-			PromptTokens:     resp.Usage.InputTokens,
-			CompletionTokens: resp.Usage.OutputTokens,
-			TotalTokens:      resp.Usage.TotalTokens,
-		}
-	}
-
-	var contentText string
-	var toolCalls []types.ToolCall
-	for _, item := range resp.Responses {
-		switch item.Type {
-		case "message", "":
-			for _, block := range item.Content {
-				if block.Type == "output_text" {
-					contentText += block.Text
-				}
-			}
-		case "function_call":
-			toolCalls = append(toolCalls, types.ToolCall{
-				ID:   item.CallID,
-				Type: "function",
-				Function: types.FunctionCall{
-					Name:      item.Name,
-					Arguments: item.Arguments,
-				},
-			})
-		}
-	}
-
-	finishReason := "stop"
-	if len(toolCalls) > 0 {
-		finishReason = "tool_calls"
-	}
-	if contentText != "" || len(toolCalls) > 0 {
-		chatResp.Choices = []types.ChatChoice{{
-			Index:        0,
-			Message:      types.ChatMessage{Role: "assistant", Content: strPtr(contentText), ToolCalls: toolCalls},
-			FinishReason: finishReason,
-		}}
-	}
-	return chatResp, nil
-}
-
-func NewConverter() *Converter {
-	return &Converter{}
-}
-
-// NormalizeRole maps unsupported roles to "user".
-func NormalizeRole(role string) string {
-	if role == "" || role == "system" || role == "developer" {
-		return "user"
-	}
-	return role
 }
 
 // ResponsesToChat converts OpenAI Responses API request to Chat Completions API request
@@ -449,40 +219,6 @@ func extractInputTextMessage(msg map[string]any) string {
 				if text, ok := cMap["text"].(string); ok {
 					parts = append(parts, text)
 				}
-			}
-		}
-		return strings.Join(parts, "\n")
-	}
-	return ""
-}
-
-// extractInputText extracts text from various input formats
-// Handles: string, []string, or []message objects (Codex format)
-func extractInputText(input any) string {
-	if input == nil {
-		return ""
-	}
-
-	switch v := input.(type) {
-	case string:
-		return v
-	case []any:
-		var parts []string
-		for _, item := range v {
-			switch msg := item.(type) {
-			case map[string]any:
-				// Handle message format: {"type": "message", "role": "...", "content": [...]}
-				if content, ok := msg["content"].([]any); ok {
-					for _, c := range content {
-						if cMap, ok := c.(map[string]any); ok {
-							if text, ok := cMap["text"].(string); ok {
-								parts = append(parts, text)
-							}
-						}
-					}
-				}
-			case string:
-				parts = append(parts, msg)
 			}
 		}
 		return strings.Join(parts, "\n")

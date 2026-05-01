@@ -265,7 +265,8 @@ func (h *Handler) convertChatReq(ctx *hook.Context) error {
 // stepForward sends the converted request to the upstream API.
 func (h *Handler) stepForward(ctx *hook.Context) error {
 	upstreamURL := buildUpstreamURL(ctx.RouteResult)
-	req, err := http.NewRequest("POST", upstreamURL, bytes.NewReader(ctx.UpstreamReqBody))
+
+	req, err := http.NewRequestWithContext(ctx.GinCtx.Request.Context(), "POST", upstreamURL, bytes.NewReader(ctx.UpstreamReqBody))
 	if err != nil {
 		writeUpstreamError(ctx.GinCtx, "failed to create request: "+err.Error())
 		return err
