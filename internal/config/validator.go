@@ -191,9 +191,9 @@ func sortedScenes() []string {
 	return scenes
 }
 
-// SplitProviderModel splits "provider:model" format. Plain names use defaultProvider.
+// SplitProviderModel splits "provider|model" format. Plain names use defaultProvider.
 func SplitProviderModel(value, defaultProvider string) (string, string) {
-	if idx := strings.LastIndex(value, ":"); idx > 0 {
+	if idx := strings.LastIndex(value, "|"); idx > 0 {
 		return value[:idx], value[idx+1:]
 	}
 	return defaultProvider, value

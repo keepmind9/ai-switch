@@ -631,7 +631,7 @@ func validateRouteModels(cfg *config.Config, route config.RouteRule) []string {
 }
 
 // collectRouteModels extracts all model references from a route rule,
-// resolving provider:model format, grouped by provider key.
+// resolving provider|model format, grouped by provider key.
 func collectRouteModels(route config.RouteRule) map[string][]string {
 	result := make(map[string][]string)
 	add := func(value string) {

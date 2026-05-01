@@ -137,8 +137,8 @@ function openCreate() {
 }
 
 function parseModelValue(v: string, fallbackProvider: string) {
-  if (v && v.includes(':')) {
-    const idx = v.indexOf(':')
+  if (v && v.includes('|')) {
+    const idx = v.indexOf('|')
     return { provider: v.substring(0, idx), model: v.substring(idx + 1) }
   }
   return { provider: fallbackProvider, model: v || "" }
@@ -173,11 +173,11 @@ async function handleDelete(key: string) {
 async function handleSubmit() {
   const sm: Record<string, string> = {}
   for (const item of sceneMapData.value) { 
-    if (item.key && item.provider && item.model) sm[item.key] = `${item.provider}:${item.model}` 
+    if (item.key && item.provider && item.model) sm[item.key] = `${item.provider}|${item.model}`
   }
   const mm: Record<string, string> = {}
   for (const item of modelMapData.value) { 
-    if (item.key && item.provider && item.model) mm[item.key] = `${item.provider}:${item.model}` 
+    if (item.key && item.provider && item.model) mm[item.key] = `${item.provider}|${item.model}`
   }
   
   form.value.scene_map = sm

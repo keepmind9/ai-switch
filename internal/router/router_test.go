@@ -201,7 +201,7 @@ func TestConfigRouter_CrossProviderRouting(t *testing.T) {
 				DefaultModel: "MiniMax-M2.5",
 				SceneMap: map[string]string{
 					"default":   "glm-5.1",
-					"think":     "deepseek:deepseek-chat",
+					"think":     "deepseek|deepseek-chat",
 					"websearch": "glm-4.7",
 				},
 			},
@@ -209,7 +209,7 @@ func TestConfigRouter_CrossProviderRouting(t *testing.T) {
 	}
 	r := NewConfigRouter(config.NewProvider(cfg, ""))
 
-	// think scene → "deepseek:deepseek-chat" → resolves to deepseek provider
+	// think scene → "deepseek|deepseek-chat" → resolves to deepseek provider
 	result, err := r.Route("anthropic", "gw-test", []byte(`{"model":"claude-sonnet","thinking":{"type":"enabled"},"messages":[]}`))
 	require.NoError(t, err)
 	assert.Equal(t, "https://api.deepseek.com", result.BaseURL)
@@ -246,14 +246,14 @@ func TestConfigRouter_CrossProviderModelMap(t *testing.T) {
 				Provider:     "minimax",
 				DefaultModel: "MiniMax-M2.5",
 				ModelMap: map[string]string{
-					"claude-sonnet-4-5": "deepseek:deepseek-chat",
+					"claude-sonnet-4-5": "deepseek|deepseek-chat",
 				},
 			},
 		},
 	}
 	r := NewConfigRouter(config.NewProvider(cfg, ""))
 
-	// ModelMap with provider:model format → resolves to deepseek
+	// ModelMap with provider|model format → resolves to deepseek
 	result, err := r.Route("chat", "gw-test", []byte(`{"model":"claude-sonnet-4-5"}`))
 	require.NoError(t, err)
 	assert.Equal(t, "https://api.deepseek.com", result.BaseURL)
@@ -268,9 +268,9 @@ func TestParseProviderModel(t *testing.T) {
 		expectedProv    string
 		expectedModel   string
 	}{
-		{"deepseek:deepseek-chat", "minimax", "deepseek", "deepseek-chat"},
+		{"deepseek|deepseek-chat", "minimax", "deepseek", "deepseek-chat"},
 		{"MiniMax-M2.5", "minimax", "minimax", "MiniMax-M2.5"},
-		{"zhipu:glm-4.7", "minimax", "zhipu", "glm-4.7"},
+		{"zhipu|glm-4.7", "minimax", "zhipu", "glm-4.7"},
 		{"plain-model", "deepseek", "deepseek", "plain-model"},
 	}
 	for _, tt := range tests {

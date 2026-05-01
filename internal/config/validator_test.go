@@ -17,7 +17,7 @@ func TestValidate_AllErrors(t *testing.T) {
 			"r1": {
 				Provider:     "nonexistent-provider",
 				DefaultModel: "model-a",
-				SceneMap:     map[string]string{"default": "other-provider:model-x"},
+				SceneMap:     map[string]string{"default": "other-provider|model-x"},
 			},
 		},
 	}
@@ -56,7 +56,7 @@ func TestValidate_Warnings(t *testing.T) {
 				Provider:     "deepseek",
 				DefaultModel: "deepseek-chat",
 				SceneMap: map[string]string{
-					"think":  "deepseek:deepseek-chat",
+					"think":  "deepseek|deepseek-chat",
 					"codex":  "model-a",
 					"search": "p2:model-a",
 				},
@@ -150,8 +150,8 @@ func TestValidate_CrossProviderModelRef(t *testing.T) {
 			"r1": {
 				Provider:     "p1",
 				DefaultModel: "model-a",
-				SceneMap:     map[string]string{"think": "p2:model-b"},
-				ModelMap:     map[string]string{"gpt-4": "p2:model-b"},
+				SceneMap:     map[string]string{"think": "p2|model-b"},
+				ModelMap:     map[string]string{"gpt-4": "p2|model-b"},
 			},
 		},
 	}
