@@ -63,6 +63,7 @@ type AnthropicStreamState struct {
 	ReasoningStarted  bool
 	ReasoningClosed   bool
 	ToolBlocks        map[int]*toolBlockState
+	SawToolCall       bool
 }
 
 type toolBlockState struct {

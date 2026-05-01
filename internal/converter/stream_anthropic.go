@@ -2,10 +2,28 @@ package converter
 
 import (
 	"encoding/json"
+	"fmt"
 	"log/slog"
+	"regexp"
+	"sync/atomic"
+	"time"
 
 	"github.com/keepmind9/ai-switch/internal/types"
 )
+
+var (
+	toolIDSanitizer = regexp.MustCompile(`[^a-zA-Z0-9_-]`)
+	toolIDCounter   uint64
+)
+
+// sanitizeToolID ensures the tool call ID conforms to Claude's tool_use.id regex ^[a-zA-Z0-9_-]+$.
+func sanitizeToolID(id string) string {
+	s := toolIDSanitizer.ReplaceAllString(id, "_")
+	if s == "" {
+		s = fmt.Sprintf("toolu_%d_%d", time.Now().UnixNano(), atomic.AddUint64(&toolIDCounter, 1))
+	}
+	return s
+}
 
 // ConvertChatChunkToAnthropicSSE processes a single Chat SSE data line and emits
 // corresponding Anthropic Messages SSE events. Returns true when stream is done.
@@ -55,15 +73,13 @@ func ConvertChatChunkToAnthropicSSE(w SSEWriter, state *AnthropicStreamState, da
 			continue
 		}
 
-		// Tool calls
+		// Process content: tool_calls > reasoning > text (mutually exclusive per delta).
+		// finish_reason is handled separately below so it is never skipped by continue.
 		if len(choice.Delta.ToolCalls) > 0 {
+			state.SawToolCall = true
 			closeReasoningBlock(w, state)
 			processToolCalls(w, state, choice.Delta.ToolCalls, chunk)
-			continue
-		}
-
-		// Reasoning content delta (DeepSeek thinking mode)
-		if choice.Delta.ReasoningContent != nil && *choice.Delta.ReasoningContent != "" {
+		} else if choice.Delta.ReasoningContent != nil && *choice.Delta.ReasoningContent != "" {
 			ensureMessageStarted(w, state, chunk)
 			if !state.ReasoningStarted {
 				state.ReasoningStarted = true
@@ -85,46 +101,40 @@ func ConvertChatChunkToAnthropicSSE(w SSEWriter, state *AnthropicStreamState, da
 				},
 			})
 			state.OutputTokens++
-			continue
-		}
-
-		// Content delta
-		if choice.Delta.Content != nil && *choice.Delta.Content != "" {
+		} else if choice.Delta.Content != nil && *choice.Delta.Content != "" {
 			content := state.TagState.FilterChunk(*choice.Delta.Content, state.ThinkTag)
-			if content == "" {
-				continue
-			}
+			if content != "" {
+				ensureMessageStarted(w, state, chunk)
+				closeReasoningBlock(w, state)
 
-			ensureMessageStarted(w, state, chunk)
-			closeReasoningBlock(w, state)
+				if !state.TextBlockClosed && !state.TextBlockStarted {
+					state.TextBlockStarted = true
+					state.TextBlockIdx = state.nextBlockIndex()
+					w.WriteEvent("content_block_start", map[string]any{
+						"type":  "content_block_start",
+						"index": state.TextBlockIdx,
+						"content_block": map[string]any{
+							"type": "text",
+							"text": "",
+						},
+					})
+				}
 
-			if !state.TextBlockClosed && !state.TextBlockStarted {
-				state.TextBlockStarted = true
-				state.TextBlockIdx = state.nextBlockIndex()
-				w.WriteEvent("content_block_start", map[string]any{
-					"type":  "content_block_start",
+				state.AccText += content
+				state.OutputTokens++
+
+				w.WriteEvent("content_block_delta", map[string]any{
+					"type":  "content_block_delta",
 					"index": state.TextBlockIdx,
-					"content_block": map[string]any{
-						"type": "text",
-						"text": "",
+					"delta": map[string]any{
+						"type": "text_delta",
+						"text": content,
 					},
 				})
 			}
-
-			state.AccText += content
-			state.OutputTokens++
-
-			w.WriteEvent("content_block_delta", map[string]any{
-				"type":  "content_block_delta",
-				"index": state.TextBlockIdx,
-				"delta": map[string]any{
-					"type": "text_delta",
-					"text": content,
-				},
-			})
 		}
 
-		// Finish reason: close blocks, defer message_delta
+		// Always check finish_reason (independent of content type)
 		if choice.FinishReason != "" && choice.FinishReason != "null" {
 			state.FinishReason = chatStopToAnthropic(choice.FinishReason)
 			closeReasoningBlock(w, state)
@@ -239,9 +249,10 @@ func processToolCalls(w SSEWriter, state *AnthropicStreamState, toolCalls []type
 		tbs, exists := state.ToolBlocks[tc.Index]
 		if !exists {
 			blockIdx := state.nextBlockIndex()
+			sanitizedID := sanitizeToolID(tc.ID)
 			tbs = &toolBlockState{
 				AnthropicIndex: blockIdx,
-				ID:             tc.ID,
+				ID:             sanitizedID,
 				Name:           tc.Function.Name,
 			}
 			state.ToolBlocks[tc.Index] = tbs
@@ -251,7 +262,7 @@ func processToolCalls(w SSEWriter, state *AnthropicStreamState, toolCalls []type
 				"index": blockIdx,
 				"content_block": map[string]any{
 					"type":  "tool_use",
-					"id":    tc.ID,
+					"id":    sanitizedID,
 					"name":  tc.Function.Name,
 					"input": map[string]any{},
 				},
@@ -288,6 +299,8 @@ func closeOpenToolBlocks(w SSEWriter, state *AnthropicStreamState) {
 }
 
 // emitAnthropicDeltaAndStop emits message_delta (with real token counts) + message_stop.
+// Overrides stop_reason to "tool_use" when tool calls were seen, regardless of what
+// the upstream model sent (some models send "stop" instead of "tool_calls").
 func emitAnthropicDeltaAndStop(w SSEWriter, state *AnthropicStreamState) {
 	if state.DeltaSent {
 		return
@@ -296,10 +309,17 @@ func emitAnthropicDeltaAndStop(w SSEWriter, state *AnthropicStreamState) {
 
 	closeOpenToolBlocks(w, state)
 
+	stopReason := state.FinishReason
+	if state.SawToolCall {
+		stopReason = "tool_use"
+	} else if stopReason == "" {
+		stopReason = "end_turn"
+	}
+
 	w.WriteEvent("message_delta", map[string]any{
 		"type": "message_delta",
 		"delta": map[string]any{
-			"stop_reason": state.FinishReason,
+			"stop_reason": stopReason,
 		},
 		"usage": map[string]any{
 			"input_tokens":  state.InputTokens,
