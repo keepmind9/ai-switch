@@ -4,6 +4,8 @@ import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { getTraces, type TraceItem } from '@/api/traces'
 
+defineOptions({ name: 'Traces' })
+
 const { t } = useI18n()
 const route = useRoute()
 const items = ref<TraceItem[]>([])
@@ -36,8 +38,8 @@ const fetchList = async (c?: string) => {
   loading.value = true
   try {
     const res = await getTraces({
-        ...filter, 
-        cursor: c || '', 
+        ...filter,
+        cursor: c || '',
         status: filter.status ? Number(filter.status) : undefined
     })
     items.value = res.items
@@ -50,11 +52,14 @@ const fetchList = async (c?: string) => {
   }
 }
 
-onMounted(() => {
+const syncFromQuery = () => {
   if (route.query.start_time) filter.start_time = route.query.start_time as string
   if (route.query.end_time) filter.end_time = route.query.end_time as string
   if (route.query.session_id) filter.session_id = route.query.session_id as string
-  
+}
+
+onMounted(() => {
+  syncFromQuery()
   if (filter.start_time && filter.end_time) {
     fetchList()
   }

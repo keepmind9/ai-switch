@@ -1,14 +1,15 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, reactive } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ArrowDown, ArrowUp, Document, View, Switch } from '@element-plus/icons-vue'
 import { getTraceDetail, type TraceDetail, type TraceDetailRecord } from '@/api/traces'
 
 const { t } = useI18n()
 const route = useRoute()
+const router = useRouter()
 
-const goBack = () => window.history.back()
+const goBack = () => router.back()
 const detail = ref<TraceDetail | null>(null)
 const loading = ref(false)
 const expanded = reactive<Record<string, { headers: boolean; body: boolean }>>({})

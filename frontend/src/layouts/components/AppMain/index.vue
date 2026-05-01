@@ -10,7 +10,9 @@ const settingsStore = useSettingsStore()
     <div class="app-scrollbar">
       <router-view v-slot="{ Component, route }">
         <transition name="el-fade-in" mode="out-in">
-          <component :is="Component" :key="route.path" class="app-container-grow" />
+          <keep-alive include="Traces">
+            <component :is="Component" :key="route.path" class="app-container-grow" />
+          </keep-alive>
         </transition>
       </router-view>
       <Footer v-if="settingsStore.showFooter" />
