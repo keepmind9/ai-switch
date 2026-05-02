@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"sort"
 	"strings"
 
 	"github.com/keepmind9/ai-switch/internal/config"
@@ -15,14 +16,17 @@ import (
 var agentEnvMap = map[string]struct {
 	baseURLKey string
 	apiKeyKey  string
+	pathSuffix string
 }{
 	"claude": {
 		baseURLKey: "ANTHROPIC_BASE_URL",
 		apiKeyKey:  "ANTHROPIC_API_KEY",
+		pathSuffix: "",
 	},
 	"codex": {
 		baseURLKey: "OPENAI_BASE_URL",
 		apiKeyKey:  "OPENAI_API_KEY",
+		pathSuffix: "/v1",
 	},
 }
 
@@ -57,35 +61,31 @@ func runAgent(configPath, routeKey, agentName string, agentArgs []string) error 
 	// Look up agent binary
 	binary, err := exec.LookPath(agentName)
 	if err != nil {
-		// Try common binary names
-		aliases := map[string]string{
-			"claude": "claude",
-			"codex":  "codex",
-		}
-		if alias, found := aliases[agentName]; found {
-			binary, err = exec.LookPath(alias)
-		}
-		if err != nil {
-			return fmt.Errorf("agent %q not found in PATH", agentName)
-		}
+		return fmt.Errorf("agent %q not found in PATH", agentName)
 	}
 
-	// Load config to get server address
-	resolvedPath, err := config.DefaultConfigPath(configPath)
-	if err != nil {
-		return fmt.Errorf("failed to resolve config path: %w", err)
+	// Resolve server address: config file > defaults; load failure is fatal
+	host := config.DefaultHost
+	port := config.DefaultPort
+
+	resolvedPath, _ := config.DefaultConfigPath(configPath)
+	if resolvedPath != "" {
+		if _, statErr := os.Stat(resolvedPath); statErr == nil {
+			// Config file exists — load it, failure is fatal
+			cfg, err := config.Load(resolvedPath)
+			if err != nil {
+				return fmt.Errorf("failed to load config from %s: %w", resolvedPath, err)
+			}
+			host = cfg.Server.Host
+			port = cfg.Server.Port
+		}
+		// Config file does not exist — use defaults silently
 	}
 
-	cfg, err := config.Load(resolvedPath)
-	if err != nil {
-		return fmt.Errorf("failed to load config: %w", err)
-	}
-
-	host := cfg.Server.Host
 	if host == "0.0.0.0" {
 		host = "127.0.0.1"
 	}
-	baseURL := fmt.Sprintf("http://%s:%d", host, cfg.Server.Port)
+	baseURL := fmt.Sprintf("http://%s:%d%s", host, port, envConfig.pathSuffix)
 
 	slog.Info("launching agent",
 		"agent", agentName,
@@ -100,9 +100,16 @@ func runAgent(configPath, routeKey, agentName string, agentArgs []string) error 
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
-	// Inherit current env, then set agent-specific vars
-	cmd.Env = os.Environ()
-	cmd.Env = append(cmd.Env,
+	// Inherit current env, filtering out keys we override to avoid duplicates
+	overrideKeys := map[string]bool{envConfig.baseURLKey: true, envConfig.apiKeyKey: true}
+	baseEnv := make([]string, 0, len(os.Environ())+2)
+	for _, e := range os.Environ() {
+		k, _, _ := strings.Cut(e, "=")
+		if !overrideKeys[k] {
+			baseEnv = append(baseEnv, e)
+		}
+	}
+	cmd.Env = append(baseEnv,
 		envConfig.baseURLKey+"="+baseURL,
 		envConfig.apiKeyKey+"="+routeKey,
 	)
@@ -122,5 +129,6 @@ func supportedAgents() string {
 	for k := range agentEnvMap {
 		names = append(names, k)
 	}
+	sort.Strings(names)
 	return strings.Join(names, ", ")
 }
