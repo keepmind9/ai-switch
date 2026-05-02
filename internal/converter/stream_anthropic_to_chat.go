@@ -2,6 +2,7 @@ package converter
 
 import (
 	"encoding/json"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -53,6 +54,7 @@ func ConvertAnthropicLineToChat(state *AnthropicToChatState, line string) any {
 
 	var raw map[string]any
 	if err := json.Unmarshal([]byte(data), &raw); err != nil {
+		slog.Warn("failed to parse anthropic SSE line", "error", err, "data", data)
 		return nil
 	}
 

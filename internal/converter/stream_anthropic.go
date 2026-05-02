@@ -43,6 +43,7 @@ func ConvertChatChunkToAnthropicSSE(w SSEWriter, state *AnthropicStreamState, da
 
 	var chunk types.ChatStreamResponse
 	if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+		slog.Warn("failed to parse chat SSE chunk", "error", err, "data", data)
 		return false
 	}
 
