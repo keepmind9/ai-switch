@@ -96,6 +96,7 @@ export OPENAI_API_KEY=<route-key>
 ```
 Claude Code ──→ ai-switch ──→ DeepSeek (chat)
 Codex CLI  ──→          ──→ 智谱    (anthropic)
+任意工具    ──→          ──→ Gemini   (gemini)
 任意工具    ──→          ──→ MiniMax  (chat)
 ```
 
@@ -120,12 +121,27 @@ providers:
     name: "DeepSeek"
     base_url: "https://api.deepseek.com/v1"
     api_key: "${DEEPSEEK_API_KEY}"    # 支持 ${ENV_VAR} 环境变量展开
-    format: "chat"                     # chat（默认）| responses | anthropic
+    format: "chat"                     # chat（默认）| responses | anthropic | gemini
     think_tag: "think"                 # 可选：去除响应中的推理标签
     models:                            # 可选：用于配置校验警告
       - "deepseek-chat"
       - "deepseek-reasoner"
 ```
+
+### Gemini Provider
+
+将 Google Gemini 作为上游：
+
+```yaml
+providers:
+  google:
+    name: "Google Gemini"
+    base_url: "https://generativelanguage.googleapis.com"
+    api_key: "${GOOGLE_API_KEY}"
+    format: "gemini"
+```
+
+无需配置 `path` — ai-switch 会自动构建 `/v1beta/models/{model}:generateContent`。
 
 ### Route
 
@@ -236,6 +252,8 @@ ai-switch serve -c config.yaml    # 指定配置文件启动
 ai-switch stop                    # 停止后台守护进程
 ai-switch check -c config.yaml    # 校验配置文件
 ai-switch version                 # 查看版本信息
+ai-switch agent <route-key> claude # 通过 ai-switch 启动 Claude Code
+ai-switch agent <route-key> codex  # 通过 ai-switch 启动 Codex CLI
 ```
 
 不带子命令时默认执行 `serve`：
@@ -243,6 +261,22 @@ ai-switch version                 # 查看版本信息
 ```bash
 ai-switch -c config.yaml          # 等同于：ai-switch serve -c config.yaml
 ```
+
+### Agent 启动器
+
+自动配置环境变量，一键启动 AI Agent：
+
+```bash
+# 启动 Claude Code
+ai-switch agent my-route-key claude --continue
+
+# 启动 Codex CLI
+ai-switch agent my-route-key codex --model o4-mini
+```
+
+自动设置 `ANTHROPIC_BASE_URL` / `ANTHROPIC_API_KEY`（Claude）或 `OPENAI_BASE_URL` / `OPENAI_API_KEY`（Codex），指向本地 ai-switch。无需手动配置环境变量。
+
+route key 用作 API Key。Agent 退出码会透传。
 
 ### 配置校验
 

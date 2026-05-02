@@ -96,6 +96,7 @@ That's it — your CLI tool will now route requests through ai-switch to your co
 ```
 Claude Code ──→ ai-switch ──→ DeepSeek (chat)
 Codex CLI  ──→          ──→ Zhipu    (anthropic)
+Any tool   ──→          ──→ Gemini   (gemini)
 Any tool   ──→          ──→ MiniMax  (chat)
 ```
 
@@ -119,12 +120,27 @@ providers:
     name: "DeepSeek"
     base_url: "https://api.deepseek.com/v1"
     api_key: "${DEEPSEEK_API_KEY}"    # supports ${ENV_VAR} expansion
-    format: "chat"                     # chat (default) | responses | anthropic
+    format: "chat"                     # chat (default) | responses | anthropic | gemini
     think_tag: "think"                 # optional: strip reasoning tags from responses
     models:                            # optional: for validation warnings
       - "deepseek-chat"
       - "deepseek-reasoner"
 ```
+
+### Gemini Provider
+
+Use Google Gemini as upstream:
+
+```yaml
+providers:
+  google:
+    name: "Google Gemini"
+    base_url: "https://generativelanguage.googleapis.com"
+    api_key: "${GOOGLE_API_KEY}"
+    format: "gemini"
+```
+
+No `path` needed — ai-switch automatically builds `/v1beta/models/{model}:generateContent`.
 
 ### Routes
 
@@ -235,6 +251,8 @@ ai-switch serve -c config.yaml    # Start with custom config
 ai-switch stop                    # Stop the background daemon
 ai-switch check -c config.yaml    # Validate config without starting
 ai-switch version                 # Print version info
+ai-switch agent <route-key> claude # Launch Claude Code via ai-switch
+ai-switch agent <route-key> codex  # Launch Codex CLI via ai-switch
 ```
 
 Running without a subcommand defaults to `serve`:
@@ -242,6 +260,22 @@ Running without a subcommand defaults to `serve`:
 ```bash
 ai-switch -c config.yaml          # Same as: ai-switch serve -c config.yaml
 ```
+
+### Agent Launcher
+
+Launch AI agents with environment variables auto-configured from a route key:
+
+```bash
+# Launch Claude Code
+ai-switch agent my-route-key claude --continue
+
+# Launch Codex CLI
+ai-switch agent my-route-key codex --model o4-mini
+```
+
+This sets `ANTHROPIC_BASE_URL` / `ANTHROPIC_API_KEY` for Claude, or `OPENAI_BASE_URL` / `OPENAI_API_KEY` for Codex, pointing them at your local ai-switch instance. No manual env config needed.
+
+The route key is used as the API key. Agent exit codes are passed through.
 
 ### Config validation
 
