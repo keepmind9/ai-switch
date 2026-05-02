@@ -320,6 +320,7 @@ onMounted(load)
                   <el-option label="chat" value="chat" />
                   <el-option label="anthropic" value="anthropic" />
                   <el-option label="responses" value="responses" />
+                  <el-option label="gemini" value="gemini" />
                 </el-select>
               </el-form-item>
             </el-col>
