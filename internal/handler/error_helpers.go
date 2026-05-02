@@ -23,12 +23,12 @@ var errorStatusMap = map[string]int{
 }
 
 // errorTypeToStatus maps an upstream error type to an HTTP status code.
-// Returns http.StatusBadGateway for unknown types.
+// Returns 0 for unknown types so callers can fall back to the upstream status.
 func errorTypeToStatus(errType string) int {
 	if code, ok := errorStatusMap[errType]; ok {
 		return code
 	}
-	return http.StatusBadGateway
+	return 0
 }
 
 // parseUpstreamError extracts error message and type from an upstream error response.

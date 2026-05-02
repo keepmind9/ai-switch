@@ -155,8 +155,8 @@ func TestErrorTypeToStatus(t *testing.T) {
 		{"overloaded_error", http.StatusServiceUnavailable},
 		{"server_error", http.StatusInternalServerError},
 		{"api_error", http.StatusInternalServerError},
-		{"", http.StatusBadGateway},
-		{"unknown_error", http.StatusBadGateway},
+		{"", 0},
+		{"unknown_error", 0},
 	}
 	for _, tt := range tests {
 		t.Run(tt.errType, func(t *testing.T) {
