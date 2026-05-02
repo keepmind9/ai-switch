@@ -60,6 +60,7 @@ var validFormats = map[string]bool{
 	"chat":      true,
 	"responses": true,
 	"anthropic": true,
+	"gemini":    true,
 }
 
 func ValidFormat(f string) bool {
@@ -128,7 +129,7 @@ func Load(path string) (*Config, error) {
 			p.Format = "chat"
 		}
 		if !validFormats[p.Format] {
-			return nil, fmt.Errorf("invalid format %q for provider %q: must be one of chat, responses, anthropic", p.Format, k)
+			return nil, fmt.Errorf("invalid format %q for provider %q: must be one of chat, responses, anthropic, gemini", p.Format, k)
 		}
 		// Trim trailing slash to keep URL clean.
 		p.BaseURL = strings.TrimRight(p.BaseURL, "/")

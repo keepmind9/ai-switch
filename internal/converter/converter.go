@@ -15,6 +15,7 @@ const (
 	FormatChat      = "chat"
 	FormatResponses = "responses"
 	FormatAnthropic = "anthropic"
+	FormatGemini    = "gemini"
 )
 
 // ConvertedRequest holds the result of request conversion.

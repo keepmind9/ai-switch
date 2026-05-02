@@ -85,7 +85,7 @@ func TestProtocolMatrix(t *testing.T) {
 		{"Codex_Responses", "responses", sendResponsesReq},
 	}
 
-	upstreams := []string{"chat", "anthropic", "responses"}
+	upstreams := []string{"chat", "anthropic", "responses", "gemini"}
 
 	for _, client := range clients {
 		for _, upstream := range upstreams {

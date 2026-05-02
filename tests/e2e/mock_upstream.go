@@ -24,6 +24,30 @@ func (m *mockUpstream) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	isStreaming, _ := body["stream"].(bool)
 	model, _ := body["model"].(string)
 
+	// Gemini uses URL path to indicate streaming
+	if m.format == "gemini" {
+		isStreaming = strings.Contains(r.URL.Path, "streamGenerateContent")
+		// Gemini body may not have model; extract from URL path
+		if model == "" {
+			parts := strings.Split(r.URL.Path, "/")
+			for _, p := range parts {
+				if strings.HasPrefix(p, "models/") {
+					model = strings.TrimPrefix(p, "models/")
+					model = strings.Split(model, ":")[0]
+					break
+				}
+			}
+			// Try another pattern: /v1beta/models/MODEL:action
+			if model == "" {
+				for i, p := range parts {
+					if p == "models" && i+1 < len(parts) {
+						model = strings.Split(parts[i+1], ":")[0]
+					}
+				}
+			}
+		}
+	}
+
 	switch m.format {
 	case "anthropic":
 		if isStreaming {
@@ -36,6 +60,12 @@ func (m *mockUpstream) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			m.writeResponsesSSE(w, model)
 		} else {
 			m.writeResponsesJSON(w, model)
+		}
+	case "gemini":
+		if isStreaming {
+			m.writeGeminiSSE(w, model)
+		} else {
+			m.writeGeminiJSON(w, model)
 		}
 	default: // chat
 		if isStreaming {
@@ -315,4 +345,63 @@ func decodeBody(r *http.Request) map[string]any {
 // isSSE checks if the response is SSE by Content-Type header.
 func isSSE(resp *http.Response) bool {
 	return strings.Contains(resp.Header.Get("Content-Type"), "text/event-stream")
+}
+
+// --- Gemini format ---
+
+func (m *mockUpstream) writeGeminiJSON(w http.ResponseWriter, model string) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"candidates": []map[string]any{
+			{
+				"content": map[string]any{
+					"role":  "model",
+					"parts": []map[string]any{{"text": mockResponseText}},
+				},
+				"finishReason": "STOP",
+			},
+		},
+		"usageMetadata": map[string]any{
+			"promptTokenCount":     10,
+			"candidatesTokenCount": 5,
+			"totalTokenCount":      15,
+		},
+		"modelVersion": model,
+	})
+}
+
+func (m *mockUpstream) writeGeminiSSE(w http.ResponseWriter, model string) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	flusher, _ := w.(http.Flusher)
+
+	// Text chunk
+	writeSSE(w, flusher, "", map[string]any{
+		"candidates": []map[string]any{
+			{
+				"content": map[string]any{
+					"role":  "model",
+					"parts": []map[string]any{{"text": mockResponseText}},
+				},
+			},
+		},
+	})
+
+	// Final chunk with usage + finish
+	writeSSE(w, flusher, "", map[string]any{
+		"candidates": []map[string]any{
+			{
+				"content": map[string]any{
+					"role":  "model",
+					"parts": []map[string]any{},
+				},
+				"finishReason": "STOP",
+			},
+		},
+		"usageMetadata": map[string]any{
+			"promptTokenCount":     10,
+			"candidatesTokenCount": 5,
+			"totalTokenCount":      15,
+		},
+	})
 }

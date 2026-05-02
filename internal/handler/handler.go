@@ -29,7 +29,7 @@ var staticFS embed.FS
 const ctxProviderKey = "provider_key"
 
 const (
-	upstreamTimeout     = 30 * time.Second // connection + first-byte timeout for upstream requests
+	upstreamTimeout     = 3 * time.Minute  // connection + first-byte timeout for upstream requests
 	upstreamBodyTimeout = 10 * time.Minute // overall timeout for upstream response body
 	maxRequestBodyBytes = 50 * 1024 * 1024 // 50 MiB max request body
 )
@@ -277,7 +277,11 @@ func checkUpstreamStreamError(c *gin.Context, resp *http.Response, clientFormat 
 			slog.Warn("SSE error in first upstream event", "message", msg, "type", errType, "client_format", clientFormat)
 			status := resp.StatusCode
 			if status < 400 {
-				status = errorTypeToStatus(errType)
+				if mapped := errorTypeToStatus(errType); mapped != 0 {
+					status = mapped
+				} else {
+					status = http.StatusBadGateway
+				}
 			}
 			writeStreamErrorJSON(c, status, msg, errType, clientFormat)
 			return buf.String(), true
@@ -345,6 +349,150 @@ func (h *Handler) streamChatToClient(c *gin.Context, resp *http.Response, conver
 	if err := scanner.Err(); err != nil {
 		slog.Warn("SSE scanner error", "error", err)
 	}
+	if !done {
+		convertFn(ginWriter, "[DONE]")
+	}
+	if canFlush {
+		flusher.Flush()
+	}
+	return buf.String()
+}
+
+// streamGeminiToChatSSE reads Gemini SSE from upstream and converts to Chat SSE.
+// Unlike streamToChatSSE, this handles Gemini's multi-part responses by draining
+// all buffered chunks from ConvertGeminiLineToChat for each upstream line.
+func (h *Handler) streamGeminiToChatSSE(c *gin.Context, resp *http.Response, model string) (string, int, int) {
+	copyUpstreamHeaders(c, resp)
+
+	if body, handled := checkUpstreamStreamError(c, resp, converter.FormatChat); handled {
+		return body, 0, 0
+	}
+
+	writeSSEHeaders(c)
+
+	flusher, canFlush := c.Writer.(http.Flusher)
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+
+	state := &converter.GeminiToChatState{Model: model}
+	var buf bytes.Buffer
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		buf.WriteString(line + "\n")
+
+		data := converter.ParseSSEDataLine(line)
+		if data == "" {
+			continue
+		}
+		if isSSEErrorData(data) {
+			msg, errType := parseUpstreamError([]byte(data))
+			slog.Warn("SSE error event from upstream", "message", msg, "type", errType)
+			errData, _ := json.Marshal(map[string]any{
+				"error": map[string]any{"message": msg, "type": errType},
+			})
+			c.Writer.WriteString("data: " + string(errData) + "\n\n")
+			break
+		}
+
+		// ConvertGeminiLineToChat returns one buffered chunk per call.
+		// First call parses the line + returns first chunk; subsequent
+		// calls with "" drain remaining buffered chunks.
+		first := converter.ConvertGeminiLineToChat(state, line)
+		if chunk, ok := first.(*types.ChatStreamResponse); ok && chunk != nil {
+			chunkData, _ := json.Marshal(chunk)
+			c.Writer.WriteString("data: " + string(chunkData) + "\n\n")
+			if canFlush {
+				flusher.Flush()
+			}
+		}
+		for {
+			result := converter.ConvertGeminiLineToChat(state, "")
+			chunk, ok := result.(*types.ChatStreamResponse)
+			if !ok || chunk == nil {
+				break
+			}
+			chunkData, _ := json.Marshal(chunk)
+			c.Writer.WriteString("data: " + string(chunkData) + "\n\n")
+			if canFlush {
+				flusher.Flush()
+			}
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		slog.Warn("SSE scanner error", "error", err)
+	}
+
+	// Emit usage chunk + [DONE]
+	if state.InputTokens > 0 || state.OutputTokens > 0 {
+		usageChunk := &types.ChatStreamResponse{
+			ID:      state.ID,
+			Object:  "chat.completion.chunk",
+			Model:   state.Model,
+			Choices: []types.StreamChoice{},
+			Usage: &types.ChatUsage{
+				PromptTokens:     state.InputTokens,
+				CompletionTokens: state.OutputTokens,
+				TotalTokens:      state.InputTokens + state.OutputTokens,
+			},
+		}
+		usageData, _ := json.Marshal(usageChunk)
+		c.Writer.WriteString("data: " + string(usageData) + "\n\n")
+	}
+	c.Writer.WriteString("data: [DONE]\n\n")
+	if canFlush {
+		flusher.Flush()
+	}
+
+	return buf.String(), state.InputTokens, state.OutputTokens
+}
+
+// streamGeminiToClient reads Gemini SSE from upstream and converts to client format.
+// Unlike streamChatToClient, Gemini SSE has no [DONE] sentinel; the convertFn
+// returns true when finishReason is received to signal stream end.
+func (h *Handler) streamGeminiToClient(c *gin.Context, resp *http.Response, convertFn func(w converter.SSEWriter, data string) bool, clientFormat string) string {
+	copyUpstreamHeaders(c, resp)
+
+	if body, handled := checkUpstreamStreamError(c, resp, clientFormat); handled {
+		return body
+	}
+
+	writeSSEHeaders(c)
+
+	ginWriter := &ginSSEWriter{c: c}
+	flusher, canFlush := c.Writer.(http.Flusher)
+
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+
+	var buf bytes.Buffer
+	done := false
+	for scanner.Scan() {
+		line := scanner.Text()
+		buf.WriteString(line + "\n")
+		data := converter.ParseSSEDataLine(line)
+		if data == "" {
+			continue
+		}
+		if isSSEErrorData(data) {
+			msg, errType := parseUpstreamError([]byte(data))
+			slog.Warn("SSE error event from upstream", "message", msg, "type", errType)
+			writeSSEErrorToClient(ginWriter, msg, errType, clientFormat)
+			break
+		}
+		if convertFn(ginWriter, data) {
+			done = true
+			break
+		}
+		if canFlush {
+			flusher.Flush()
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		slog.Warn("SSE scanner error", "error", err)
+	}
+	// If stream ended without finishReason, call convertFn with [DONE] to finalize
 	if !done {
 		convertFn(ginWriter, "[DONE]")
 	}

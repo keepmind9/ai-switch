@@ -12,6 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/keepmind9/ai-switch/internal/converter"
 	"github.com/keepmind9/ai-switch/internal/hook"
+	"github.com/keepmind9/ai-switch/internal/router"
 	"github.com/keepmind9/ai-switch/internal/types"
 )
 
@@ -129,11 +130,16 @@ func (h *Handler) stepRoute(ctx *hook.Context) error {
 		resolvedModel = ctx.ClientModel
 	}
 
+	logURL := buildUpstreamURL(result)
+	if ctx.UpstreamProtocol == converter.FormatGemini {
+		logURL = result.BaseURL + router.GeminiGeneratePath(resolvedModel, ctx.IsStream)
+	}
+
 	slog.Info(ctx.ClientProtocol+" request",
 		"model", ctx.ClientModel,
 		"stream", ctx.IsStream,
 		"upstream_format", ctx.UpstreamProtocol,
-		"upstream_url", buildUpstreamURL(result),
+		"upstream_url", logURL,
 		"resolved_model", resolvedModel,
 	)
 
@@ -211,6 +217,14 @@ func (h *Handler) convertAnthropicReq(ctx *hook.Context) error {
 		respReq.Model = ctx.ClientModel
 		body, _ := json.Marshal(respReq)
 		ctx.UpstreamReqBody = body
+	case converter.FormatGemini:
+		gemReq, err := h.converter.AnthropicToGeminiRequest(req)
+		if err != nil {
+			writeConversionError(ctx.GinCtx, err.Error())
+			return err
+		}
+		body, _ := json.Marshal(gemReq)
+		ctx.UpstreamReqBody = body
 	}
 	return nil
 }
@@ -241,6 +255,14 @@ func (h *Handler) convertResponsesReq(ctx *hook.Context) error {
 		anthReq.Stream = ctx.IsStream
 		body, _ := json.Marshal(anthReq)
 		ctx.UpstreamReqBody = body
+	case converter.FormatGemini:
+		gemReq, err := h.converter.ResponsesToGeminiRequest(req)
+		if err != nil {
+			writeConversionError(ctx.GinCtx, err.Error())
+			return err
+		}
+		body, _ := json.Marshal(gemReq)
+		ctx.UpstreamReqBody = body
 	}
 	return nil
 }
@@ -265,6 +287,14 @@ func (h *Handler) convertChatReq(ctx *hook.Context) error {
 		respReq.Model = ctx.ClientModel
 		body, _ := json.Marshal(respReq)
 		ctx.UpstreamReqBody = body
+	case converter.FormatGemini:
+		gemReq, err := h.converter.ChatToGeminiRequest(req)
+		if err != nil {
+			writeConversionError(ctx.GinCtx, err.Error())
+			return err
+		}
+		body, _ := json.Marshal(gemReq)
+		ctx.UpstreamReqBody = body
 	}
 	return nil
 }
@@ -272,6 +302,11 @@ func (h *Handler) convertChatReq(ctx *hook.Context) error {
 // stepForward sends the converted request to the upstream API.
 func (h *Handler) stepForward(ctx *hook.Context) error {
 	upstreamURL := buildUpstreamURL(ctx.RouteResult)
+	// Gemini uses model-specific paths: /v1beta/models/{model}:{action}
+	if ctx.UpstreamProtocol == converter.FormatGemini {
+		upstreamURL = router.BuildUpstreamURL(ctx.RouteResult.BaseURL,
+			router.GeminiGeneratePath(ctx.ClientModel, ctx.IsStream))
+	}
 
 	req, err := http.NewRequestWithContext(ctx.GinCtx.Request.Context(), "POST", upstreamURL, bytes.NewReader(ctx.UpstreamReqBody))
 	if err != nil {
@@ -296,6 +331,8 @@ func (h *Handler) stepForward(ctx *hook.Context) error {
 	case converter.FormatAnthropic:
 		req.Header.Set("x-api-key", ctx.RouteResult.APIKey)
 		req.Header.Set("anthropic-version", "2023-06-01")
+	case converter.FormatGemini:
+		req.Header.Set("x-goog-api-key", ctx.RouteResult.APIKey)
 	default:
 		req.Header.Set("Authorization", "Bearer "+ctx.RouteResult.APIKey)
 	}
@@ -366,6 +403,8 @@ func (h *Handler) writeNonStreamResponse(ctx *hook.Context) error {
 		h.setNonStreamTokenUsage(ctx, respBody)
 		h.tracer().RecordResponse(ctx)
 		return nil
+	case converter.FormatGemini:
+		return h.writeNonStreamFromGemini(ctx, respBody)
 	}
 
 	return fmt.Errorf("unknown upstream protocol: %s", upstream)
@@ -374,7 +413,11 @@ func (h *Handler) writeNonStreamResponse(ctx *hook.Context) error {
 func (h *Handler) writeNonStreamFromChat(ctx *hook.Context, respBody []byte) error {
 	var chatResp types.ChatResponse
 	if err := json.Unmarshal(respBody, &chatResp); err != nil {
-		writeConversionError(ctx.GinCtx, "failed to parse chat response")
+		msg, _ := parseUpstreamError(respBody)
+		if msg == "" {
+			msg = string(respBody)
+		}
+		writeConversionError(ctx.GinCtx, "failed to parse chat response: "+msg)
 		return err
 	}
 	ctx.InputTokens = int64(chatResp.Usage.TotalTokens)
@@ -407,7 +450,11 @@ func (h *Handler) writeNonStreamFromChat(ctx *hook.Context, respBody []byte) err
 func (h *Handler) writeNonStreamFromAnthropic(ctx *hook.Context, respBody []byte) error {
 	var anthResp converter.AnthropicResponse
 	if err := json.Unmarshal(respBody, &anthResp); err != nil {
-		writeConversionError(ctx.GinCtx, "failed to parse anthropic response")
+		msg, _ := parseUpstreamError(respBody)
+		if msg == "" {
+			msg = string(respBody)
+		}
+		writeConversionError(ctx.GinCtx, "failed to parse anthropic response: "+msg)
 		return err
 	}
 	ctx.InputTokens = int64(anthResp.Usage.InputTokens)
@@ -505,6 +552,8 @@ func (h *Handler) writeStreamResponse(ctx *hook.Context) error {
 			err = h.streamFromAnthropic(ctx, model, thinkTag)
 		case converter.FormatResponses:
 			err = h.streamFromResponses(ctx, model, thinkTag)
+		case converter.FormatGemini:
+			err = h.streamFromGemini(ctx, model, thinkTag)
 		default:
 			err = fmt.Errorf("unknown upstream protocol for streaming: %s", upstream)
 		}
@@ -621,6 +670,83 @@ func writeBadRequest(c *gin.Context, protocol, message string) {
 
 func writeRouteError(c *gin.Context, message string) {
 	c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"code": "route_error", "message": message}})
+}
+
+// streamFromGemini reads Gemini SSE from upstream and converts to the client format.
+func (h *Handler) streamFromGemini(ctx *hook.Context, model, thinkTag string) error {
+	switch ctx.ClientProtocol {
+	case converter.FormatChat:
+		content, inTokens, outTokens := h.streamGeminiToChatSSE(ctx.GinCtx, ctx.UpstreamResp, model)
+		ctx.UpstreamRespBody = []byte(content)
+		ctx.InputTokens = int64(inTokens)
+		ctx.OutputTokens = int64(outTokens)
+
+	case converter.FormatAnthropic:
+		state := &converter.GeminiToAnthropicState{Model: model, ThinkTag: thinkTag}
+		content := h.streamGeminiToClient(ctx.GinCtx, ctx.UpstreamResp, func(w converter.SSEWriter, data string) bool {
+			return converter.ConvertGeminiLineToAnthropicSSE(w, state, data)
+		}, converter.FormatAnthropic)
+		ctx.UpstreamRespBody = []byte(content)
+		ctx.InputTokens = int64(state.InputTokens)
+		ctx.OutputTokens = int64(state.OutputTokens)
+
+	case converter.FormatResponses:
+		state := &converter.GeminiToResponsesState{Model: model, ThinkTag: thinkTag}
+		content := h.streamGeminiToClient(ctx.GinCtx, ctx.UpstreamResp, func(w converter.SSEWriter, data string) bool {
+			return converter.ConvertGeminiLineToResponsesSSE(w, state, data)
+		}, converter.FormatResponses)
+		ctx.UpstreamRespBody = []byte(content)
+		ctx.InputTokens = int64(state.InputTokens)
+		ctx.OutputTokens = int64(state.OutputTokens)
+	}
+	h.tracer().RecordUpstreamResponse(ctx, http.StatusOK)
+	ctx.ClientRespBody = ctx.UpstreamRespBody
+	return nil
+}
+
+// writeNonStreamFromGemini converts a non-streaming Gemini response to the client format.
+func (h *Handler) writeNonStreamFromGemini(ctx *hook.Context, respBody []byte) error {
+	var gemResp converter.GeminiResponse
+	if err := json.Unmarshal(respBody, &gemResp); err != nil {
+		writeConversionError(ctx.GinCtx, fmt.Sprintf("failed to parse gemini response: %s", err.Error()))
+		return err
+	}
+	if gemResp.UsageMetadata != nil {
+		ctx.InputTokens = int64(gemResp.UsageMetadata.PromptTokenCount)
+		ctx.OutputTokens = int64(gemResp.UsageMetadata.CandidatesTokenCount)
+	}
+
+	switch ctx.ClientProtocol {
+	case converter.FormatChat:
+		chatResp, err := h.converter.GeminiResponseToChat(&gemResp, ctx.ClientModel)
+		if err != nil {
+			writeConversionError(ctx.GinCtx, err.Error())
+			return err
+		}
+		body, _ := json.Marshal(chatResp)
+		ctx.ClientRespBody = body
+		ctx.GinCtx.JSON(http.StatusOK, chatResp)
+	case converter.FormatAnthropic:
+		anthResp, err := h.converter.GeminiResponseToAnthropic(&gemResp, ctx.ClientModel, ctx.RouteResult.ThinkTag)
+		if err != nil {
+			writeConversionError(ctx.GinCtx, err.Error())
+			return err
+		}
+		body, _ := json.Marshal(anthResp)
+		ctx.ClientRespBody = body
+		ctx.GinCtx.JSON(http.StatusOK, anthResp)
+	case converter.FormatResponses:
+		responsesResp, err := h.converter.GeminiResponseToResponses(&gemResp, ctx.ClientModel, ctx.RouteResult.ThinkTag)
+		if err != nil {
+			writeConversionError(ctx.GinCtx, err.Error())
+			return err
+		}
+		body, _ := json.Marshal(responsesResp)
+		ctx.ClientRespBody = body
+		ctx.GinCtx.JSON(http.StatusOK, responsesResp)
+	}
+	h.tracer().RecordResponse(ctx)
+	return nil
 }
 
 // extractSessionIDFromRequest extracts session ID from multiple sources:

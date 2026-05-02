@@ -20,9 +20,20 @@ func FormatToPath(format string) string {
 		return "/v1/messages"
 	case "responses":
 		return "/v1/responses"
+	case "gemini":
+		return "/v1beta/models/{model}:streamGenerateContent"
 	default:
 		return "/v1/chat/completions"
 	}
+}
+
+// GeminiGeneratePath returns the Gemini API path for generateContent.
+func GeminiGeneratePath(model string, stream bool) string {
+	action := "generateContent"
+	if stream {
+		return "/v1beta/models/" + model + ":streamGenerateContent?alt=sse"
+	}
+	return "/v1beta/models/" + model + ":" + action
 }
 
 // Router resolves a request to an upstream provider + model.
