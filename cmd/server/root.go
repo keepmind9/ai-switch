@@ -17,6 +17,7 @@ func newRootCmd() *cobra.Command {
 		newStopCmd(),
 		newCheckCmd(configPath),
 		newVersionCmd(),
+		newAgentCmd(configPath),
 	)
 	return rootCmd
 }
