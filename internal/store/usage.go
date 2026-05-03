@@ -20,6 +20,8 @@ type UsageRecord struct {
 	Model               string `json:"model"`
 	Date                string `json:"date"`
 	Requests            int64  `json:"requests"`
+	SuccessRequests     int64  `json:"success_requests"`
+	ErrorRequests       int64  `json:"error_requests"`
 	InputTokens         int64  `json:"input_tokens"`
 	OutputTokens        int64  `json:"output_tokens"`
 	CacheCreationTokens int64  `json:"cache_creation_tokens"`
@@ -110,18 +112,21 @@ func (s *UsageStore) processLoop() {
 
 func (s *UsageStore) upsert(record UsageRecord) error {
 	_, err := s.db.Exec(`
-		INSERT INTO usage (provider, model, date, requests, input_tokens, output_tokens,
-		                   cache_creation_tokens, cache_read_tokens, total_tokens)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO usage (provider, model, date, requests, success_requests, error_requests,
+		                   input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, total_tokens)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(provider, model, date) DO UPDATE SET
 			requests = requests + excluded.requests,
+			success_requests = success_requests + excluded.success_requests,
+			error_requests = error_requests + excluded.error_requests,
 			input_tokens = input_tokens + excluded.input_tokens,
 			output_tokens = output_tokens + excluded.output_tokens,
 			cache_creation_tokens = cache_creation_tokens + excluded.cache_creation_tokens,
 			cache_read_tokens = cache_read_tokens + excluded.cache_read_tokens,
 			total_tokens = total_tokens + excluded.total_tokens
 	`, record.Provider, record.Model, record.Date,
-		record.Requests, record.InputTokens, record.OutputTokens,
+		record.Requests, record.SuccessRequests, record.ErrorRequests,
+		record.InputTokens, record.OutputTokens,
 		record.CacheCreationTokens, record.CacheReadTokens, record.TotalTokens)
 
 	return err
@@ -129,7 +134,7 @@ func (s *UsageStore) upsert(record UsageRecord) error {
 
 // QueryUsage retrieves usage records with optional filters.
 func (s *UsageStore) QueryUsage(provider, model, startDate, endDate string) ([]UsageRecord, error) {
-	query := "SELECT provider, model, date, requests, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, total_tokens FROM usage WHERE 1=1"
+	query := "SELECT provider, model, date, requests, success_requests, error_requests, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, total_tokens FROM usage WHERE 1=1"
 	var args []any
 
 	if provider != "" {
@@ -161,8 +166,9 @@ func (s *UsageStore) QueryUsage(provider, model, startDate, endDate string) ([]U
 	for rows.Next() {
 		var r UsageRecord
 		if err := rows.Scan(&r.Provider, &r.Model, &r.Date, &r.Requests,
-			&r.InputTokens, &r.OutputTokens, &r.CacheCreationTokens,
-			&r.CacheReadTokens, &r.TotalTokens); err != nil {
+			&r.SuccessRequests, &r.ErrorRequests,
+			&r.InputTokens, &r.OutputTokens,
+			&r.CacheCreationTokens, &r.CacheReadTokens, &r.TotalTokens); err != nil {
 			return nil, err
 		}
 		records = append(records, r)
@@ -187,6 +193,8 @@ func migrate(db *sql.DB) error {
 			model                 TEXT NOT NULL,
 			date                  TEXT NOT NULL,
 			requests              INTEGER DEFAULT 0,
+			success_requests      INTEGER DEFAULT 0,
+			error_requests        INTEGER DEFAULT 0,
 			input_tokens          INTEGER DEFAULT 0,
 			output_tokens         INTEGER DEFAULT 0,
 			cache_creation_tokens INTEGER DEFAULT 0,
@@ -195,7 +203,14 @@ func migrate(db *sql.DB) error {
 			PRIMARY KEY (provider, model, date)
 		)
 	`)
-	return err
+	if err != nil {
+		return err
+	}
+	// Add columns for existing databases
+	for _, col := range []string{"success_requests", "error_requests"} {
+		db.Exec("ALTER TABLE usage ADD COLUMN " + col + " INTEGER DEFAULT 0")
+	}
+	return nil
 }
 
 // Today returns today's date in YYYY-MM-DD format.

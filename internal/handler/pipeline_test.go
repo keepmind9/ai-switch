@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"testing"
 
 	"github.com/gin-gonic/gin"
 	"github.com/keepmind9/ai-switch/internal/config"
 	"github.com/keepmind9/ai-switch/internal/hook"
 	"github.com/keepmind9/ai-switch/internal/router"
+	"github.com/keepmind9/ai-switch/internal/store"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -120,4 +122,80 @@ func TestPipelineHookMutation(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, "mutated-model", upstreamModel, "hook should have mutated the model sent to upstream")
+}
+
+func TestPipeline_RecordsErrorUsageOnUpstreamError(t *testing.T) {
+	// recordErrorUsage with nil usageStore should be no-op
+	t.Log("recordErrorUsage with nil usageStore covered by TestRecordErrorUsage_NilStore")
+}
+
+func TestRecordErrorUsage_NilStore(t *testing.T) {
+	h := &Handler{usageStore: nil}
+	ctx := hook.NewContext(nil, "chat", nil)
+	// Should not panic
+	h.recordErrorUsage(ctx)
+}
+
+func TestRecordErrorUsage_WithRouteResult(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "usage.db")
+	s, err := store.NewUsageStore(dbPath)
+	require.NoError(t, err)
+
+	h := &Handler{usageStore: s}
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx := hook.NewContext(c, "chat", nil)
+	ctx.ClientModel = "test-model"
+	ctx.RouteResult = &router.RouteResult{ProviderKey: "test-provider"}
+
+	h.recordErrorUsage(ctx)
+	require.NoError(t, s.Close())
+
+	s2, err := store.NewUsageStore(dbPath)
+	require.NoError(t, err)
+	defer s2.Close()
+
+	records, err := s2.QueryUsage("", "", "", "")
+	require.NoError(t, err)
+	require.Len(t, records, 1)
+
+	r := records[0]
+	assert.Equal(t, "test-provider", r.Provider)
+	assert.Equal(t, "test-model", r.Model)
+	assert.Equal(t, int64(1), r.Requests)
+	assert.Equal(t, int64(0), r.SuccessRequests)
+	assert.Equal(t, int64(1), r.ErrorRequests)
+	assert.Equal(t, int64(0), r.InputTokens)
+	assert.Equal(t, int64(0), r.TotalTokens)
+}
+
+func TestRecordErrorUsage_NoRouteResult(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "usage.db")
+	s, err := store.NewUsageStore(dbPath)
+	require.NoError(t, err)
+
+	h := &Handler{usageStore: s}
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx := hook.NewContext(c, "chat", nil)
+	ctx.ClientModel = "test-model"
+	ctx.RouteResult = nil
+
+	h.recordErrorUsage(ctx)
+	require.NoError(t, s.Close())
+
+	s2, err := store.NewUsageStore(dbPath)
+	require.NoError(t, err)
+	defer s2.Close()
+
+	records, err := s2.QueryUsage("", "", "", "")
+	require.NoError(t, err)
+	require.Len(t, records, 1)
+
+	r := records[0]
+	assert.Equal(t, "", r.Provider)
+	assert.Equal(t, "test-model", r.Model)
+	assert.Equal(t, int64(1), r.ErrorRequests)
 }

@@ -57,6 +57,8 @@ const summary = computed(() => {
   const d = filtered.value
   return {
     requests: d.reduce((s, r) => s + r.requests, 0),
+    success_requests: d.reduce((s, r) => s + r.success_requests, 0),
+    error_requests: d.reduce((s, r) => s + r.error_requests, 0),
     input_tokens: d.reduce((s, r) => s + r.input_tokens, 0),
     output_tokens: d.reduce((s, r) => s + r.output_tokens, 0),
     total_tokens: d.reduce((s, r) => s + r.total_tokens, 0),
@@ -196,6 +198,8 @@ function getSummaries(param: { columns: { property: string }[]; data: UsageRecor
     if (!p) { sums.push(""); continue }
     if (p === "date") { sums.push(t("stats.table.totalRow")); continue }
     if (p === "requests") { sums.push(fmtNum(param.data.reduce((s, r) => s + r.requests, 0))); continue }
+    if (p === "success_requests") { sums.push(fmtNum(param.data.reduce((s, r) => s + r.success_requests, 0))); continue }
+    if (p === "error_requests") { sums.push(fmtNum(param.data.reduce((s, r) => s + r.error_requests, 0))); continue }
     if (p === "input_tokens") { sums.push(fmtNum(param.data.reduce((s, r) => s + r.input_tokens, 0))); continue }
     if (p === "output_tokens") { sums.push(fmtNum(param.data.reduce((s, r) => s + r.output_tokens, 0))); continue }
     if (p === "cache_read_tokens") { sums.push(fmtNum(param.data.reduce((s, r) => s + r.cache_read_tokens, 0))); continue }
@@ -331,6 +335,17 @@ onMounted(load)
         </el-table-column>
         <el-table-column prop="requests" :label="t('stats.table.requests')" width="100" align="right">
           <template #default="{ row }">{{ fmtNum(row.requests) }}</template>
+        </el-table-column>
+        <el-table-column prop="success_requests" :label="t('stats.table.successRequests')" width="100" align="right">
+          <template #default="{ row }">
+            <span style="color: #458854">{{ fmtNum(row.success_requests) }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="error_requests" :label="t('stats.table.errorRequests')" width="100" align="right">
+          <template #default="{ row }">
+            <span v-if="row.error_requests > 0" style="color: #d97757">{{ fmtNum(row.error_requests) }}</span>
+            <span v-else class="text-slate-400">-</span>
+          </template>
         </el-table-column>
         <el-table-column prop="input_tokens" :label="t('stats.table.input')" width="120" align="right">
           <template #default="{ row }">{{ fmtNum(row.input_tokens) }}</template>

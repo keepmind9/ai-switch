@@ -186,6 +186,8 @@
       "provider": "Provider",
       "model": "Model",
       "requests": "Requests",
+      "successRequests": "Success",
+      "errorRequests": "Errors",
       "input": "Input",
       "output": "Output",
       "cacheWrite": "Cache Write",

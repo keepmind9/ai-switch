@@ -30,6 +30,7 @@ func NewUsageHook(usageStore *store.UsageStore) Hook {
 				Model:               ctx.ClientModel,
 				Date:                store.Today(),
 				Requests:            1,
+				SuccessRequests:     1,
 				InputTokens:         ctx.InputTokens,
 				OutputTokens:        ctx.OutputTokens,
 				CacheCreationTokens: ctx.CacheCreateTokens,

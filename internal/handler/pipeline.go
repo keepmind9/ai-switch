@@ -13,6 +13,7 @@ import (
 	"github.com/keepmind9/ai-switch/internal/converter"
 	"github.com/keepmind9/ai-switch/internal/hook"
 	"github.com/keepmind9/ai-switch/internal/router"
+	"github.com/keepmind9/ai-switch/internal/store"
 	"github.com/keepmind9/ai-switch/internal/types"
 )
 
@@ -344,6 +345,7 @@ func (h *Handler) stepForward(ctx *hook.Context) error {
 	resp, err := h.client.Do(req)
 	if err != nil {
 		writeUpstreamError(ctx.GinCtx, "failed to call upstream: "+err.Error())
+		h.recordErrorUsage(ctx)
 		h.tracer().RecordResponse(ctx)
 		return err
 	}
@@ -356,6 +358,7 @@ func (h *Handler) stepForward(ctx *hook.Context) error {
 		ctx.UpstreamRespBody = respBody
 		h.tracer().RecordUpstreamResponse(ctx, resp.StatusCode)
 		h.writeConvertedError(ctx.GinCtx, resp, respBody, ctx.ClientProtocol)
+		h.recordErrorUsage(ctx)
 		h.tracer().RecordResponse(ctx)
 		return fmt.Errorf("upstream returned status %d", resp.StatusCode)
 	}
@@ -794,4 +797,21 @@ func extractSessionIDFromHeaders(c *gin.Context) string {
 		return sid
 	}
 	return ""
+}
+
+func (h *Handler) recordErrorUsage(ctx *hook.Context) {
+	if h.usageStore == nil {
+		return
+	}
+	provider := ""
+	if ctx.RouteResult != nil {
+		provider = ctx.RouteResult.ProviderKey
+	}
+	h.usageStore.AsyncRecord(store.UsageRecord{
+		Provider:      provider,
+		Model:         ctx.ClientModel,
+		Date:          store.Today(),
+		Requests:      1,
+		ErrorRequests: 1,
+	})
 }

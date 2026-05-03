@@ -5,6 +5,8 @@ export interface UsageRecord {
   model: string
   date: string
   requests: number
+  success_requests: number
+  error_requests: number
   input_tokens: number
   output_tokens: number
   cache_creation_tokens: number

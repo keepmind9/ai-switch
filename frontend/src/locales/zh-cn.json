@@ -186,6 +186,8 @@
       "provider": "服务商",
       "model": "模型",
       "requests": "请求数",
+      "successRequests": "成功",
+      "errorRequests": "失败",
       "input": "输入",
       "output": "输出",
       "cacheWrite": "缓存写入",
