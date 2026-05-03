@@ -50,7 +50,8 @@ Examples:
   ai-switch agent my-key claude --continue
   ai-switch agent my-key codex --model o4-mini
   ai-switch agent my-key claude --dangerously-skip-permissions`,
-		Args: cobra.MinimumNArgs(2),
+		Args:               cobra.MinimumNArgs(2),
+		DisableFlagParsing: true,
 		RunE: func(_ *cobra.Command, args []string) error {
 			return runAgent(configPath, args[0], args[1], args[2:])
 		},
