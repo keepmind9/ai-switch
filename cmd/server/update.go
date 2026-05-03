@@ -1,0 +1,543 @@
+package main
+
+import (
+	"archive/tar"
+	"archive/zip"
+	"compress/gzip"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"time"
+
+	"github.com/keepmind9/ai-switch/internal/config"
+	"github.com/spf13/cobra"
+)
+
+const (
+	updateRepo      = "keepmind9/ai-switch"
+	httpTimeout     = 30 * time.Second
+	downloadTimeout = 10 * time.Minute
+)
+
+var (
+	updateAPIURL = "https://api.github.com/repos/" + updateRepo + "/releases/latest"
+	updateClient = http.DefaultClient
+)
+
+type updateMeta struct {
+	Version string `json:"version"`
+	URL     string `json:"url"`
+	Size    int64  `json:"size"`
+	Archive string `json:"archive"`
+}
+
+func newUpdateCmd() *cobra.Command {
+	var apply bool
+
+	cmd := &cobra.Command{
+		Use:   "update",
+		Short: "Check for updates and download the latest version",
+		RunE: func(_ *cobra.Command, _ []string) error {
+			if apply {
+				return runApply()
+			}
+			return runUpdate()
+		},
+	}
+	cmd.Flags().BoolVar(&apply, "apply", false, "apply a downloaded update (stop daemon, replace binary, restart)")
+	return cmd
+}
+
+func runUpdate() error {
+	latest, err := fetchLatestVersion()
+	if err != nil {
+		return fmt.Errorf("failed to fetch latest version: %w", err)
+	}
+
+	if !isNewerVersion(latest, version) {
+		fmt.Printf("Already on the latest version: %s\n", version)
+		return nil
+	}
+
+	fmt.Printf("New version available: %s (current: %s)\n", latest, version)
+
+	updateDir, err := ensureUpdateDir()
+	if err != nil {
+		return err
+	}
+
+	metaPath := filepath.Join(updateDir, "meta.json")
+	archiveName := buildArchiveName(latest)
+	archiveURL := buildArchiveURL(latest, archiveName)
+	archivePath := filepath.Join(updateDir, archiveName)
+
+	// Check existing meta for resume or reset
+	var totalSize int64
+	if meta, err := loadMeta(metaPath); err == nil && meta.Version == latest {
+		fmt.Println("Resuming download...")
+		totalSize = meta.Size
+	} else {
+		cleanUpdateDir(updateDir)
+		totalSize, err = getRemoteSize(archiveURL)
+		if err != nil {
+			return fmt.Errorf("failed to get remote file size: %w", err)
+		}
+		if err := saveMeta(metaPath, &updateMeta{
+			Version: latest,
+			URL:     archiveURL,
+			Size:    totalSize,
+			Archive: archiveName,
+		}); err != nil {
+			return err
+		}
+	}
+
+	// Download (with resume support)
+	if err := downloadWithResume(archiveURL, archivePath, totalSize); err != nil {
+		return fmt.Errorf("download failed: %w", err)
+	}
+
+	fmt.Println("Download complete.")
+
+	// If daemon is not running, apply directly
+	if !isDaemonRunning() {
+		fmt.Println("Applying update...")
+		return doApply(updateDir)
+	}
+
+	fmt.Printf("Run 'ai-switch update --apply' to apply the update.\n")
+	return nil
+}
+
+func runApply() error {
+	updateDir, err := updateDirPath()
+	if err != nil {
+		return err
+	}
+
+	metaPath := filepath.Join(updateDir, "meta.json")
+	meta, err := loadMeta(metaPath)
+	if err != nil {
+		fmt.Println("No update available. Run 'ai-switch update' first.")
+		return nil
+	}
+
+	archivePath := filepath.Join(updateDir, meta.Archive)
+	info, err := os.Stat(archivePath)
+	if err != nil || info.Size() != meta.Size {
+		fmt.Println("Downloaded file is incomplete. Run 'ai-switch update' to re-download.")
+		return nil
+	}
+
+	if isDaemonRunning() {
+		fmt.Println("Stopping daemon...")
+		if err := runStop(nil, nil); err != nil {
+			return fmt.Errorf("failed to stop daemon: %w", err)
+		}
+		// Wait for daemon to fully exit
+		for i := 0; i < 30; i++ {
+			if !isDaemonRunning() {
+				break
+			}
+			time.Sleep(200 * time.Millisecond)
+		}
+		if isDaemonRunning() {
+			return fmt.Errorf("daemon did not stop in time")
+		}
+	}
+
+	fmt.Printf("Applying update to %s...\n", meta.Version)
+	return doApply(updateDir)
+}
+
+func doApply(updateDir string) error {
+	metaPath := filepath.Join(updateDir, "meta.json")
+	meta, err := loadMeta(metaPath)
+	if err != nil {
+		return err
+	}
+
+	archivePath := filepath.Join(updateDir, meta.Archive)
+	isWindows := runtime.GOOS == "windows"
+
+	if err := extractArchive(updateDir, archivePath, isWindows); err != nil {
+		return fmt.Errorf("extraction failed: %w", err)
+	}
+
+	// Find extracted binary
+	srcBin, err := findExtractedBinary(updateDir)
+	if err != nil {
+		return err
+	}
+
+	currentBin, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("failed to get current binary path: %w", err)
+	}
+
+	// Copy new binary over old one
+	if err := copyFile(srcBin, currentBin); err != nil {
+		return fmt.Errorf("failed to replace binary: %w", err)
+	}
+	if !isWindows {
+		os.Chmod(currentBin, 0755)
+	}
+
+	cleanUpdateDir(updateDir)
+
+	fmt.Printf("Successfully updated to %s\n", meta.Version)
+	return nil
+}
+
+// --- Version ---
+
+func fetchLatestVersion() (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), httpTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, updateAPIURL, nil)
+	if err != nil {
+		return "", err
+	}
+	resp, err := updateClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("GitHub API returned %d", resp.StatusCode)
+	}
+
+	var result struct {
+		TagName string `json:"tag_name"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", err
+	}
+	return strings.TrimPrefix(result.TagName, "v"), nil
+}
+
+func isNewerVersion(latest, current string) bool {
+	return compareVersions(latest, current) > 0
+}
+
+func compareVersions(a, b string) int {
+	pa := parseVersion(a)
+	pb := parseVersion(b)
+	for i := range pa {
+		if pa[i] != pb[i] {
+			if pa[i] > pb[i] {
+				return 1
+			}
+			return -1
+		}
+	}
+	return 0
+}
+
+func parseVersion(v string) [3]int {
+	var major, minor, patch int
+	parts := strings.Split(v, ".")
+	if len(parts) >= 1 {
+		fmt.Sscanf(parts[0], "%d", &major)
+	}
+	if len(parts) >= 2 {
+		fmt.Sscanf(parts[1], "%d", &minor)
+	}
+	if len(parts) >= 3 {
+		fmt.Sscanf(parts[2], "%d", &patch)
+	}
+	return [3]int{major, minor, patch}
+}
+
+// --- Download ---
+
+func buildArchiveName(latest string) string {
+	name := fmt.Sprintf("ai-switch-%s-%s-%s", latest, runtime.GOOS, runtime.GOARCH)
+	if runtime.GOOS == "windows" {
+		return name + ".zip"
+	}
+	return name + ".tar.gz"
+}
+
+func buildArchiveURL(latest, archive string) string {
+	return fmt.Sprintf("https://github.com/%s/releases/download/v%s/%s", updateRepo, latest, archive)
+}
+
+func getRemoteSize(url string) (int64, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), httpTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead, url, nil)
+	if err != nil {
+		return 0, err
+	}
+	resp, err := updateClient.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return 0, fmt.Errorf("HEAD returned %d", resp.StatusCode)
+	}
+	return resp.ContentLength, nil
+}
+
+func downloadWithResume(url, dest string, totalSize int64) error {
+	ctx, cancel := context.WithTimeout(context.Background(), downloadTimeout)
+	defer cancel()
+
+	var offset int64
+	if info, err := os.Stat(dest); err == nil {
+		offset = info.Size()
+		if offset == totalSize {
+			return nil // already complete
+		}
+	}
+
+	// If we need to check for resume support, do a two-phase approach
+	if offset > 0 {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		if err != nil {
+			return err
+		}
+		req.Header.Set("Range", fmt.Sprintf("bytes=%d-", offset))
+
+		resp, err := updateClient.Do(req)
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode == http.StatusPartialContent {
+			f, err := os.OpenFile(dest, os.O_WRONLY|os.O_APPEND, 0644)
+			if err != nil {
+				return err
+			}
+			defer f.Close()
+			_, err = io.Copy(f, resp.Body)
+			return err
+		}
+
+		resp.Body.Close()
+		os.Remove(dest)
+	}
+
+	f, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := updateClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("download returned %d", resp.StatusCode)
+	}
+
+	_, err = io.Copy(f, resp.Body)
+	return err
+}
+
+// --- Meta ---
+
+func updateDirPath() (string, error) {
+	dataDir, err := config.DataDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dataDir, "update"), nil
+}
+
+func ensureUpdateDir() (string, error) {
+	path, err := updateDirPath()
+	if err != nil {
+		return "", err
+	}
+	return path, os.MkdirAll(path, 0755)
+}
+
+func loadMeta(path string) (*updateMeta, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var meta updateMeta
+	return &meta, json.Unmarshal(data, &meta)
+}
+
+func saveMeta(path string, meta *updateMeta) error {
+	data, err := json.Marshal(meta)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0644)
+}
+
+func cleanUpdateDir(dir string) {
+	os.RemoveAll(dir)
+	os.MkdirAll(dir, 0755)
+}
+
+// --- Daemon check ---
+
+func isDaemonRunning() bool {
+	dataDir, err := config.DataDir()
+	if err != nil {
+		return false
+	}
+	pidPath := filepath.Join(dataDir, config.PidFileName)
+	pidData, err := os.ReadFile(pidPath)
+	if err != nil {
+		return false
+	}
+	pid := 0
+	fmt.Sscanf(strings.TrimSpace(string(pidData)), "%d", &pid)
+	if pid == 0 {
+		return false
+	}
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return false
+	}
+	return proc.Signal(nil) == nil
+}
+
+// --- Extract ---
+
+func extractArchive(dest, archive string, isWindows bool) error {
+	if isWindows {
+		return extractZip(dest, archive)
+	}
+	return extractTarGz(dest, archive)
+}
+
+func extractZip(dest, archive string) error {
+	r, err := zip.OpenReader(archive)
+	if err != nil {
+		return err
+	}
+	defer r.Close()
+
+	for _, f := range r.File {
+		path := filepath.Join(dest, f.Name)
+		if f.FileInfo().IsDir() {
+			os.MkdirAll(path, 0755)
+			continue
+		}
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			return err
+		}
+		out, err := os.Create(path)
+		if err != nil {
+			return err
+		}
+		rc, err := f.Open()
+		if err != nil {
+			out.Close()
+			return err
+		}
+		_, err = io.Copy(out, rc)
+		rc.Close()
+		out.Close()
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func extractTarGz(dest, archive string) error {
+	f, err := os.Open(archive)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	gz, err := gzip.NewReader(f)
+	if err != nil {
+		return err
+	}
+	defer gz.Close()
+
+	tr := tar.NewReader(gz)
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
+		path := filepath.Join(dest, hdr.Name)
+		if hdr.FileInfo().IsDir() {
+			os.MkdirAll(path, 0755)
+			continue
+		}
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			return err
+		}
+		out, err := os.Create(path)
+		if err != nil {
+			return err
+		}
+		if _, err := io.Copy(out, tr); err != nil {
+			out.Close()
+			return err
+		}
+		out.Close()
+	}
+	return nil
+}
+
+func findExtractedBinary(dir string) (string, error) {
+	binName := "ai-switch"
+	if runtime.GOOS == "windows" {
+		binName += ".exe"
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return "", err
+	}
+	for _, e := range entries {
+		if e.IsDir() && strings.HasPrefix(e.Name(), "ai-switch-") {
+			candidate := filepath.Join(dir, e.Name(), binName)
+			if _, err := os.Stat(candidate); err == nil {
+				return candidate, nil
+			}
+		}
+	}
+	return "", fmt.Errorf("binary not found in extracted archive")
+}
+
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	_, err = io.Copy(out, in)
+	return err
+}
