@@ -133,28 +133,104 @@ const requestTtfb = computed<number | null>(() => {
 
 const openDiff = () => { diffOpen.value = true }
 
-// Simple line diff: returns { type: 'equal'|'add'|'remove'|'change', left?: string, right?: string }[]
+// Priority order for LLM API body keys (known fields in business-logical order)
+const KEY_ORDER = [
+  // Request top-level
+  'model', 'system', 'instructions', 'messages', 'input',
+  'tools', 'tool_choice', 'response_format',
+  'temperature', 'top_p', 'top_k', 'max_tokens', 'max_completion_tokens',
+  'stop', 'stop_sequences',
+  'stream', 'stream_options',
+  'thinking', 'seed', 'n',
+  'frequency_penalty', 'presence_penalty', 'logprobs', 'top_logprobs',
+  'metadata',
+  // Response top-level
+  'id', 'type', 'object', 'role',
+  'content', 'output', 'choices', 'data',
+  'stop_reason', 'finish_reason', 'stop_sequence',
+  'usage', 'created',
+  // Message / content block
+  'text', 'thinking', 'name', 'arguments', 'call_id', 'tool_use_id',
+  'input_schema', 'parameters', 'description', 'function',
+  'prompt_tokens', 'completion_tokens',
+  'input_tokens', 'output_tokens',
+  'cache_read_input_tokens', 'cache_creation_input_tokens',
+  'delta', 'message',
+]
+const KEY_INDEX = new Map(KEY_ORDER.map((k, i) => [k, i]))
+
+const sortObjKeys = (obj: any): any => {
+  if (Array.isArray(obj)) return obj.map(sortObjKeys)
+  if (obj !== null && typeof obj === 'object') {
+    const sorted: Record<string, any> = {}
+    for (const key of Object.keys(obj).sort((a, b) => {
+      const ai = KEY_INDEX.get(a) ?? KEY_ORDER.length
+      const bi = KEY_INDEX.get(b) ?? KEY_ORDER.length
+      if (ai !== bi) return ai - bi
+      return a.localeCompare(b)
+    })) {
+      sorted[key] = sortObjKeys(obj[key])
+    }
+    return sorted
+  }
+  return obj
+}
+
+const formatBodySorted = (body: string) => {
+  try { return JSON.stringify(sortObjKeys(JSON.parse(body)), null, 2) } catch { return body }
+}
+
+// LCS-based line diff: aligns matching lines, merges adjacent remove+add into change
 const lineDiff = (left: string, right: string): { type: string; left?: string; right?: string }[] => {
   const la = left.split('\n')
   const ra = right.split('\n')
-  const result: { type: string; left?: string; right?: string }[] = []
-  const maxLen = Math.max(la.length, ra.length)
-  for (let i = 0; i < maxLen; i++) {
-    const l = i < la.length ? la[i] : undefined
-    const r = i < ra.length ? ra[i] : undefined
-    if (l === r) {
-      result.push({ type: 'equal', left: l })
+  const m = la.length, n = ra.length
+
+  const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0))
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (la[i - 1] === ra[j - 1]) dp[i][j] = dp[i - 1][j - 1] + 1
+      else dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1])
+    }
+  }
+
+  const raw: { type: string; left?: string; right?: string }[] = []
+  let i = m, j = n
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0 && la[i - 1] === ra[j - 1]) {
+      raw.unshift({ type: 'equal', left: la[i - 1], right: ra[j - 1] })
+      i--; j--
+    } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
+      raw.unshift({ type: 'add', right: ra[j - 1] })
+      j--
     } else {
-      result.push({ type: 'change', left: l, right: r })
+      raw.unshift({ type: 'remove', left: la[i - 1] })
+      i--
+    }
+  }
+
+  const result: { type: string; left?: string; right?: string }[] = []
+  let k = 0
+  while (k < raw.length) {
+    if (raw[k].type === 'remove' && k + 1 < raw.length && raw[k + 1].type === 'add') {
+      result.push({ type: 'change', left: raw[k].left, right: raw[k + 1].right })
+      k += 2
+    } else {
+      result.push(raw[k])
+      k++
     }
   }
   return result
 }
 
-const diffBody = (left: TraceDetailRecord, right: TraceDetailRecord) => {
-  const lb = formatBody(left.body)
-  const rb = formatBody(right.body)
-  return lineDiff(lb, rb)
+const bodyDiffs = computed(() => diffPairs.value.map(p => lineDiff(formatBodySorted(p.left.body), formatBodySorted(p.right.body))))
+
+const getDiffLineClass = (type: string, side: 'left' | 'right') => {
+  if (type === 'equal') return ''
+  if (type === 'remove') return side === 'left' ? 'diff-line-remove' : 'diff-line-empty'
+  if (type === 'add') return side === 'right' ? 'diff-line-add' : 'diff-line-empty'
+  if (type === 'change') return side === 'left' ? 'diff-line-change-l' : 'diff-line-change-r'
+  return ''
 }
 
 const diffHeaderKeys = (left: TraceDetailRecord, right: TraceDetailRecord) => {
@@ -613,13 +689,28 @@ onMounted(async () => {
           </el-tab-pane>
           <el-tab-pane label="Body">
             <div class="diff-body-view">
-              <div class="diff-body-col diff-body-left">
+              <div class="diff-col-headers">
                 <div class="diff-col-label">{{ pair.left.type }}</div>
-                <pre class="diff-pre">{{ formatBody(pair.left.body) }}</pre>
-              </div>
-              <div class="diff-body-col diff-body-right">
                 <div class="diff-col-label">{{ pair.right.type }}</div>
-                <pre class="diff-pre">{{ formatBody(pair.right.body) }}</pre>
+              </div>
+              <div v-if="bodyDiffs[pi]" class="diff-summary">
+                {{ bodyDiffs[pi].filter(l => l.type !== 'equal').length }} lines changed
+                ({{ bodyDiffs[pi].filter(l => l.type === 'add').length }} added,
+                {{ bodyDiffs[pi].filter(l => l.type === 'remove').length }} removed,
+                {{ bodyDiffs[pi].filter(l => l.type === 'change').length }} modified,
+                {{ bodyDiffs[pi].filter(l => l.type === 'equal').length }} equal)
+              </div>
+              <div class="diff-body-content">
+                <template v-for="(line, li) in bodyDiffs[pi]" :key="li">
+                  <div class="diff-line-row">
+                    <div class="diff-line-left" :class="getDiffLineClass(line.type, 'left')">
+                      <pre class="diff-line-pre">{{ line.left ?? '' }}</pre>
+                    </div>
+                    <div class="diff-line-right" :class="getDiffLineClass(line.type, 'right')">
+                      <pre class="diff-line-pre">{{ line.right ?? '' }}</pre>
+                    </div>
+                  </div>
+                </template>
               </div>
             </div>
           </el-tab-pane>
@@ -821,19 +912,19 @@ onMounted(async () => {
 .diff-change .diff-left { background: #fef2f2; color: #991b1b; }
 .diff-change .diff-right { background: #f0fdf4; color: #166534; }
 .diff-body-view {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  height: calc(100vh - 260px);
-}
-.diff-body-col {
   border: 1px solid #e5e7eb;
   border-radius: 0.5rem;
-  overflow: auto;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
+  height: calc(100vh - 260px);
 }
-.diff-col-label {
+.diff-col-headers {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  flex-shrink: 0;
+}
+.diff-col-headers .diff-col-label {
   padding: 8px 12px;
   font-size: 0.75rem;
   font-weight: 600;
@@ -842,13 +933,52 @@ onMounted(async () => {
   letter-spacing: 0.03em;
   background: #f9fafb;
   border-bottom: 1px solid #e5e7eb;
+}
+.diff-col-headers .diff-col-label:first-child {
+  border-right: 1px solid #e5e7eb;
+}
+.diff-body-content {
+  flex: 1;
+  overflow: auto;
+}
+.diff-summary {
+  padding: 6px 12px;
+  font-size: 0.75rem;
+  color: #64748b;
+  background: #f9fafb;
+  border-bottom: 1px solid #e5e7eb;
   flex-shrink: 0;
 }
-.diff-pre {
-  padding: 12px;
-  font-size: 0.75rem;
-  line-height: 1.5;
-  margin: 0;
-  flex: 1;
+.diff-line-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
 }
+.diff-line-row > div {
+  min-height: 22px;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.diff-line-row > div:first-child {
+  border-right: 1px solid #e5e7eb;
+}
+.diff-line-pre {
+  margin: 0;
+  padding: 2px 12px;
+  font-size: 0.75rem;
+  line-height: 22px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  white-space: pre;
+  display: inline-block;
+  min-width: 100%;
+}
+.diff-line-remove { background: #fde8e8; border-left: 3px solid #e53e3e; }
+.diff-line-remove .diff-line-pre { color: #9b1c1c; }
+.diff-line-add { background: #def7ec; border-left: 3px solid #31b77e; }
+.diff-line-add .diff-line-pre { color: #0e6245; }
+.diff-line-change-l { background: #fde8e8; border-left: 3px solid #e53e3e; }
+.diff-line-change-l .diff-line-pre { color: #9b1c1c; }
+.diff-line-change-r { background: #def7ec; border-left: 3px solid #31b77e; }
+.diff-line-change-r .diff-line-pre { color: #0e6245; }
+.diff-line-empty { background: #f1f5f9; }
+.diff-line-empty .diff-line-pre { visibility: hidden; }
 </style>
