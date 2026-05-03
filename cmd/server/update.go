@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -108,7 +109,10 @@ func runUpdate() error {
 	// If daemon is not running, apply directly
 	if !isDaemonRunning() {
 		fmt.Println("Applying update...")
-		return doApply(updateDir)
+		if err := doApply(updateDir); err != nil {
+			return fmt.Errorf("%w\n\nTry: ai-switch update --apply", err)
+		}
+		return nil
 	}
 
 	fmt.Printf("Run 'ai-switch update --apply' to apply the update.\n")
@@ -526,18 +530,100 @@ func findExtractedBinary(dir string) (string, error) {
 }
 
 func copyFile(src, dst string) error {
+	if runtime.GOOS == "windows" {
+		return copyFileWindows(src, dst)
+	}
+	return copyFileUnix(src, dst)
+}
+
+func copyFileUnix(src, dst string) error {
+	// Rename the old binary first to avoid "text file busy" when overwriting
+	// a running binary. On Unix, an open file can be renamed but not truncated.
+	backup := dst + ".old"
+	renamed := false
+	if _, err := os.Stat(dst); err == nil {
+		if err := os.Rename(dst, backup); err != nil {
+			return fmt.Errorf("failed to replace binary: %w\n\nThe binary is currently in use. Please stop the daemon first:\n  ai-switch stop && ai-switch update", err)
+		}
+		renamed = true
+	}
+
 	in, err := os.Open(src)
 	if err != nil {
+		if renamed {
+			os.Rename(backup, dst)
+		}
 		return err
 	}
 	defer in.Close()
 
 	out, err := os.Create(dst)
 	if err != nil {
-		return err
+		if renamed {
+			os.Rename(backup, dst)
+		}
+		return fmt.Errorf("failed to create binary: %w\n\nThe binary may be in use. Try:\n  ai-switch stop && ai-switch update", err)
 	}
 	defer out.Close()
 
-	_, err = io.Copy(out, in)
-	return err
+	if _, err := io.Copy(out, in); err != nil {
+		out.Close()
+		os.Remove(dst)
+		if renamed {
+			os.Rename(backup, dst)
+		}
+		return fmt.Errorf("failed to write binary: %w", err)
+	}
+
+	if renamed {
+		os.Remove(backup)
+	}
+	return nil
+}
+
+func copyFileWindows(src, dst string) error {
+	// On Windows, a running exe is fully locked — rename and write both fail.
+	// Write to a .new file and schedule a delayed swap via a helper script
+	// that waits for the current process to exit.
+	tmpDst := dst + ".new"
+
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+
+	out, err := os.Create(tmpDst)
+	if err != nil {
+		return fmt.Errorf("failed to create temp file: %w", err)
+	}
+	defer out.Close()
+
+	if _, err := io.Copy(out, in); err != nil {
+		return fmt.Errorf("failed to write temp file: %w", err)
+	}
+	out.Close()
+
+	// Try direct rename first (works if the exe is not running)
+	if err := os.Rename(tmpDst, dst); err == nil {
+		return nil
+	}
+
+	// Direct rename failed — schedule a delayed swap via a helper script.
+	// The script polls until the current process exits, then moves the file.
+	script := fmt.Sprintf("@echo off\r\n:wait\r\ntasklist /fi \"pid eq %d\" 2>nul | find \"%d\" >nul\r\nif not errorlevel 1 (\r\n  timeout /t 1 /nobreak >nul\r\n  goto wait\r\n)\r\nmove /y \"%s\" \"%s\"\r\ndel \"%%~f0\"\r\n",
+		os.Getpid(), os.Getpid(), tmpDst, dst)
+	scriptPath := dst + ".update.cmd"
+	if err := os.WriteFile(scriptPath, []byte(script), 0644); err != nil {
+		return fmt.Errorf("failed to create update script: %w", err)
+	}
+
+	cmd := exec.Command("cmd", "/c", "start", "/b", "", scriptPath)
+	if err := cmd.Start(); err != nil {
+		os.Remove(scriptPath)
+		return fmt.Errorf("failed to schedule update: %w\n\nManual steps:\n  1. Close this terminal\n  2. Run: move /y \"%s\" \"%s\"", err, tmpDst, dst)
+	}
+
+	fmt.Println("Update will complete automatically after this process exits.")
+	return nil
 }
