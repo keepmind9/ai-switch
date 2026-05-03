@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -16,12 +17,11 @@ import (
 
 func TestAgentEnvMap(t *testing.T) {
 	assert.Equal(t, "ANTHROPIC_BASE_URL", agentEnvMap["claude"].baseURLKey)
-	assert.Equal(t, "ANTHROPIC_API_KEY", agentEnvMap["claude"].apiKeyKey)
 	assert.Equal(t, "", agentEnvMap["claude"].pathSuffix)
-	assert.Equal(t, []string{"ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY"}, agentEnvMap["claude"].authKeys)
+	assert.Equal(t, []string{"ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"}, agentEnvMap["claude"].authKeys)
 	assert.Equal(t, "OPENAI_BASE_URL", agentEnvMap["codex"].baseURLKey)
-	assert.Equal(t, "OPENAI_API_KEY", agentEnvMap["codex"].apiKeyKey)
 	assert.Equal(t, "/v1", agentEnvMap["codex"].pathSuffix)
+	assert.Equal(t, []string{"OPENAI_API_KEY"}, agentEnvMap["codex"].authKeys)
 }
 
 func TestSupportedAgents(t *testing.T) {
@@ -63,12 +63,26 @@ func setupFakeAgent(t *testing.T, name, script string) (tmpDir string, configPat
 	return
 }
 
+// --- buildAuthEnvMap tests ---
+
+func TestBuildAuthEnvMap(t *testing.T) {
+	m := buildAuthEnvMap(agentEnvMap["claude"], "ANTHROPIC_AUTH_TOKEN", "secret", "http://127.0.0.1:8080")
+	assert.Equal(t, "http://127.0.0.1:8080", m["ANTHROPIC_BASE_URL"])
+	assert.Equal(t, "", m["ANTHROPIC_API_KEY"])
+	assert.Equal(t, "secret", m["ANTHROPIC_AUTH_TOKEN"])
+}
+
+func TestBuildAuthEnvMap_Codex(t *testing.T) {
+	m := buildAuthEnvMap(agentEnvMap["codex"], "OPENAI_API_KEY", "rk", "http://127.0.0.1:8080/v1")
+	assert.Equal(t, "http://127.0.0.1:8080/v1", m["OPENAI_BASE_URL"])
+	assert.Equal(t, "rk", m["OPENAI_API_KEY"])
+}
+
 // --- Scenario: config file does not exist → use defaults ---
 
 func TestRunAgent_NoConfig_UsesDefaults(t *testing.T) {
 	_, configPath := setupFakeAgent(t, "claude", `echo "BASE_URL=$ANTHROPIC_BASE_URL"`)
 
-	// Config does NOT exist — should use default host:port
 	output, err := captureAgentOutput(t, configPath, "my-key", "claude", nil)
 	require.NoError(t, err)
 	assert.Contains(t, output, "BASE_URL=http://127.0.0.1:12345")
@@ -130,19 +144,19 @@ func TestRunAgent_Codex_V1Suffix(t *testing.T) {
 	assert.Contains(t, output, "BASE_URL=http://127.0.0.1:12345/v1")
 }
 
-// --- Scenario: route_key passed as API key ---
+// --- Scenario: route_key passed to first auth key when none set, others explicitly empty ---
 
-func TestRunAgent_RouteKeyAsApiKey(t *testing.T) {
+func TestRunAgent_RouteKeyFallback(t *testing.T) {
 	_, configPath := setupFakeAgent(t, "claude", `echo "API_KEY=$ANTHROPIC_API_KEY AUTH_TOKEN=$ANTHROPIC_AUTH_TOKEN"`)
 	writeConfig(t, configPath, "127.0.0.1", 12345)
 
+	t.Setenv("HOME", t.TempDir())
 	os.Unsetenv("ANTHROPIC_AUTH_TOKEN")
-	t.Cleanup(func() { os.Setenv("ANTHROPIC_AUTH_TOKEN", "test") })
 
 	output, err := captureAgentOutput(t, configPath, "my-secret-key", "claude", nil)
 	require.NoError(t, err)
 	assert.Contains(t, output, "API_KEY=my-secret-key")
-	assert.Contains(t, output, "AUTH_TOKEN=") // empty — not set
+	assert.NotContains(t, output, "AUTH_TOKEN=my-secret-key")
 }
 
 // --- Scenario: agent args are passed through ---
@@ -153,7 +167,7 @@ func TestRunAgent_ArgsPassedThrough(t *testing.T) {
 
 	output, err := captureAgentOutput(t, configPath, "key", "codex", []string{"--model", "o4-mini", "--full-auto"})
 	require.NoError(t, err)
-	assert.Contains(t, output, "ARGS=--model o4-mini --full-auto")
+	assert.Contains(t, output, "--model o4-mini --full-auto")
 }
 
 // --- Scenario: agent exit code is propagated ---
@@ -211,6 +225,7 @@ func TestRunAgent_AuthTokenPreferred(t *testing.T) {
 	_, configPath := setupFakeAgent(t, "claude", `echo "AUTH_TOKEN=$ANTHROPIC_AUTH_TOKEN API_KEY=$ANTHROPIC_API_KEY"`)
 	writeConfig(t, configPath, "127.0.0.1", 12345)
 
+	t.Setenv("HOME", t.TempDir())
 	os.Setenv("ANTHROPIC_AUTH_TOKEN", "existing-token")
 	t.Cleanup(func() { os.Unsetenv("ANTHROPIC_AUTH_TOKEN") })
 
@@ -219,6 +234,231 @@ func TestRunAgent_AuthTokenPreferred(t *testing.T) {
 	assert.Contains(t, output, "AUTH_TOKEN=my-route-key")
 	assert.Contains(t, output, "API_KEY=")                // empty — not set
 	assert.NotContains(t, output, "API_KEY=my-route-key") // only auth token is set
+}
+
+// --- Scenario: settings.json conflict resolved via --settings flag ---
+
+func TestRunAgent_SettingsConflictResolved(t *testing.T) {
+	_, configPath := setupFakeAgent(t, "claude", `echo "ARGS=$*"`)
+	writeConfig(t, configPath, "127.0.0.1", 12345)
+
+	t.Setenv("HOME", t.TempDir())
+
+	output, err := captureAgentOutput(t, configPath, "my-route-key", "claude", nil)
+	require.NoError(t, err)
+	assert.Contains(t, output, `--settings`)
+
+	// Verify the JSON payload content
+	lines := strings.Split(output, "\n")
+	for _, line := range lines {
+		if !strings.Contains(line, "--settings") {
+			continue
+		}
+		parts := strings.SplitN(line, "--settings ", 2)
+		if len(parts) < 2 {
+			continue
+		}
+		// Trim shell quoting — the fake binary echoes args as-is
+		raw := strings.TrimSpace(parts[1])
+		// Find the JSON object in the line
+		start := strings.Index(raw, "{")
+		end := strings.LastIndex(raw, "}")
+		if start < 0 || end < 0 {
+			continue
+		}
+		var payload map[string]any
+		require.NoError(t, json.Unmarshal([]byte(raw[start:end+1]), &payload), "invalid settings JSON")
+		env := payload["env"].(map[string]any)
+		assert.Equal(t, "http://127.0.0.1:12345", env["ANTHROPIC_BASE_URL"])
+		assert.Equal(t, "my-route-key", env["ANTHROPIC_API_KEY"])
+		assert.Equal(t, "", env["ANTHROPIC_AUTH_TOKEN"])
+		break
+	}
+}
+
+// --- Scenario: env filtering removes auth keys from child process ---
+
+func TestRunAgent_EnvFiltering(t *testing.T) {
+	script := `echo "API_KEY=$ANTHROPIC_API_KEY AUTH_TOKEN=$ANTHROPIC_AUTH_TOKEN BASE_URL=$ANTHROPIC_BASE_URL"`
+	_, configPath := setupFakeAgent(t, "claude", script)
+	writeConfig(t, configPath, "127.0.0.1", 12345)
+
+	t.Setenv("HOME", t.TempDir())
+	os.Unsetenv("ANTHROPIC_AUTH_TOKEN")
+	os.Unsetenv("ANTHROPIC_API_KEY")
+	os.Unsetenv("ANTHROPIC_BASE_URL")
+
+	output, err := captureAgentOutput(t, configPath, "test-key", "claude", nil)
+	require.NoError(t, err)
+	assert.Contains(t, output, "API_KEY=test-key")
+	assert.Contains(t, output, "AUTH_TOKEN=")
+	assert.Contains(t, output, "BASE_URL=http://127.0.0.1:12345")
+}
+
+// --- buildAgentArgs unit tests ---
+
+func TestBuildAgentArgs_Claude(t *testing.T) {
+	args, err := buildAgentArgs("claude", agentEnvMap["claude"], "ANTHROPIC_API_KEY", "my-key", "http://127.0.0.1:8080", []string{"--continue"})
+	require.NoError(t, err)
+	assert.Equal(t, "--settings", args[0])
+	assert.Equal(t, "--continue", args[len(args)-1])
+	// Verify JSON payload via parsing
+	var payload map[string]any
+	err = json.Unmarshal([]byte(args[1]), &payload)
+	require.NoError(t, err)
+	env := payload["env"].(map[string]any)
+	assert.Equal(t, "http://127.0.0.1:8080", env["ANTHROPIC_BASE_URL"])
+	assert.Equal(t, "my-key", env["ANTHROPIC_API_KEY"])
+}
+
+func TestBuildAgentArgs_Codex(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	require.NoError(t, os.MkdirAll(filepath.Join(home, ".codex"), 0755))
+	configPath := filepath.Join(home, ".codex", "config.toml")
+	require.NoError(t, os.WriteFile(configPath, []byte("model_provider = \"xai\"\n"), 0644))
+
+	args, err := buildAgentArgs("codex", agentEnvMap["codex"], "OPENAI_API_KEY", "my-key", "http://127.0.0.1:8080/v1", []string{"--model", "gpt-5.4"})
+	require.NoError(t, err)
+	assert.Contains(t, args, "-c")
+	assert.Contains(t, args, "model_provider=xai")
+	assert.Contains(t, args, "model_providers.xai.base_url=http://127.0.0.1:8080/v1")
+	assert.Contains(t, args, "model_providers.xai.env_key=OPENAI_API_KEY")
+	assert.Contains(t, args, "model_providers.xai.requires_openai_auth=true")
+	last := args[len(args)-1]
+	assert.Equal(t, "gpt-5.4", last)
+}
+
+func TestBuildAgentArgs_Codex_MissingConfig(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	_, err := buildAgentArgs("codex", agentEnvMap["codex"], "OPENAI_API_KEY", "my-key", "http://127.0.0.1:8080/v1", nil)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "codex:")
+	assert.Contains(t, err.Error(), "failed to read")
+}
+
+func TestBuildAgentArgs_Codex_EmptyModelProvider(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	require.NoError(t, os.MkdirAll(filepath.Join(home, ".codex"), 0755))
+	configPath := filepath.Join(home, ".codex", "config.toml")
+	require.NoError(t, os.WriteFile(configPath, []byte("model_provider = \"\"\n"), 0644))
+
+	_, err := buildAgentArgs("codex", agentEnvMap["codex"], "OPENAI_API_KEY", "my-key", "http://127.0.0.1:8080/v1", nil)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "model_provider not found")
+}
+
+func TestBuildAgentArgs_Codex_InvalidTOML(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	require.NoError(t, os.MkdirAll(filepath.Join(home, ".codex"), 0755))
+	configPath := filepath.Join(home, ".codex", "config.toml")
+	require.NoError(t, os.WriteFile(configPath, []byte("not valid toml ["), 0644))
+
+	_, err := buildAgentArgs("codex", agentEnvMap["codex"], "OPENAI_API_KEY", "my-key", "http://127.0.0.1:8080/v1", nil)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to parse")
+}
+
+func TestBuildAgentArgs_UnknownAgent(t *testing.T) {
+	args, err := buildAgentArgs("copilot", agentEnvConfig{}, "", "", "", nil)
+	assert.NoError(t, err)
+	assert.Empty(t, args)
+}
+
+func TestBuildAgentArgs_EmptyArgs(t *testing.T) {
+	args, err := buildAgentArgs("claude", agentEnvMap["claude"], "ANTHROPIC_API_KEY", "key", "http://127.0.0.1:8080", nil)
+	require.NoError(t, err)
+	assert.Equal(t, 2, len(args)) // --settings + JSON only
+}
+
+// --- getCodexModelProvider unit tests ---
+
+func TestGetCodexModelProvider_Success(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	require.NoError(t, os.MkdirAll(filepath.Join(home, ".codex"), 0755))
+	configPath := filepath.Join(home, ".codex", "config.toml")
+	require.NoError(t, os.WriteFile(configPath, []byte("model_provider = \"xai\"\n"), 0644))
+
+	provider, err := getCodexModelProvider()
+	require.NoError(t, err)
+	assert.Equal(t, "xai", provider)
+}
+
+func TestGetCodexModelProvider_NotFound(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	require.NoError(t, os.MkdirAll(filepath.Join(home, ".codex"), 0755))
+	configPath := filepath.Join(home, ".codex", "config.toml")
+	require.NoError(t, os.WriteFile(configPath, []byte("other_field = \"value\"\n"), 0644))
+
+	_, err := getCodexModelProvider()
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "model_provider not found")
+}
+
+func TestGetCodexModelProvider_InvalidTOML(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	require.NoError(t, os.MkdirAll(filepath.Join(home, ".codex"), 0755))
+	configPath := filepath.Join(home, ".codex", "config.toml")
+	require.NoError(t, os.WriteFile(configPath, []byte("not valid toml ["), 0644))
+
+	_, err := getCodexModelProvider()
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to parse")
+}
+
+func TestGetCodexModelProvider_DirNotExists(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	// ~/.codex/ directory does not exist at all
+
+	_, err := getCodexModelProvider()
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to read")
+}
+
+// --- buildClaudeArgs unit tests ---
+
+func TestBuildClaudeArgs_AuthToken(t *testing.T) {
+	result, err := buildClaudeArgs(agentEnvMap["claude"], "ANTHROPIC_AUTH_TOKEN", "secret-key", "http://127.0.0.1:9999")
+	require.NoError(t, err)
+	assert.Equal(t, "--settings", result[0])
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal([]byte(result[1]), &payload))
+	env := payload["env"].(map[string]any)
+	assert.Equal(t, "http://127.0.0.1:9999", env["ANTHROPIC_BASE_URL"])
+	assert.Equal(t, "", env["ANTHROPIC_API_KEY"])
+	assert.Equal(t, "secret-key", env["ANTHROPIC_AUTH_TOKEN"])
+}
+
+func TestBuildClaudeArgs_APIKey(t *testing.T) {
+	result, err := buildClaudeArgs(agentEnvMap["claude"], "ANTHROPIC_API_KEY", "secret-key", "http://127.0.0.1:9999")
+	require.NoError(t, err)
+	assert.Equal(t, "--settings", result[0])
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal([]byte(result[1]), &payload))
+	env := payload["env"].(map[string]any)
+	assert.Equal(t, "http://127.0.0.1:9999", env["ANTHROPIC_BASE_URL"])
+	assert.Equal(t, "secret-key", env["ANTHROPIC_API_KEY"])
+	assert.Equal(t, "", env["ANTHROPIC_AUTH_TOKEN"])
+}
+
+// --- buildCodexArgs unit test ---
+
+func TestBuildCodexArgs(t *testing.T) {
+	result := buildCodexArgs("xai", "http://127.0.0.1:9999/v1")
+	assert.Equal(t, []string{
+		"-c", "model_provider=xai",
+		"-c", "model_providers.xai.base_url=http://127.0.0.1:9999/v1",
+		"-c", "model_providers.xai.env_key=OPENAI_API_KEY",
+		"-c", "model_providers.xai.requires_openai_auth=true",
+	}, result)
 }
 
 // --- Helpers ---
@@ -235,12 +475,12 @@ server:
 
 func captureAgentOutput(t *testing.T, configPath, routeKey, agentName string, args []string) (string, error) {
 	t.Helper()
-	// Capture stdout
 	old := os.Stdout
-	r, w, _ := os.Pipe()
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
 	os.Stdout = w
 
-	err := runAgent(configPath, routeKey, agentName, args)
+	err = runAgent(configPath, routeKey, agentName, args)
 
 	w.Close()
 	os.Stdout = old
