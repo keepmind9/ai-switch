@@ -17,16 +17,19 @@ var agentEnvMap = map[string]struct {
 	baseURLKey string
 	apiKeyKey  string
 	pathSuffix string
+	authKeys   []string
 }{
 	"claude": {
 		baseURLKey: "ANTHROPIC_BASE_URL",
 		apiKeyKey:  "ANTHROPIC_API_KEY",
 		pathSuffix: "",
+		authKeys:   []string{"ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY"},
 	},
 	"codex": {
 		baseURLKey: "OPENAI_BASE_URL",
 		apiKeyKey:  "OPENAI_API_KEY",
 		pathSuffix: "/v1",
+		authKeys:   []string{"OPENAI_API_KEY"},
 	},
 }
 
@@ -100,8 +103,21 @@ func runAgent(configPath, routeKey, agentName string, agentArgs []string) error 
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
-	// Inherit current env, filtering out keys we override to avoid duplicates
-	overrideKeys := map[string]bool{envConfig.baseURLKey: true, envConfig.apiKeyKey: true}
+	// Inherit current env, filtering out all auth-related keys to avoid duplicates
+	overrideKeys := map[string]bool{envConfig.baseURLKey: true}
+	for _, k := range envConfig.authKeys {
+		overrideKeys[k] = true
+	}
+
+	// Use whichever auth key is already set in the environment, fallback to default
+	authKey := envConfig.apiKeyKey
+	for _, k := range envConfig.authKeys {
+		if os.Getenv(k) != "" {
+			authKey = k
+			break
+		}
+	}
+
 	baseEnv := make([]string, 0, len(os.Environ())+2)
 	for _, e := range os.Environ() {
 		k, _, _ := strings.Cut(e, "=")
@@ -111,7 +127,7 @@ func runAgent(configPath, routeKey, agentName string, agentArgs []string) error 
 	}
 	cmd.Env = append(baseEnv,
 		envConfig.baseURLKey+"="+baseURL,
-		envConfig.apiKeyKey+"="+routeKey,
+		authKey+"="+routeKey,
 	)
 
 	if err := cmd.Run(); err != nil {

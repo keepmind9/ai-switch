@@ -18,6 +18,7 @@ func TestAgentEnvMap(t *testing.T) {
 	assert.Equal(t, "ANTHROPIC_BASE_URL", agentEnvMap["claude"].baseURLKey)
 	assert.Equal(t, "ANTHROPIC_API_KEY", agentEnvMap["claude"].apiKeyKey)
 	assert.Equal(t, "", agentEnvMap["claude"].pathSuffix)
+	assert.Equal(t, []string{"ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY"}, agentEnvMap["claude"].authKeys)
 	assert.Equal(t, "OPENAI_BASE_URL", agentEnvMap["codex"].baseURLKey)
 	assert.Equal(t, "OPENAI_API_KEY", agentEnvMap["codex"].apiKeyKey)
 	assert.Equal(t, "/v1", agentEnvMap["codex"].pathSuffix)
@@ -132,12 +133,16 @@ func TestRunAgent_Codex_V1Suffix(t *testing.T) {
 // --- Scenario: route_key passed as API key ---
 
 func TestRunAgent_RouteKeyAsApiKey(t *testing.T) {
-	_, configPath := setupFakeAgent(t, "claude", `echo "API_KEY=$ANTHROPIC_API_KEY"`)
+	_, configPath := setupFakeAgent(t, "claude", `echo "API_KEY=$ANTHROPIC_API_KEY AUTH_TOKEN=$ANTHROPIC_AUTH_TOKEN"`)
 	writeConfig(t, configPath, "127.0.0.1", 12345)
+
+	os.Unsetenv("ANTHROPIC_AUTH_TOKEN")
+	t.Cleanup(func() { os.Setenv("ANTHROPIC_AUTH_TOKEN", "test") })
 
 	output, err := captureAgentOutput(t, configPath, "my-secret-key", "claude", nil)
 	require.NoError(t, err)
 	assert.Contains(t, output, "API_KEY=my-secret-key")
+	assert.Contains(t, output, "AUTH_TOKEN=") // empty — not set
 }
 
 // --- Scenario: agent args are passed through ---
@@ -191,7 +196,6 @@ func TestRunAgent_EnvOverride(t *testing.T) {
 	_, configPath := setupFakeAgent(t, "claude", `echo "BASE_URL=$ANTHROPIC_BASE_URL"`)
 	writeConfig(t, configPath, "127.0.0.1", 19999)
 
-	// Set a pre-existing env var that should be overridden
 	os.Setenv("ANTHROPIC_BASE_URL", "http://should-be-overridden:9999")
 	t.Cleanup(func() { os.Unsetenv("ANTHROPIC_BASE_URL") })
 
@@ -199,6 +203,22 @@ func TestRunAgent_EnvOverride(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, output, "BASE_URL=http://127.0.0.1:19999")
 	assert.NotContains(t, output, "should-be-overridden")
+}
+
+// --- Scenario: ANTHROPIC_AUTH_TOKEN is reused when already set ---
+
+func TestRunAgent_AuthTokenPreferred(t *testing.T) {
+	_, configPath := setupFakeAgent(t, "claude", `echo "AUTH_TOKEN=$ANTHROPIC_AUTH_TOKEN API_KEY=$ANTHROPIC_API_KEY"`)
+	writeConfig(t, configPath, "127.0.0.1", 12345)
+
+	os.Setenv("ANTHROPIC_AUTH_TOKEN", "existing-token")
+	t.Cleanup(func() { os.Unsetenv("ANTHROPIC_AUTH_TOKEN") })
+
+	output, err := captureAgentOutput(t, configPath, "my-route-key", "claude", nil)
+	require.NoError(t, err)
+	assert.Contains(t, output, "AUTH_TOKEN=my-route-key")
+	assert.Contains(t, output, "API_KEY=")                // empty — not set
+	assert.NotContains(t, output, "API_KEY=my-route-key") // only auth token is set
 }
 
 // --- Helpers ---
