@@ -6,6 +6,7 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -30,6 +31,10 @@ var (
 	updateAPIURL = "https://api.github.com/repos/" + updateRepo + "/releases/latest"
 	updateClient = http.DefaultClient
 )
+
+// errDelayedSwap indicates the new binary was saved but the actual replacement
+// is deferred (e.g. Windows helper script waiting for the current process to exit).
+var errDelayedSwap = errors.New("delayed swap scheduled")
 
 type updateMeta struct {
 	Version string `json:"version"`
@@ -187,6 +192,9 @@ func doApply(updateDir string) error {
 
 	// Copy new binary over old one
 	if err := copyFile(srcBin, currentBin); err != nil {
+		if errors.Is(err, errDelayedSwap) {
+			return nil
+		}
 		return fmt.Errorf("failed to replace binary: %w", err)
 	}
 	if !isWindows {
@@ -196,6 +204,7 @@ func doApply(updateDir string) error {
 	cleanUpdateDir(updateDir)
 
 	fmt.Printf("Successfully updated to %s\n", meta.Version)
+	fmt.Println("Please restart ai-switch to use the new version.")
 	return nil
 }
 
@@ -529,6 +538,8 @@ func findExtractedBinary(dir string) (string, error) {
 	return "", fmt.Errorf("binary not found in extracted archive")
 }
 
+// --- Copy ---
+
 func copyFile(src, dst string) error {
 	if runtime.GOOS == "windows" {
 		return copyFileWindows(src, dst)
@@ -625,5 +636,6 @@ func copyFileWindows(src, dst string) error {
 	}
 
 	fmt.Println("Update will complete automatically after this process exits.")
-	return nil
+	fmt.Println("Please close this terminal and start ai-switch again.")
+	return errDelayedSwap
 }
