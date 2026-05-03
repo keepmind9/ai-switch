@@ -271,7 +271,10 @@ onMounted(load)
         <div class="stat-accent" />
         <div class="stat-body">
           <span class="stat-label">{{ t("stats.cards.requests") }}</span>
-          <span class="stat-value">{{ fmtNum(summary.requests) }}</span>
+          <div class="stat-value-row">
+            <span class="stat-value">{{ fmtNum(summary.requests) }}</span>
+            <span v-if="summary.error_requests > 0" class="stat-error-hint">{{ fmtNum(summary.error_requests) }} errors</span>
+          </div>
         </div>
       </div>
       <div class="stat-card" data-accent="blue">
@@ -452,6 +455,21 @@ onMounted(load)
   letter-spacing: -0.03em;
   color: var(--v3-title-text-color);
   line-height: 1.1;
+}
+
+.stat-value-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.stat-error-hint {
+  font-size: 11px;
+  font-weight: 600;
+  color: #d97757;
+  white-space: nowrap;
+  padding-bottom: 2px;
 }
 
 // Charts
