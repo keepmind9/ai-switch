@@ -19,10 +19,11 @@ type AdminHandler struct {
 	provider  *config.Provider
 	mu        sync.Mutex
 	restartCh chan<- struct{}
+	stopCh    chan<- struct{}
 }
 
-func NewAdminHandler(provider *config.Provider, restartCh chan<- struct{}) *AdminHandler {
-	return &AdminHandler{provider: provider, restartCh: restartCh}
+func NewAdminHandler(provider *config.Provider, restartCh chan<- struct{}, stopCh chan<- struct{}) *AdminHandler {
+	return &AdminHandler{provider: provider, restartCh: restartCh, stopCh: stopCh}
 }
 
 func (a *AdminHandler) RegisterRoutes(r *gin.RouterGroup) {
@@ -46,6 +47,7 @@ func (a *AdminHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.GET("/admin/settings", a.getSettings)
 	r.PUT("/admin/settings", a.updateSettings)
 	r.POST("/admin/restart", a.restartServer)
+	r.POST("/admin/stop", a.stopServer)
 }
 
 func (a *AdminHandler) listProviders(c *gin.Context) {
@@ -640,6 +642,17 @@ func (a *AdminHandler) restartServer(c *gin.Context) {
 		go func() {
 			time.Sleep(500 * time.Millisecond)
 			a.restartCh <- struct{}{}
+		}()
+	}
+}
+
+func (a *AdminHandler) stopServer(c *gin.Context) {
+	sendOK(c, nil)
+
+	if a.stopCh != nil {
+		go func() {
+			time.Sleep(500 * time.Millisecond)
+			a.stopCh <- struct{}{}
 		}()
 	}
 }

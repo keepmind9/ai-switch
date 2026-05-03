@@ -110,8 +110,9 @@ func runServe(configPath string) error {
 	h.RegisterRoutes(r)
 
 	restartCh := make(chan struct{}, 1)
+	stopCh := make(chan struct{}, 1)
 
-	adminH := handler.NewAdminHandler(provider, restartCh)
+	adminH := handler.NewAdminHandler(provider, restartCh, stopCh)
 	adminGroup := r.Group("/api", middleware.LocalhostOnly())
 	adminH.RegisterRoutes(adminGroup)
 
@@ -186,6 +187,19 @@ func runServe(configPath string) error {
 			// Close listener immediately so new process can bind.
 			ln.Close()
 			slog.Info("server restarted")
+			return nil
+
+		case <-stopCh:
+			slog.Info("stopping server via admin API")
+			if usageStore != nil {
+				usageStore.Close()
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			if err := srv.Shutdown(ctx); err != nil {
+				slog.Error("forced shutdown", "error", err)
+			}
+			slog.Info("server stopped")
 			return nil
 
 		case err := <-errCh:

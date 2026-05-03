@@ -11,3 +11,5 @@ export const getSettings = () => client.get<Settings>('/admin/settings')
 export const updateSettings = (data: Partial<Settings>) => client.put<Settings>('/admin/settings', data)
 
 export const restartServer = () => client.post<{ url: string }>('/admin/restart')
+
+export const stopServer = () => client.post('/admin/stop')

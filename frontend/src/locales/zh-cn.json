@@ -264,6 +264,10 @@
     "cancel": "取消",
     "successSave": "设置已保存",
     "successRestart": "服务器正在重启...",
+    "successStop": "服务器正在停止...",
+    "stop": "停止服务",
+    "stopDesc": "停止正在运行的 ai-switch 守护进程。",
+    "confirmStop": "确认停止",
     "newUrl": "重启后请访问新地址：",
     "failSave": "保存设置失败"
   }

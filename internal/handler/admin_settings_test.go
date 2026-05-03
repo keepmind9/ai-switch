@@ -42,7 +42,7 @@ func setupSettingsTest(t *testing.T) (*gin.Engine, string) {
 	require.NoError(t, err)
 	provider := config.NewProvider(loaded, cfgPath)
 
-	admin := NewAdminHandler(provider, nil)
+	admin := NewAdminHandler(provider, nil, nil)
 	r := gin.New()
 	adminGroup := r.Group("/api", func(c *gin.Context) { c.Next() })
 	admin.RegisterRoutes(adminGroup)
@@ -260,7 +260,7 @@ func TestRestartServerWildcardHost(t *testing.T) {
 	require.NoError(t, err)
 	provider := config.NewProvider(loaded, cfgPath)
 
-	admin := NewAdminHandler(provider, nil)
+	admin := NewAdminHandler(provider, nil, nil)
 	r := gin.New()
 	adminGroup := r.Group("/api", func(c *gin.Context) { c.Next() })
 	admin.RegisterRoutes(adminGroup)

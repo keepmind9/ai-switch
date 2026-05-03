@@ -264,6 +264,10 @@
     "cancel": "Cancel",
     "successSave": "Settings saved",
     "successRestart": "Server is restarting...",
+    "successStop": "Server is stopping...",
+    "stop": "Stop Server",
+    "stopDesc": "Stop the running ai-switch daemon process.",
+    "confirmStop": "Confirm Stop",
     "newUrl": "After restart, visit the new address:",
     "failSave": "Failed to save settings"
   }

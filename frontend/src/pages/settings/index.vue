@@ -2,16 +2,18 @@
 import { ref, onMounted, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useI18n } from 'vue-i18n'
-import { getSettings, updateSettings, restartServer } from '@/api/settings'
+import { getSettings, updateSettings, restartServer, stopServer } from '@/api/settings'
 import type { Settings } from '@/api/settings'
 import { useConfirm } from '@@/composables/useConfirm'
 
 const { t } = useI18n()
 const { confirmState, toggle: toggleRestart, reset: resetRestart } = useConfirm()
+const { confirmState: stopConfirmState, toggle: toggleStop, reset: resetStop } = useConfirm()
 
 const loading = ref(true)
 const saving = ref(false)
 const restarting = ref(false)
+const stopping = ref(false)
 const restartUrl = ref('')
 const pendingRestart = ref(false)
 
@@ -90,6 +92,19 @@ async function handleRestart() {
   }
 }
 
+async function handleStop() {
+  stopping.value = true
+  try {
+    await stopServer()
+    ElMessage.success(t('settings.successStop'))
+  } catch {
+    ElMessage.success(t('settings.successStop'))
+  } finally {
+    stopping.value = false
+    resetStop('stop')
+  }
+}
+
 onMounted(load)
 </script>
 
@@ -147,6 +162,26 @@ onMounted(load)
             {{ t('settings.restart') }}
           </el-button>
         </template>
+      </div>
+    </el-card>
+
+    <el-card shadow="never" style="margin-top: 16px">
+      <template #header>
+        <span>{{ t('settings.stop') }}</span>
+      </template>
+      <div style="margin-bottom: 16px; color: var(--el-text-color-secondary); font-size: 13px">{{ t('settings.stopDesc') }}</div>
+      <div style="display: flex; gap: 12px; align-items: center">
+        <template v-if="stopConfirmState.stop">
+          <el-button @click="resetStop('stop')">
+            {{ t('settings.cancel') }}
+          </el-button>
+          <el-button type="danger" :loading="stopping" @click="handleStop">
+            {{ t('settings.confirmStop') }}
+          </el-button>
+        </template>
+        <el-button v-else type="danger" plain @click="toggleStop('stop')">
+          {{ t('settings.stop') }}
+        </el-button>
       </div>
     </el-card>
   </div>
