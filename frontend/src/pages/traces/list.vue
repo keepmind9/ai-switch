@@ -116,6 +116,7 @@ onActivated(() => {
           <el-option label="2xx" :value="200" />
           <el-option label="4xx" :value="400" />
           <el-option label="5xx" :value="500" />
+          <el-option label="Error" value="error" />
         </el-select>
         <el-input v-model="filter.session_id" :placeholder="t('traces.filter.sessionId')" class="w-50" clearable />
         <el-button type="primary" :disabled="!canApply" @click="fetchList()">{{ t('traces.filter.apply') }}</el-button>

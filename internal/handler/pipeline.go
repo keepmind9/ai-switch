@@ -344,6 +344,7 @@ func (h *Handler) stepForward(ctx *hook.Context) error {
 	resp, err := h.client.Do(req)
 	if err != nil {
 		writeUpstreamError(ctx.GinCtx, "failed to call upstream: "+err.Error())
+		h.tracer().RecordResponse(ctx)
 		return err
 	}
 	ctx.UpstreamLatency = time.Since(start)
@@ -355,6 +356,7 @@ func (h *Handler) stepForward(ctx *hook.Context) error {
 		ctx.UpstreamRespBody = respBody
 		h.tracer().RecordUpstreamResponse(ctx, resp.StatusCode)
 		h.writeConvertedError(ctx.GinCtx, resp, respBody, ctx.ClientProtocol)
+		h.tracer().RecordResponse(ctx)
 		return fmt.Errorf("upstream returned status %d", resp.StatusCode)
 	}
 

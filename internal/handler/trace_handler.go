@@ -84,7 +84,11 @@ func (f traceFilters) match(s *traceSummary) bool {
 	if f.Provider != "" && !strings.Contains(strings.ToLower(s.Provider), strings.ToLower(f.Provider)) {
 		return false
 	}
-	if f.Status != 0 && s.Status != f.Status {
+	if f.Status == -1 {
+		if s.Status != 0 {
+			return false
+		}
+	} else if f.Status != 0 && s.Status/100 != f.Status/100 {
 		return false
 	}
 	if f.SessionID != "" && s.SessionID != f.SessionID {
@@ -124,7 +128,9 @@ func (t *TraceHandler) listTraces(c *gin.Context) {
 		StartTime: strings.ReplaceAll(c.Query("start_time"), " ", "T"),
 		EndTime:   strings.ReplaceAll(c.Query("end_time"), " ", "T"),
 	}
-	if s := c.Query("status"); s != "" {
+	if s := c.Query("status"); s == "error" {
+		filters.Status = -1
+	} else if s != "" {
 		filters.Status, _ = strconv.Atoi(s)
 	}
 

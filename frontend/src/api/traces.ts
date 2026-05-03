@@ -51,7 +51,7 @@ export const getTraces = async (params: {
   end_time?: string
   model?: string
   provider?: string
-  status?: number
+  status?: number | string
   session_id?: string
   cursor?: string
   page_size?: number
