@@ -252,6 +252,9 @@ ai-switch serve -c config.yaml    # 指定配置文件启动
 ai-switch stop                    # 停止后台守护进程
 ai-switch check -c config.yaml    # 校验配置文件
 ai-switch version                 # 查看版本信息
+ai-switch update                  # 检查更新并下载最新版本
+ai-switch update --apply          # 应用已下载的更新
+ai-switch shortcut                # 创建桌面快捷方式
 ai-switch agent <route-key> claude # 通过 ai-switch 启动 Claude Code
 ai-switch agent <route-key> codex  # 通过 ai-switch 启动 Codex CLI
 ```
@@ -274,9 +277,9 @@ ai-switch agent my-route-key claude --continue
 ai-switch agent my-route-key codex --model o4-mini
 ```
 
-自动设置 `ANTHROPIC_BASE_URL` / `ANTHROPIC_API_KEY`（Claude）或 `OPENAI_BASE_URL` / `OPENAI_API_KEY`（Codex），指向本地 ai-switch。无需手动配置环境变量。
+自动配置环境变量并覆盖 agent 自身配置（Claude 通过 `--settings`，Codex 通过 `-c`），确保请求通过 route key 路由到 ai-switch。无需手动配置。
 
-route key 用作 API Key。Agent 退出码会透传。
+route key 用作 API Key。Agent 参数和退出码会透传。
 
 ### 配置校验
 

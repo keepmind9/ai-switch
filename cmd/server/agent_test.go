@@ -115,6 +115,7 @@ func TestRunAgent_InvalidConfig_ReturnsError(t *testing.T) {
 func TestRunAgent_ZeroHost_ReplacesWithLocalhost(t *testing.T) {
 	_, configPath := setupFakeAgent(t, "codex", `echo "BASE_URL=$OPENAI_BASE_URL"`)
 	writeConfig(t, configPath, "0.0.0.0", 9999)
+	setupCodexConfig(t, "xai")
 
 	output, err := captureAgentOutput(t, configPath, "my-key", "codex", nil)
 	require.NoError(t, err)
@@ -138,6 +139,7 @@ func TestRunAgent_Claude_NoV1Suffix(t *testing.T) {
 func TestRunAgent_Codex_V1Suffix(t *testing.T) {
 	_, configPath := setupFakeAgent(t, "codex", `echo "BASE_URL=$OPENAI_BASE_URL"`)
 	writeConfig(t, configPath, "127.0.0.1", 12345)
+	setupCodexConfig(t, "xai")
 
 	output, err := captureAgentOutput(t, configPath, "key", "codex", nil)
 	require.NoError(t, err)
@@ -164,6 +166,7 @@ func TestRunAgent_RouteKeyFallback(t *testing.T) {
 func TestRunAgent_ArgsPassedThrough(t *testing.T) {
 	_, configPath := setupFakeAgent(t, "codex", `echo "ARGS=$*"`)
 	writeConfig(t, configPath, "127.0.0.1", 12345)
+	setupCodexConfig(t, "xai")
 
 	output, err := captureAgentOutput(t, configPath, "key", "codex", []string{"--model", "o4-mini", "--full-auto"})
 	require.NoError(t, err)
@@ -462,6 +465,18 @@ func TestBuildCodexArgs(t *testing.T) {
 }
 
 // --- Helpers ---
+
+func setupCodexConfig(t *testing.T, provider string) {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	require.NoError(t, os.MkdirAll(filepath.Join(home, ".codex"), 0755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(home, ".codex", "config.toml"),
+		[]byte(fmt.Sprintf("model_provider = %q\n", provider)),
+		0644,
+	))
+}
 
 func writeConfig(t *testing.T, path, host string, port int) {
 	t.Helper()

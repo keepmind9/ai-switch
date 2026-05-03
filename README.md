@@ -251,6 +251,9 @@ ai-switch serve -c config.yaml    # Start with custom config
 ai-switch stop                    # Stop the background daemon
 ai-switch check -c config.yaml    # Validate config without starting
 ai-switch version                 # Print version info
+ai-switch update                  # Check for updates and download latest version
+ai-switch update --apply          # Apply the downloaded update
+ai-switch shortcut                # Create desktop shortcuts to start/stop ai-switch
 ai-switch agent <route-key> claude # Launch Claude Code via ai-switch
 ai-switch agent <route-key> codex  # Launch Codex CLI via ai-switch
 ```
@@ -273,9 +276,9 @@ ai-switch agent my-route-key claude --continue
 ai-switch agent my-route-key codex --model o4-mini
 ```
 
-This sets `ANTHROPIC_BASE_URL` / `ANTHROPIC_API_KEY` for Claude, or `OPENAI_BASE_URL` / `OPENAI_API_KEY` for Codex, pointing them at your local ai-switch instance. No manual env config needed.
+This auto-configures environment variables and overrides the agent's own config (via `--settings` for Claude, `-c` for Codex) to ensure requests route through ai-switch using the route key. No manual configuration needed.
 
-The route key is used as the API key. Agent exit codes are passed through.
+The route key serves as the API key. Agent args and exit codes are passed through.
 
 ### Config validation
 
