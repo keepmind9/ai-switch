@@ -5,7 +5,6 @@ import { useLayoutMode } from "@@/composables/useLayoutMode"
 import { useAppStore } from "@/pinia/stores/app"
 import { useSettingsStore } from "@/pinia/stores/settings"
 import { Breadcrumb, Hamburger, Sidebar } from "../index"
-import { Operation } from "@element-plus/icons-vue"
 
 const { isMobile } = useDevice()
 const { isTop } = useLayoutMode()
@@ -20,6 +19,10 @@ function toggleSidebar() {
 function handleLanguageChange(lang: string) {
   appStore.setLanguage(lang)
   ElMessage.success(lang === "zh-cn" ? "语言切换成功" : "Language switched successfully")
+}
+
+function toggleLanguage() {
+  handleLanguageChange(appStore.language === "en" ? "zh-cn" : "en")
 }
 </script>
 
@@ -36,10 +39,8 @@ function handleLanguageChange(lang: string) {
     <div class="right-menu">
       <div class="right-menu-container">
         <el-dropdown trigger="click" @command="handleLanguageChange">
-          <div class="right-menu-item">
-            <el-tooltip :content="$t('navbar.language')" placement="bottom">
-              <el-icon :size="18"><Operation /></el-icon>
-            </el-tooltip>
+          <div class="right-menu-item lang-switch" @click="toggleLanguage">
+            {{ appStore.language === 'en' ? '中文' : 'EN' }}
           </div>
           <template #dropdown>
             <el-dropdown-menu>
@@ -113,11 +114,17 @@ function handleLanguageChange(lang: string) {
       border-radius: var(--v3-border-radius-small);
       transition: all 0.3s;
       cursor: pointer;
-      
+
       &:hover {
         background-color: var(--v3-sidebar-menu-hover-bg-color);
         color: var(--el-color-primary);
       }
+    }
+
+    .lang-switch {
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
     }
   }
 }
