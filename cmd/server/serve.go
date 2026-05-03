@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -25,6 +26,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const (
+	restartEnvKey   = "AI_SWITCH_RESTART"
+	restartAttempts = 20
+	restartInterval = 250 * time.Millisecond
+)
+
 func newServeCmd(configPath string) *cobra.Command {
 	var asDaemon bool
 
@@ -44,6 +51,9 @@ func newServeCmd(configPath string) *cobra.Command {
 }
 
 func runServe(configPath string) error {
+	isRestart := os.Getenv(restartEnvKey) == "1"
+	os.Unsetenv(restartEnvKey)
+
 	dataDir, err := config.EnsureDataDir()
 	if err != nil {
 		slog.Warn("failed to create data directory", "error", err)
@@ -99,7 +109,9 @@ func runServe(configPath string) error {
 	}
 	h.RegisterRoutes(r)
 
-	adminH := handler.NewAdminHandler(provider)
+	restartCh := make(chan struct{}, 1)
+
+	adminH := handler.NewAdminHandler(provider, restartCh)
 	adminGroup := r.Group("/api", middleware.LocalhostOnly())
 	adminH.RegisterRoutes(adminGroup)
 
@@ -115,15 +127,19 @@ func runServe(configPath string) error {
 	writePIDFile(dataDir)
 	defer removePIDFile(dataDir)
 
+	ln, err := listenWithRetry(addr, isRestart)
+	if err != nil {
+		if isAddrInUse(err) {
+			return fmt.Errorf("port %d already in use, edit %s to change the port", cfg.Server.Port, resolvedPath)
+		}
+		return fmt.Errorf("server error: %w", err)
+	}
+
 	errCh := make(chan error, 1)
 	go func() {
 		slog.Info("starting server", "addr", addr, "config", resolvedPath, "data_dir", dataDir)
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			if isAddrInUse(err) {
-				errCh <- fmt.Errorf("port %d already in use, edit %s to change the port", cfg.Server.Port, resolvedPath)
-			} else {
-				errCh <- fmt.Errorf("server error: %w", err)
-			}
+		if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
+			errCh <- fmt.Errorf("server error: %w", err)
 			return
 		}
 		errCh <- nil
@@ -157,10 +173,47 @@ func runServe(configPath string) error {
 				slog.Info("config reloaded successfully")
 			}
 
+		case <-restartCh:
+			slog.Info("restarting server with new config")
+			if usageStore != nil {
+				usageStore.Close()
+			}
+			// Spawn new process with retry flag so it retries port binding.
+			if err := spawnRestartServer(configPath); err != nil {
+				slog.Error("failed to spawn new server", "error", err)
+				return err
+			}
+			// Close listener immediately so new process can bind.
+			ln.Close()
+			slog.Info("server restarted")
+			return nil
+
 		case err := <-errCh:
 			return err
 		}
 	}
+}
+
+// listenWithRetry binds to addr. On restart, retries up to restartAttempts times
+// with restartInterval between attempts to wait for the old process to release the port.
+func listenWithRetry(addr string, isRestart bool) (net.Listener, error) {
+	attempts := 1
+	if isRestart {
+		attempts = restartAttempts
+	}
+	var lastErr error
+	for i := 0; i < attempts; i++ {
+		ln, err := net.Listen("tcp", addr)
+		if err == nil {
+			return ln, nil
+		}
+		lastErr = err
+		if isRestart && i < attempts-1 {
+			slog.Info("waiting for port to be released", "addr", addr, "attempt", i+1)
+			time.Sleep(restartInterval)
+		}
+	}
+	return nil, lastErr
 }
 
 func startDaemon(configPath string) error {

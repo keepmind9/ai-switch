@@ -120,7 +120,7 @@ func TestFetchModelsHandler_Success(t *testing.T) {
 	defer server.Close()
 
 	provider := config.NewProvider(&config.Config{}, "test.yaml")
-	admin := NewAdminHandler(provider)
+	admin := NewAdminHandler(provider, nil)
 	r := newFetchModelsRouter(admin)
 
 	body := fmt.Sprintf(`{"base_url":"%s","api_key":"test-key","format":"chat"}`, server.URL)
@@ -139,7 +139,7 @@ func TestFetchModelsHandler_Success(t *testing.T) {
 
 func TestFetchModelsHandler_MissingFields(t *testing.T) {
 	provider := config.NewProvider(&config.Config{}, "test.yaml")
-	admin := NewAdminHandler(provider)
+	admin := NewAdminHandler(provider, nil)
 	r := newFetchModelsRouter(admin)
 
 	req := httptest.NewRequest("POST", "/api/admin/providers/fetch-models", strings.NewReader(`{"base_url":"http://x"}`))
@@ -152,7 +152,7 @@ func TestFetchModelsHandler_MissingFields(t *testing.T) {
 
 func TestFetchModelsHandler_MissingAPIKeyAndKey(t *testing.T) {
 	provider := config.NewProvider(&config.Config{}, "test.yaml")
-	admin := NewAdminHandler(provider)
+	admin := NewAdminHandler(provider, nil)
 	r := newFetchModelsRouter(admin)
 
 	body := `{"base_url":"http://x","api_key":"","format":"chat"}`
@@ -184,7 +184,7 @@ func TestFetchModelsHandler_ResolvesKeyFromExistingProvider(t *testing.T) {
 		},
 	}
 	provider := config.NewProvider(cfg, "test.yaml")
-	admin := NewAdminHandler(provider)
+	admin := NewAdminHandler(provider, nil)
 	r := newFetchModelsRouter(admin)
 
 	body := fmt.Sprintf(`{"base_url":"%s","api_key":"","key":"openai","format":"chat"}`, server.URL)
@@ -205,7 +205,7 @@ func TestFetchModelsHandler_KeyNotFound(t *testing.T) {
 	defer server.Close()
 
 	provider := config.NewProvider(&config.Config{}, "test.yaml")
-	admin := NewAdminHandler(provider)
+	admin := NewAdminHandler(provider, nil)
 	r := newFetchModelsRouter(admin)
 
 	body := fmt.Sprintf(`{"base_url":"%s","api_key":"","key":"nonexist","format":"chat"}`, server.URL)
@@ -219,7 +219,7 @@ func TestFetchModelsHandler_KeyNotFound(t *testing.T) {
 
 func TestFetchModelsHandler_InvalidFormat(t *testing.T) {
 	provider := config.NewProvider(&config.Config{}, "test.yaml")
-	admin := NewAdminHandler(provider)
+	admin := NewAdminHandler(provider, nil)
 	r := newFetchModelsRouter(admin)
 
 	body := `{"base_url":"http://x","api_key":"k","format":"invalid"}`
@@ -233,7 +233,7 @@ func TestFetchModelsHandler_InvalidFormat(t *testing.T) {
 
 func TestFetchModelsHandler_UpstreamError(t *testing.T) {
 	provider := config.NewProvider(&config.Config{}, "test.yaml")
-	admin := NewAdminHandler(provider)
+	admin := NewAdminHandler(provider, nil)
 	r := newFetchModelsRouter(admin)
 
 	body := `{"base_url":"http://127.0.0.1:0","api_key":"k","format":"chat"}`
@@ -257,7 +257,7 @@ func TestFetchModelsHandler_AnthropicFormatUsesBearer(t *testing.T) {
 	defer server.Close()
 
 	provider := config.NewProvider(&config.Config{}, "test.yaml")
-	admin := NewAdminHandler(provider)
+	admin := NewAdminHandler(provider, nil)
 	r := newFetchModelsRouter(admin)
 
 	body := fmt.Sprintf(`{"base_url":"%s","api_key":"my-key","format":"anthropic"}`, server.URL)

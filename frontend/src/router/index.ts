@@ -88,6 +88,18 @@ export const constantRoutes: RouteRecordRaw[] = [
         meta: { title: "traceDetail", hidden: true }
       }
     ]
+  },
+  {
+    path: "/settings",
+    component: Layouts,
+    children: [
+      {
+        path: "",
+        component: () => import("@/pages/settings/index.vue"),
+        name: "Settings",
+        meta: { title: "settings", elIcon: "Setting" }
+      }
+    ]
   }
 ]
 

@@ -4,7 +4,8 @@
     "providers": "Providers",
     "routes": "Routes",
     "stats": "Usage Stats",
-    "traces": "Trace Viewer"
+    "traces": "Trace Viewer",
+    "settings": "Settings"
   },
   "navbar": {
     "screenfull": "Full Screen",
@@ -243,5 +244,25 @@
         "response": "Response"
       }
     }
+  },
+  "settings": {
+    "title": "Settings",
+    "desc": "Configure server parameters and log preferences.",
+    "form": {
+      "host": "Listen Host",
+      "hostPlaceholder": "e.g. 127.0.0.1 or 0.0.0.0",
+      "port": "Listen Port",
+      "portPlaceholder": "1-65535",
+      "logRetention": "Log Retention Days",
+      "logRetentionTip": "Log files older than this will be auto-cleaned."
+    },
+    "save": "Save",
+    "restart": "Restart",
+    "confirm": "Confirm Restart",
+    "cancel": "Cancel",
+    "successSave": "Settings saved",
+    "successRestart": "Server is restarting...",
+    "newUrl": "After restart, visit the new address:",
+    "failSave": "Failed to save settings"
   }
 }

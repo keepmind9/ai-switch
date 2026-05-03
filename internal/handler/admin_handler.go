@@ -7,19 +7,22 @@ import (
 	"net/http"
 	"slices"
 	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/keepmind9/ai-switch/internal/config"
 	"github.com/keepmind9/ai-switch/internal/converter"
+	"github.com/keepmind9/ai-switch/internal/log"
 )
 
 type AdminHandler struct {
-	provider *config.Provider
-	mu       sync.Mutex
+	provider  *config.Provider
+	mu        sync.Mutex
+	restartCh chan<- struct{}
 }
 
-func NewAdminHandler(provider *config.Provider) *AdminHandler {
-	return &AdminHandler{provider: provider}
+func NewAdminHandler(provider *config.Provider, restartCh chan<- struct{}) *AdminHandler {
+	return &AdminHandler{provider: provider, restartCh: restartCh}
 }
 
 func (a *AdminHandler) RegisterRoutes(r *gin.RouterGroup) {
@@ -39,6 +42,10 @@ func (a *AdminHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.GET("/admin/presets", a.listPresets)
 	r.GET("/admin/status", a.adminStatus)
 	r.GET("/admin/apikeys/:type/:key", a.revealAPIKey)
+
+	r.GET("/admin/settings", a.getSettings)
+	r.PUT("/admin/settings", a.updateSettings)
+	r.POST("/admin/restart", a.restartServer)
 }
 
 func (a *AdminHandler) listProviders(c *gin.Context) {
@@ -559,6 +566,84 @@ func (a *AdminHandler) revealAPIKey(c *gin.Context) {
 	}
 }
 
+func (a *AdminHandler) getSettings(c *gin.Context) {
+	cfg := a.provider.Get()
+	sendOK(c, gin.H{
+		"host":               cfg.Server.Host,
+		"port":               cfg.Server.Port,
+		"log_retention_days": cfg.LogRetentionDays,
+	})
+}
+
+func (a *AdminHandler) updateSettings(c *gin.Context) {
+	var req struct {
+		Host             *string `json:"host"`
+		Port             *int    `json:"port"`
+		LogRetentionDays *int    `json:"log_retention_days"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		sendBindErr(c, err)
+		return
+	}
+
+	if req.Port != nil && (*req.Port < 1 || *req.Port > 65535) {
+		sendFail(c, http.StatusBadRequest, CodeBadRequest, "port must be between 1 and 65535")
+		return
+	}
+	if req.LogRetentionDays != nil && *req.LogRetentionDays < 1 {
+		sendFail(c, http.StatusBadRequest, CodeBadRequest, "log_retention_days must be at least 1")
+		return
+	}
+
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	cfg := copyConfig(a.provider.Get())
+
+	if req.Host != nil {
+		cfg.Server.Host = *req.Host
+	}
+	if req.Port != nil {
+		cfg.Server.Port = *req.Port
+	}
+	if req.LogRetentionDays != nil {
+		cfg.LogRetentionDays = *req.LogRetentionDays
+	}
+
+	if err := a.writeAndReload(cfg); err != nil {
+		sendFail(c, http.StatusInternalServerError, CodeInternalError, err.Error())
+		return
+	}
+
+	if req.LogRetentionDays != nil {
+		log.SetRetentionDays(*req.LogRetentionDays)
+	}
+
+	sendOK(c, gin.H{
+		"host":               cfg.Server.Host,
+		"port":               cfg.Server.Port,
+		"log_retention_days": cfg.LogRetentionDays,
+	})
+}
+
+func (a *AdminHandler) restartServer(c *gin.Context) {
+	cfg := a.provider.Get()
+	host := cfg.Server.Host
+	if host == "0.0.0.0" {
+		host = "localhost"
+	}
+	url := fmt.Sprintf("http://%s:%d/ui", host, cfg.Server.Port)
+
+	sendOK(c, gin.H{"url": url})
+
+	if a.restartCh != nil {
+		go func() {
+			time.Sleep(500 * time.Millisecond)
+			a.restartCh <- struct{}{}
+		}()
+	}
+}
+
 func (a *AdminHandler) writeAndReload(cfg *config.Config) error {
 	if err := config.WriteConfig(a.provider.Path(), cfg); err != nil {
 		return err
@@ -580,6 +665,7 @@ func copyConfig(cfg *config.Config) *config.Config {
 		DefaultAnthropicRoute: cfg.DefaultAnthropicRoute,
 		DefaultResponsesRoute: cfg.DefaultResponsesRoute,
 		DefaultChatRoute:      cfg.DefaultChatRoute,
+		LogRetentionDays:      cfg.LogRetentionDays,
 		Providers:             make(map[string]config.ProviderConfig, len(cfg.Providers)),
 		Routes:                make(map[string]config.RouteRule, len(cfg.Routes)),
 	}

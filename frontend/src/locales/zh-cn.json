@@ -4,7 +4,8 @@
     "providers": "服务商",
     "routes": "路由密钥",
     "stats": "使用统计",
-    "traces": "Trace 查看器"
+    "traces": "Trace 查看器",
+    "settings": "设置"
   },
   "navbar": {
     "screenfull": "全屏",
@@ -243,5 +244,25 @@
         "response": "响应回写"
       }
     }
+  },
+  "settings": {
+    "title": "设置",
+    "desc": "配置服务器参数和日志策略。",
+    "form": {
+      "host": "监听地址",
+      "hostPlaceholder": "例如 127.0.0.1 或 0.0.0.0",
+      "port": "监听端口",
+      "portPlaceholder": "1-65535",
+      "logRetention": "日志保留天数",
+      "logRetentionTip": "超过保留天数的日志文件将被自动清理。"
+    },
+    "save": "保存",
+    "restart": "重启",
+    "confirm": "确认重启",
+    "cancel": "取消",
+    "successSave": "设置已保存",
+    "successRestart": "服务器正在重启...",
+    "newUrl": "重启后请访问新地址：",
+    "failSave": "保存设置失败"
   }
 }
