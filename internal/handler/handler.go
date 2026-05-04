@@ -68,6 +68,7 @@ func (h *Handler) RegisterHook(hk hook.Hook) {
 // RegisterRoutes registers all API endpoints.
 func (h *Handler) RegisterRoutes(r *gin.Engine) {
 	r.POST("/v1/responses", h.handleResponses)
+	r.POST("/v1/responses/compact", h.handleCompact)
 	r.POST("/v1/messages", h.handleAnthropic)
 	r.POST("/v1/messages/count_tokens", h.handleCountTokens)
 	r.POST("/v1/chat/completions", h.handleChat)
