@@ -28,9 +28,9 @@ type ResponsesTool struct {
 type ResponsesResponse struct {
 	ID        string         `json:"id"`
 	Object    string         `json:"object"`
-	Created   int64          `json:"created"`
+	CreatedAt int64          `json:"created_at"`
 	Model     string         `json:"model"`
-	Responses []ResponseItem `json:"responses,omitempty"`
+	Output    []ResponseItem `json:"output,omitempty"`
 	Usage     *Usage         `json:"usage,omitempty"`
 }
 
@@ -58,6 +58,13 @@ type Usage struct {
 	TotalTokens         int `json:"total_tokens"`
 	CacheCreationTokens int `json:"cache_creation_tokens,omitempty"`
 	CacheReadTokens     int `json:"cache_read_tokens,omitempty"`
+}
+
+// CompactionPayload is the self-contained data encoded in fake encrypted_content.
+type CompactionPayload struct {
+	Summary string `json:"summary"`
+	Model   string `json:"model"`
+	TS      int64  `json:"ts"`
 }
 
 // Chat Completions API Types
