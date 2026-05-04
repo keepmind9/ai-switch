@@ -40,3 +40,58 @@ func DecodeCompactionPayload(encoded string) (*types.CompactionPayload, error) {
 	}
 	return &payload, nil
 }
+
+// ExtractConversationText formats Responses API input items into a readable conversation string.
+// Compaction items are skipped.
+func ExtractConversationText(input any) string {
+	if input == nil {
+		return ""
+	}
+	switch v := input.(type) {
+	case string:
+		return v
+	case []any:
+		var parts []string
+		for _, item := range v {
+			switch val := item.(type) {
+			case string:
+				if val != "" {
+					parts = append(parts, "[user]: "+val)
+				}
+			case map[string]any:
+				itemType, _ := val["type"].(string)
+				if itemType == "compaction" {
+					continue
+				}
+				role, _ := val["role"].(string)
+				text := extractInputTextMessage(val)
+				if text != "" && role != "" {
+					parts = append(parts, fmt.Sprintf("[%s]: %s", role, text))
+				}
+			}
+		}
+		return strings.Join(parts, "\n")
+	}
+	return ""
+}
+
+const summarizationSystemPrompt = `You are a conversation compactor. Summarize the conversation below into a compact but complete summary. Preserve:
+- Key decisions and rationale
+- Code changes made (file paths, what changed)
+- Current task status and any pending items
+- Important context needed to continue the conversation
+
+Be factual and specific. Omit pleasantries and repetition.`
+
+// BuildSummarizationRequest creates a Chat API request for LLM-based summarization.
+func BuildSummarizationRequest(conversation, model string) *types.ChatRequest {
+	return &types.ChatRequest{
+		Model:     model,
+		Stream:    false,
+		MaxTokens: 1024,
+		Messages: []types.ChatMessage{
+			{Role: "system", Content: strPtr(summarizationSystemPrompt)},
+			{Role: "user", Content: strPtr(conversation)},
+		},
+	}
+}
