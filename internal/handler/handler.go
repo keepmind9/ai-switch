@@ -810,6 +810,9 @@ func (h *Handler) handleResponses(c *gin.Context) {
 		c.JSON(status, gin.H{"error": gin.H{"code": "invalid_request", "message": err.Error()}})
 		return
 	}
+	// Decode fake compaction items before pipeline processing
+	body = decodeCompactionInBody(body)
+
 	h.executePipeline(c, converter.FormatResponses, body)
 }
 

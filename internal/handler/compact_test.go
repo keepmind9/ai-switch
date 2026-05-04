@@ -364,3 +364,76 @@ func TestForwardCompactPassthrough_UpstreamSuccess(t *testing.T) {
 	assert.Equal(t, http.StatusOK, rec.Code)
 	assert.Equal(t, "/v1/responses/compact", requestedPath)
 }
+
+func TestDecodeCompactionInBody_NoCompaction(t *testing.T) {
+	original := []byte(`{"model":"gpt-4","input":"hello"}`)
+	result := decodeCompactionInBody(original)
+	assert.Equal(t, string(original), string(result))
+}
+
+func TestDecodeCompactionInBody_WithFakeCompaction(t *testing.T) {
+	// aisw_eyJzdW1tYXJ5IjoidGVzdCBzdW1tYXJ5IiwibW9kZWwiOiJncHQtNCIsInRzIjoxMjM0fQ==
+	// decodes to {"summary":"test summary","model":"gpt-4","ts":1234}
+	input := []byte(`{
+		"model": "gpt-4",
+		"input": [
+			{"type": "compaction", "encrypted_content": "aisw_eyJzdW1tYXJ5IjoidGVzdCBzdW1tYXJ5IiwibW9kZWwiOiJncHQtNCIsInRzIjoxMjM0fQ=="},
+			{"type": "message", "role": "user", "content": [{"type": "input_text", "text": "continue"}]}
+		]
+	}`)
+
+	result := decodeCompactionInBody(input)
+
+	var raw map[string]any
+	require.NoError(t, json.Unmarshal(result, &raw))
+
+	// Compaction item removed from input, summary merged into instructions
+	inputArr := raw["input"].([]any)
+	require.Len(t, inputArr, 1)
+	assert.Equal(t, "message", inputArr[0].(map[string]any)["type"])
+	assert.Equal(t, "user", inputArr[0].(map[string]any)["role"])
+
+	instructions, _ := raw["instructions"].(string)
+	assert.Contains(t, instructions, "[Conversation Summary]")
+	assert.Contains(t, instructions, "test summary")
+}
+
+func TestDecodeCompactionInBody_MergesWithExistingInstructions(t *testing.T) {
+	input := []byte(`{
+		"model": "gpt-4",
+		"instructions": "You are a helpful assistant.",
+		"input": [
+			{"type": "compaction", "encrypted_content": "aisw_eyJzdW1tYXJ5IjoidGVzdCBzdW1tYXJ5IiwibW9kZWwiOiJncHQtNCIsInRzIjoxMjM0fQ=="}
+		]
+	}`)
+
+	result := decodeCompactionInBody(input)
+
+	var raw map[string]any
+	require.NoError(t, json.Unmarshal(result, &raw))
+
+	instructions, _ := raw["instructions"].(string)
+	assert.Contains(t, instructions, "[Conversation Summary]")
+	assert.Contains(t, instructions, "test summary")
+	assert.Contains(t, instructions, "You are a helpful assistant.")
+	// Summary should come first
+	assert.True(t, strings.HasPrefix(instructions, "[Conversation Summary]"))
+}
+
+func TestDecodeCompactionInBody_RealCompaction_Unchanged(t *testing.T) {
+	input := []byte(`{"model":"gpt-4","input":[{"type":"compaction","encrypted_content":"gAAAAABpM0Yj-real-blob"}]}`)
+	result := decodeCompactionInBody(input)
+	assert.Equal(t, string(input), string(result))
+}
+
+func TestDecodeCompactionInBody_NormalRequest_Unchanged(t *testing.T) {
+	input := []byte(`{"model":"gpt-4","input":[{"type":"message","role":"user","content":"hello"}]}`)
+	result := decodeCompactionInBody(input)
+	assert.Equal(t, string(input), string(result))
+}
+
+func TestDecodeCompactionInBody_StringInput_Unchanged(t *testing.T) {
+	input := []byte(`{"model":"gpt-4","input":"just a string"}`)
+	result := decodeCompactionInBody(input)
+	assert.Equal(t, string(input), string(result))
+}

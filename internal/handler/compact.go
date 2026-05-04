@@ -142,6 +142,11 @@ func (h *Handler) handleSimulatedCompact(c *gin.Context, req *types.ResponsesReq
 	}
 
 	summary := extractSummaryFromResponse(respBody, upstreamFormat)
+	if summary == "" {
+		slog.Error("compact summarization returned empty summary", "model", model, "upstream_format", upstreamFormat, "status", resp.StatusCode)
+		writeUpstreamError(c, "summarization produced empty result")
+		return
+	}
 
 	slog.Info("compact summarization complete",
 		"model", model, "latency", latency, "summary_len", len(summary))
@@ -241,6 +246,78 @@ func buildCompactionResponse(encryptedContent string, input any) map[string]any 
 		"created_at": now,
 		"output":     output,
 	}
+}
+
+// decodeCompactionInBody scans a Responses API request body for fake compaction items,
+// removes them from input, and prepends the decoded summary to the instructions field.
+// Returns the original body unchanged if no fake compaction items are found.
+func decodeCompactionInBody(body []byte) []byte {
+	var raw map[string]any
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return body
+	}
+
+	input, ok := raw["input"].([]any)
+	if !ok {
+		return body
+	}
+
+	modified := false
+	var newInput []any
+	var summaries []string
+
+	for _, item := range input {
+		m, ok := item.(map[string]any)
+		if !ok {
+			newInput = append(newInput, item)
+			continue
+		}
+
+		itemType, _ := m["type"].(string)
+		if itemType != "compaction" {
+			newInput = append(newInput, item)
+			continue
+		}
+
+		encContent, _ := m["encrypted_content"].(string)
+		if !converter.IsFakeCompaction(encContent) {
+			newInput = append(newInput, item)
+			continue
+		}
+
+		payload, err := converter.DecodeCompactionPayload(encContent)
+		if err != nil {
+			slog.Warn("failed to decode fake compaction in request", "error", err)
+			newInput = append(newInput, item)
+			continue
+		}
+
+		summaries = append(summaries, payload.Summary)
+		modified = true
+	}
+
+	if !modified {
+		return body
+	}
+
+	// Merge summaries into instructions field so all upstream formats handle it correctly:
+	// Chat → system message, Anthropic → system field, Gemini → via Chat conversion.
+	if len(summaries) > 0 {
+		summaryText := "[Conversation Summary]\n" + strings.Join(summaries, "\n\n")
+		existing, _ := raw["instructions"].(string)
+		if existing != "" {
+			raw["instructions"] = summaryText + "\n\n" + existing
+		} else {
+			raw["instructions"] = summaryText
+		}
+	}
+
+	raw["input"] = newInput
+	newBody, err := json.Marshal(raw)
+	if err != nil {
+		return body
+	}
+	return newBody
 }
 
 // extractInputTextFromItem extracts text from a message item's content.

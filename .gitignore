@@ -35,6 +35,7 @@ coverage.out
 docs/plans
 docs/superpowers
 docs/trace-viewer-frontend.md
+docs/codex_compact.md
 
 # Frontend
 frontend/node_modules
