@@ -335,7 +335,7 @@ func TestHandleResponses_ConvertedToChat(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	assert.Equal(t, "response", resp["object"])
 
-	responses := resp["responses"].([]any)
+	responses := resp["output"].([]any)
 	require.Len(t, responses, 1)
 	item := responses[0].(map[string]any)
 	content := item["content"].([]any)

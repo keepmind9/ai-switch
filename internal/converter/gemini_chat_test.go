@@ -204,7 +204,7 @@ func TestGeminiResponseToResponses(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, "response", respResp.Object)
-	require.Len(t, respResp.Responses, 1)
-	assert.Equal(t, "message", respResp.Responses[0].Type)
-	assert.Equal(t, "completed", respResp.Responses[0].Status)
+	require.Len(t, respResp.Output, 1)
+	assert.Equal(t, "message", respResp.Output[0].Type)
+	assert.Equal(t, "completed", respResp.Output[0].Status)
 }

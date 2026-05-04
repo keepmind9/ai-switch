@@ -144,11 +144,11 @@ func TestChatToResponses(t *testing.T) {
 
 	assert.Equal(t, "chatcmpl-123", resp.ID)
 	assert.Equal(t, "test-model", resp.Model)
-	require.Len(t, resp.Responses, 1)
-	assert.Equal(t, "completed", resp.Responses[0].Status)
-	require.Len(t, resp.Responses[0].Content, 1)
-	assert.Equal(t, "output_text", resp.Responses[0].Content[0].Type)
-	assert.Equal(t, "Hello! How can I help?", resp.Responses[0].Content[0].Text)
+	require.Len(t, resp.Output, 1)
+	assert.Equal(t, "completed", resp.Output[0].Status)
+	require.Len(t, resp.Output[0].Content, 1)
+	assert.Equal(t, "output_text", resp.Output[0].Content[0].Type)
+	assert.Equal(t, "Hello! How can I help?", resp.Output[0].Content[0].Text)
 
 	require.NotNil(t, resp.Usage)
 	assert.Equal(t, 10, resp.Usage.InputTokens)
@@ -174,9 +174,9 @@ func TestChatToResponses_MultipleChoices(t *testing.T) {
 	resp, err := c.ChatToResponses(chatResp, "model", "")
 	require.NoError(t, err)
 
-	require.Len(t, resp.Responses, 2)
-	assert.Equal(t, "First", resp.Responses[0].Content[0].Text)
-	assert.Equal(t, "Second", resp.Responses[1].Content[0].Text)
+	require.Len(t, resp.Output, 2)
+	assert.Equal(t, "First", resp.Output[0].Content[0].Text)
+	assert.Equal(t, "Second", resp.Output[1].Content[0].Text)
 }
 
 func TestBuildResponsesFromChat_MultiTurn(t *testing.T) {

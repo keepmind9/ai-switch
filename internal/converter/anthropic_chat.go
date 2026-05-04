@@ -784,9 +784,9 @@ func (c *Converter) AnthropicResponseToResponses(resp *AnthropicResponse, model,
 	return &types.ResponsesResponse{
 		ID:        resp.ID,
 		Object:    "response",
-		Created:   now,
+		CreatedAt: now,
 		Model:     model,
-		Responses: items,
+		Output:    items,
 		Usage: &types.Usage{
 			InputTokens:  resp.Usage.InputTokens,
 			OutputTokens: resp.Usage.OutputTokens,

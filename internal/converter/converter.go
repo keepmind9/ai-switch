@@ -284,9 +284,9 @@ func (c *Converter) ChatToResponses(chatResp *types.ChatResponse, model, thinkTa
 	resp := &types.ResponsesResponse{
 		ID:        chatResp.ID,
 		Object:    "response",
-		Created:   chatResp.Created,
+		CreatedAt: chatResp.Created,
 		Model:     model,
-		Responses: responseItems,
+		Output:    responseItems,
 		Usage: &types.Usage{
 			InputTokens:  chatResp.Usage.PromptTokens,
 			OutputTokens: chatResp.Usage.CompletionTokens,

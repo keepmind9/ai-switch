@@ -984,12 +984,12 @@ func TestAnthropicResponseToResponses_Basic(t *testing.T) {
 	assert.Equal(t, "msg_123", result.ID)
 	assert.Equal(t, "response", result.Object)
 	assert.Equal(t, "claude-sonnet-4-5", result.Model)
-	require.Len(t, result.Responses, 1)
-	assert.Equal(t, "assistant", result.Responses[0].Role)
-	assert.Equal(t, "completed", result.Responses[0].Status)
-	require.Len(t, result.Responses[0].Content, 1)
-	assert.Equal(t, "output_text", result.Responses[0].Content[0].Type)
-	assert.Equal(t, "Hello world", result.Responses[0].Content[0].Text)
+	require.Len(t, result.Output, 1)
+	assert.Equal(t, "assistant", result.Output[0].Role)
+	assert.Equal(t, "completed", result.Output[0].Status)
+	require.Len(t, result.Output[0].Content, 1)
+	assert.Equal(t, "output_text", result.Output[0].Content[0].Type)
+	assert.Equal(t, "Hello world", result.Output[0].Content[0].Text)
 	require.NotNil(t, result.Usage)
 	assert.Equal(t, 10, result.Usage.InputTokens)
 	assert.Equal(t, 5, result.Usage.OutputTokens)
@@ -1122,20 +1122,20 @@ func TestAnthropicResponseToResponses_ToolUse(t *testing.T) {
 	result, err := c.AnthropicResponseToResponses(resp, "model", "")
 	require.NoError(t, err)
 
-	require.Len(t, result.Responses, 2)
+	require.Len(t, result.Output, 2)
 
 	// First: message item
-	assert.Equal(t, "message", result.Responses[0].Type)
-	assert.Equal(t, "assistant", result.Responses[0].Role)
-	assert.Equal(t, "Let me check.", result.Responses[0].Content[0].Text)
+	assert.Equal(t, "message", result.Output[0].Type)
+	assert.Equal(t, "assistant", result.Output[0].Role)
+	assert.Equal(t, "Let me check.", result.Output[0].Content[0].Text)
 
 	// Second: function_call item
-	assert.Equal(t, "function_call", result.Responses[1].Type)
-	assert.Equal(t, "fc_toolu_abc", result.Responses[1].ID)
-	assert.Equal(t, "toolu_abc", result.Responses[1].CallID)
-	assert.Equal(t, "get_weather", result.Responses[1].Name)
-	assert.Contains(t, result.Responses[1].Arguments, "SF")
-	assert.Equal(t, "completed", result.Responses[1].Status)
+	assert.Equal(t, "function_call", result.Output[1].Type)
+	assert.Equal(t, "fc_toolu_abc", result.Output[1].ID)
+	assert.Equal(t, "toolu_abc", result.Output[1].CallID)
+	assert.Equal(t, "get_weather", result.Output[1].Name)
+	assert.Contains(t, result.Output[1].Arguments, "SF")
+	assert.Equal(t, "completed", result.Output[1].Status)
 }
 
 func TestAnthropicResponseToResponses_ToolUseOnly(t *testing.T) {
@@ -1153,9 +1153,9 @@ func TestAnthropicResponseToResponses_ToolUseOnly(t *testing.T) {
 	result, err := c.AnthropicResponseToResponses(resp, "model", "")
 	require.NoError(t, err)
 
-	require.Len(t, result.Responses, 1)
-	assert.Equal(t, "function_call", result.Responses[0].Type)
-	assert.Equal(t, "calc", result.Responses[0].Name)
+	require.Len(t, result.Output, 1)
+	assert.Equal(t, "function_call", result.Output[0].Type)
+	assert.Equal(t, "calc", result.Output[0].Name)
 }
 
 func TestAnthropicResponseToResponses_MultipleTextBlocks(t *testing.T) {
@@ -1173,7 +1173,7 @@ func TestAnthropicResponseToResponses_MultipleTextBlocks(t *testing.T) {
 	result, err := c.AnthropicResponseToResponses(resp, "model", "")
 	require.NoError(t, err)
 
-	assert.Equal(t, "Hello world", result.Responses[0].Content[0].Text)
+	assert.Equal(t, "Hello world", result.Output[0].Content[0].Text)
 }
 
 func TestAnthropicResponseToResponses_ThinkTag(t *testing.T) {
@@ -1190,7 +1190,7 @@ func TestAnthropicResponseToResponses_ThinkTag(t *testing.T) {
 	result, err := c.AnthropicResponseToResponses(resp, "model", "think_")
 	require.NoError(t, err)
 
-	assert.Equal(t, "The answer is 42", result.Responses[0].Content[0].Text)
+	assert.Equal(t, "The answer is 42", result.Output[0].Content[0].Text)
 }
 
 func TestAnthropicResponseToResponses_IgnoresNonTextBlocks(t *testing.T) {
@@ -1209,7 +1209,7 @@ func TestAnthropicResponseToResponses_IgnoresNonTextBlocks(t *testing.T) {
 	result, err := c.AnthropicResponseToResponses(resp, "model", "")
 	require.NoError(t, err)
 
-	assert.Equal(t, "Let me check.", result.Responses[0].Content[0].Text)
+	assert.Equal(t, "Let me check.", result.Output[0].Content[0].Text)
 }
 
 func TestAnthropicResponseToResponses_UsageWithCache(t *testing.T) {
