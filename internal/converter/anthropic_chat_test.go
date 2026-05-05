@@ -414,9 +414,9 @@ func TestAnthropicResponseToChat_UsageWithCache(t *testing.T) {
 	chatResp, err := c.AnthropicResponseToChat(anthResp)
 	require.NoError(t, err)
 
-	assert.Equal(t, 100, chatResp.Usage.PromptTokens)
+	assert.Equal(t, 200, chatResp.Usage.PromptTokens)
 	assert.Equal(t, 50, chatResp.Usage.CompletionTokens)
-	assert.Equal(t, 150, chatResp.Usage.TotalTokens)
+	assert.Equal(t, 250, chatResp.Usage.TotalTokens)
 }
 
 // --- Round-trip tests ---
@@ -1231,9 +1231,9 @@ func TestAnthropicResponseToResponses_UsageWithCache(t *testing.T) {
 	result, err := c.AnthropicResponseToResponses(resp, "model", "")
 	require.NoError(t, err)
 
-	assert.Equal(t, 100, result.Usage.InputTokens)
+	assert.Equal(t, 600, result.Usage.InputTokens)
 	assert.Equal(t, 50, result.Usage.OutputTokens)
-	assert.Equal(t, 150, result.Usage.TotalTokens)
+	assert.Equal(t, 650, result.Usage.TotalTokens)
 }
 
 func TestAnthropicToResponses_SimpleMessage(t *testing.T) {

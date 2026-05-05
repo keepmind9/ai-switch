@@ -262,9 +262,9 @@ func (c *Converter) AnthropicResponseToChat(resp *AnthropicResponse) (*types.Cha
 			},
 		},
 		Usage: types.ChatUsage{
-			PromptTokens:     resp.Usage.InputTokens,
+			PromptTokens:     resp.Usage.InputTokens + resp.Usage.CacheReadInputTokens + resp.Usage.CacheCreationInputTokens,
 			CompletionTokens: resp.Usage.OutputTokens,
-			TotalTokens:      resp.Usage.InputTokens + resp.Usage.OutputTokens,
+			TotalTokens:      resp.Usage.InputTokens + resp.Usage.CacheReadInputTokens + resp.Usage.CacheCreationInputTokens + resp.Usage.OutputTokens,
 		},
 	}, nil
 }
@@ -788,9 +788,9 @@ func (c *Converter) AnthropicResponseToResponses(resp *AnthropicResponse, model,
 		Model:     model,
 		Output:    items,
 		Usage: &types.Usage{
-			InputTokens:  resp.Usage.InputTokens,
+			InputTokens:  resp.Usage.InputTokens + resp.Usage.CacheReadInputTokens + resp.Usage.CacheCreationInputTokens,
 			OutputTokens: resp.Usage.OutputTokens,
-			TotalTokens:  resp.Usage.InputTokens + resp.Usage.OutputTokens,
+			TotalTokens:  resp.Usage.InputTokens + resp.Usage.CacheReadInputTokens + resp.Usage.CacheCreationInputTokens + resp.Usage.OutputTokens,
 		},
 	}, nil
 }

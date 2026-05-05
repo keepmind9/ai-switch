@@ -194,9 +194,9 @@ func EmitCompleted(w SSEWriter, state *AnthropicToResponsesState) {
 			"status":     "completed",
 			"output":     output,
 			"usage": map[string]any{
-				"input_tokens":  state.InputTokens,
+				"input_tokens":  state.InputTokens + state.CacheReadTokens + state.CacheCreateTokens,
 				"output_tokens": state.OutputTokens,
-				"total_tokens":  state.InputTokens + state.OutputTokens,
+				"total_tokens":  state.InputTokens + state.CacheReadTokens + state.CacheCreateTokens + state.OutputTokens,
 			},
 		},
 	})
