@@ -301,6 +301,7 @@ func (h *Handler) convertChatReq(ctx *hook.Context) error {
 }
 
 // stepForward sends the converted request to the upstream API.
+// On 429, it tries fallback keys (if configured) before giving up.
 func (h *Handler) stepForward(ctx *hook.Context) error {
 	upstreamURL := buildUpstreamURL(ctx.RouteResult)
 	// Gemini uses model-specific paths: /v1beta/models/{model}:{action}
@@ -309,10 +310,89 @@ func (h *Handler) stepForward(ctx *hook.Context) error {
 			router.GeminiGeneratePath(ctx.ClientModel, ctx.IsStream))
 	}
 
+	providerKey := ctx.RouteResult.ProviderKey
+
+	// No fallback keys configured — use original key, no retry logic.
+	// This preserves the original behavior: 429 errors are passed through
+	// to the client with the actual upstream error message.
+	if !h.keyMgr.HasFallbackKeys(providerKey) {
+		resp, err := h.sendUpstreamRequest(ctx, upstreamURL, ctx.RouteResult.APIKey)
+		if err != nil {
+			return err
+		}
+		return h.handleUpstreamResponse(ctx, resp)
+	}
+
+	// Fallback keys available — try keys on 429
+	triedKeys := make(map[string]bool)
+	for {
+		apiKey, ok := h.keyMgr.GetKey(providerKey)
+		if !ok {
+			writeUpstreamError(ctx.GinCtx, "all API keys are in cooldown due to rate limiting")
+			h.recordErrorUsage(ctx)
+			h.tracer().RecordResponse(ctx)
+			return fmt.Errorf("all API keys rate-limited for provider %q", providerKey)
+		}
+
+		if triedKeys[apiKey] {
+			break
+		}
+		triedKeys[apiKey] = true
+
+		ctx.RouteResult.APIKey = apiKey
+		resp, err := h.sendUpstreamRequest(ctx, upstreamURL, apiKey)
+		if err != nil {
+			return err
+		}
+
+		if resp.StatusCode == http.StatusTooManyRequests {
+			resp.Body.Close()
+			cooled := h.keyMgr.Mark429(providerKey, apiKey)
+			slog.Warn("upstream 429 rate limit",
+				"provider", providerKey, "cooled_down", cooled,
+				"tried", len(triedKeys))
+			continue
+		}
+
+		h.keyMgr.ResetKey(providerKey, apiKey)
+		return h.handleUpstreamResponse(ctx, resp)
+	}
+
+	writeUpstreamError(ctx.GinCtx, "upstream rate limit exceeded")
+	h.recordErrorUsage(ctx)
+	h.tracer().RecordResponse(ctx)
+	return fmt.Errorf("upstream rate-limited for provider %q", providerKey)
+}
+
+// handleUpstreamResponse processes a non-429 upstream response.
+func (h *Handler) handleUpstreamResponse(ctx *hook.Context, resp *http.Response) error {
+	ctx.UpstreamLatency = time.Since(h.requestStartTime(ctx))
+	ctx.UpstreamResp = resp
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		ctx.UpstreamRespBody = respBody
+		h.tracer().RecordUpstreamResponse(ctx, resp.StatusCode)
+		h.writeConvertedError(ctx.GinCtx, resp, respBody, ctx.ClientProtocol)
+		h.recordErrorUsage(ctx)
+		h.tracer().RecordResponse(ctx)
+		return fmt.Errorf("upstream returned status %d", resp.StatusCode)
+	}
+	return nil
+}
+
+// requestStartTime extracts the request start time from the gin context.
+func (h *Handler) requestStartTime(ctx *hook.Context) time.Time {
+	return ctx.GinCtx.GetTime("_start_time")
+}
+
+// sendUpstreamRequest builds and sends an HTTP request to the upstream with the given API key.
+func (h *Handler) sendUpstreamRequest(ctx *hook.Context, upstreamURL, apiKey string) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx.GinCtx.Request.Context(), "POST", upstreamURL, bytes.NewReader(ctx.UpstreamReqBody))
 	if err != nil {
 		writeUpstreamError(ctx.GinCtx, "failed to create request: "+err.Error())
-		return err
+		return nil, err
 	}
 
 	// Forward client headers, then override auth/host/content-length.
@@ -330,40 +410,27 @@ func (h *Handler) stepForward(ctx *hook.Context) error {
 	req.Header.Del("Host")
 	switch ctx.UpstreamProtocol {
 	case converter.FormatAnthropic:
-		req.Header.Set("x-api-key", ctx.RouteResult.APIKey)
+		req.Header.Set("x-api-key", apiKey)
 		req.Header.Set("anthropic-version", "2023-06-01")
 	case converter.FormatGemini:
-		req.Header.Set("x-goog-api-key", ctx.RouteResult.APIKey)
+		req.Header.Set("x-goog-api-key", apiKey)
 	default:
-		req.Header.Set("Authorization", "Bearer "+ctx.RouteResult.APIKey)
+		req.Header.Set("Authorization", "Bearer "+apiKey)
 	}
 
 	ctx.UpstreamReqHeader = req.Header
 	h.tracer().RecordUpstreamRequest(ctx)
 
 	start := time.Now()
+	ctx.GinCtx.Set("_start_time", start)
 	resp, err := h.client.Do(req)
 	if err != nil {
 		writeUpstreamError(ctx.GinCtx, "failed to call upstream: "+err.Error())
 		h.recordErrorUsage(ctx)
 		h.tracer().RecordResponse(ctx)
-		return err
+		return nil, err
 	}
-	ctx.UpstreamLatency = time.Since(start)
-	ctx.UpstreamResp = resp
-
-	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		ctx.UpstreamRespBody = respBody
-		h.tracer().RecordUpstreamResponse(ctx, resp.StatusCode)
-		h.writeConvertedError(ctx.GinCtx, resp, respBody, ctx.ClientProtocol)
-		h.recordErrorUsage(ctx)
-		h.tracer().RecordResponse(ctx)
-		return fmt.Errorf("upstream returned status %d", resp.StatusCode)
-	}
-
-	return nil
+	return resp, nil
 }
 
 // stepWriteResp writes the upstream response to the client, handling protocol

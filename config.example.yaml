@@ -17,6 +17,10 @@ providers:
     # /v1 suffix is handled automatically — use whichever format your provider documents
     base_url: "https://api.minimaxi.com"
     api_key: "${MINIMAX_API_KEY}"
+    # Fallback keys for 429 rate limit (optional, tried in order on 429)
+    # fallback_keys:
+    #   - "${MINIMAX_API_KEY_2}"
+    #   - "${MINIMAX_API_KEY_3}"
     format: "chat"
     # Strip think tags from responses (optional, for reasoning models)
     # think_tag: "think"

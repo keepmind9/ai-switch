@@ -45,15 +45,16 @@ type ServerConfig struct {
 }
 
 type ProviderConfig struct {
-	Name     string   `mapstructure:"name" yaml:"name"`
-	BaseURL  string   `mapstructure:"base_url" yaml:"base_url"`
-	Path     string   `mapstructure:"path" yaml:"path"`
-	APIKey   string   `mapstructure:"api_key" yaml:"api_key"`
-	Format   string   `mapstructure:"format" yaml:"format"`
-	LogoURL  string   `mapstructure:"logo_url" yaml:"logo_url"`
-	Sponsor  bool     `mapstructure:"sponsor" yaml:"sponsor"`
-	ThinkTag string   `mapstructure:"think_tag" yaml:"think_tag,omitempty"`
-	Models   []string `mapstructure:"models" yaml:"models,omitempty"`
+	Name         string   `mapstructure:"name" yaml:"name"`
+	BaseURL      string   `mapstructure:"base_url" yaml:"base_url"`
+	Path         string   `mapstructure:"path" yaml:"path"`
+	APIKey       string   `mapstructure:"api_key" yaml:"api_key"`
+	FallbackKeys []string `mapstructure:"fallback_keys" yaml:"fallback_keys,omitempty"`
+	Format       string   `mapstructure:"format" yaml:"format"`
+	LogoURL      string   `mapstructure:"logo_url" yaml:"logo_url"`
+	Sponsor      bool     `mapstructure:"sponsor" yaml:"sponsor"`
+	ThinkTag     string   `mapstructure:"think_tag" yaml:"think_tag,omitempty"`
+	Models       []string `mapstructure:"models" yaml:"models,omitempty"`
 }
 
 var validFormats = map[string]bool{
@@ -125,6 +126,9 @@ func Load(path string) (*Config, error) {
 	// Set defaults and expand env vars for all providers
 	for k, p := range cfg.Providers {
 		p.APIKey = expandEnv(p.APIKey)
+		for i, fk := range p.FallbackKeys {
+			p.FallbackKeys[i] = expandEnv(fk)
+		}
 		if p.Format == "" {
 			p.Format = "chat"
 		}

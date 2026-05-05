@@ -40,6 +40,7 @@ type Handler struct {
 	client     *http.Client
 	usageStore *store.UsageStore
 	router     router.Router
+	keyMgr     *router.KeyManager
 	hooks      *hook.Manager
 	trace      *hook.TraceRecorder
 }
@@ -55,9 +56,25 @@ func NewHandler(provider *config.Provider, usageStore *store.UsageStore, r route
 		},
 		usageStore: usageStore,
 		router:     r,
+		keyMgr:     router.NewKeyManager(),
 		hooks:      hook.NewManager(),
 		trace:      trace,
 	}
+}
+
+// SyncKeys rebuilds the KeyManager from the current config.
+// Call on startup and after config reload.
+func (h *Handler) SyncKeys() {
+	cfg := h.provider.Get()
+	entries := make([]router.ProviderKeys, 0, len(cfg.Providers))
+	for name, prov := range cfg.Providers {
+		entries = append(entries, router.ProviderKeys{
+			Provider:     name,
+			PrimaryKey:   prov.APIKey,
+			FallbackKeys: prov.FallbackKeys,
+		})
+	}
+	h.keyMgr.SyncProviders(entries)
 }
 
 // RegisterHook adds a lifecycle hook to the pipeline.
@@ -208,6 +225,8 @@ func (h *Handler) forwardRequest(result *router.RouteResult, body []byte) (*http
 	case converter.FormatAnthropic:
 		req.Header.Set("x-api-key", result.APIKey)
 		req.Header.Set("anthropic-version", "2023-06-01")
+	case converter.FormatGemini:
+		req.Header.Set("x-goog-api-key", result.APIKey)
 	default:
 		req.Header.Set("Authorization", "Bearer "+result.APIKey)
 	}
@@ -218,6 +237,49 @@ func (h *Handler) forwardRequest(result *router.RouteResult, body []byte) (*http
 		return nil, 0, err
 	}
 	return resp, time.Since(start), nil
+}
+
+// forwardRequestWithKeyFallback sends a request with 429 key fallback support.
+// Used by endpoints that don't go through the pipeline (e.g. compact).
+func (h *Handler) forwardRequestWithKeyFallback(result *router.RouteResult, body []byte) (*http.Response, time.Duration, error) {
+	providerKey := result.ProviderKey
+
+	if !h.keyMgr.HasFallbackKeys(providerKey) {
+		return h.forwardRequest(result, body)
+	}
+
+	triedKeys := make(map[string]bool)
+	for {
+		apiKey, ok := h.keyMgr.GetKey(providerKey)
+		if !ok {
+			break
+		}
+		if triedKeys[apiKey] {
+			break
+		}
+		triedKeys[apiKey] = true
+
+		// Clone result with the selected key
+		cloned := *result
+		cloned.APIKey = apiKey
+
+		resp, latency, err := h.forwardRequest(&cloned, body)
+		if err != nil {
+			return nil, 0, err
+		}
+
+		if resp.StatusCode == http.StatusTooManyRequests {
+			resp.Body.Close()
+			h.keyMgr.Mark429(providerKey, apiKey)
+			slog.Warn("compact upstream 429, trying next key", "provider", providerKey)
+			continue
+		}
+
+		h.keyMgr.ResetKey(providerKey, apiKey)
+		return resp, latency, nil
+	}
+
+	return nil, 0, fmt.Errorf("all API keys rate-limited for provider %q", providerKey)
 }
 
 // copyUpstreamHeaders forwards upstream response headers to the client,

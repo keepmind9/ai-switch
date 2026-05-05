@@ -103,6 +103,7 @@ func runServe(configPath string) error {
 	cfgRouter := router.NewConfigRouter(provider)
 	traceRecorder := hook.NewTraceRecorder(llmWriter, idxWriter)
 	h := handler.NewHandler(provider, usageStore, cfgRouter, traceRecorder)
+	h.SyncKeys()
 
 	if usageStore != nil {
 		h.RegisterHook(hook.NewUsageHook(usageStore))
@@ -171,6 +172,7 @@ func runServe(configPath string) error {
 			if err := provider.Reload(); err != nil {
 				slog.Error("failed to reload config", "error", err)
 			} else {
+				h.SyncKeys()
 				slog.Info("config reloaded successfully")
 			}
 
