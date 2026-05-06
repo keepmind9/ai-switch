@@ -9,7 +9,6 @@ export interface Provider {
   fallback_keys: string[]
   format: string
   logo_url: string
-  sponsor: boolean
   think_tag: string
   default_model: string
   models: string[]

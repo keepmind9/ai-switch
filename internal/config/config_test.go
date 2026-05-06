@@ -169,7 +169,6 @@ providers:
 	require.True(t, ok)
 	assert.Equal(t, "DeepSeek", ds.Name)
 	assert.Equal(t, "chat", ds.Format)
-	assert.True(t, ds.Sponsor)
 
 	mm, ok := cfg.Providers["minimax"]
 	require.True(t, ok)

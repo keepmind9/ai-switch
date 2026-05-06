@@ -52,7 +52,6 @@ type ProviderConfig struct {
 	FallbackKeys []string `mapstructure:"fallback_keys" yaml:"fallback_keys,omitempty"`
 	Format       string   `mapstructure:"format" yaml:"format"`
 	LogoURL      string   `mapstructure:"logo_url" yaml:"logo_url"`
-	Sponsor      bool     `mapstructure:"sponsor" yaml:"sponsor"`
 	ThinkTag     string   `mapstructure:"think_tag" yaml:"think_tag,omitempty"`
 	Models       []string `mapstructure:"models" yaml:"models,omitempty"`
 }

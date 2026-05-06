@@ -971,7 +971,6 @@ func (h *Handler) handleAPIStatus(c *gin.Context) {
 			"name":     p.Name,
 			"base_url": p.BaseURL,
 			"format":   p.Format,
-			"sponsor":  p.Sponsor,
 			"logo_url": p.LogoURL,
 		})
 	}

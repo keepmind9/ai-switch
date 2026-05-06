@@ -29,7 +29,6 @@ func setupAdminTest(t *testing.T) (*gin.Engine, string) {
 				BaseURL: "https://api.minimaxi.com",
 				APIKey:  "sk-test-key-12345678",
 				Format:  "chat",
-				Sponsor: true,
 			},
 		},
 		Routes: map[string]config.RouteRule{

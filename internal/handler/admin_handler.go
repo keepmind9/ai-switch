@@ -61,7 +61,6 @@ func (a *AdminHandler) listProviders(c *gin.Context) {
 		FallbackKeys []string `json:"fallback_keys"`
 		Format       string   `json:"format"`
 		LogoURL      string   `json:"logo_url"`
-		Sponsor      bool     `json:"sponsor"`
 		ThinkTag     string   `json:"think_tag"`
 		Models       []string `json:"models"`
 	}
@@ -83,7 +82,6 @@ func (a *AdminHandler) listProviders(c *gin.Context) {
 			FallbackKeys: maskFallbackKeys(p.FallbackKeys),
 			Format:       p.Format,
 			LogoURL:      p.LogoURL,
-			Sponsor:      p.Sponsor,
 			ThinkTag:     p.ThinkTag,
 			Models:       p.Models,
 		})
@@ -100,7 +98,6 @@ func (a *AdminHandler) createProvider(c *gin.Context) {
 		APIKey       string   `json:"api_key" binding:"required"`
 		Format       string   `json:"format"`
 		LogoURL      string   `json:"logo_url"`
-		Sponsor      bool     `json:"sponsor"`
 		ThinkTag     string   `json:"think_tag"`
 		FallbackKeys []string `json:"fallback_keys"`
 		Models       []string `json:"models"`
@@ -134,7 +131,6 @@ func (a *AdminHandler) createProvider(c *gin.Context) {
 		APIKey:       req.APIKey,
 		Format:       req.Format,
 		LogoURL:      req.LogoURL,
-		Sponsor:      req.Sponsor,
 		ThinkTag:     req.ThinkTag,
 		FallbackKeys: req.FallbackKeys,
 		Models:       req.Models,
@@ -158,7 +154,6 @@ func (a *AdminHandler) updateProvider(c *gin.Context) {
 		APIKey       *string  `json:"api_key"`
 		Format       *string  `json:"format"`
 		LogoURL      *string  `json:"logo_url"`
-		Sponsor      *bool    `json:"sponsor"`
 		ThinkTag     *string  `json:"think_tag"`
 		FallbackKeys []string `json:"fallback_keys"`
 		Models       []string `json:"models"`
@@ -200,9 +195,6 @@ func (a *AdminHandler) updateProvider(c *gin.Context) {
 	}
 	if req.LogoURL != nil {
 		p.LogoURL = *req.LogoURL
-	}
-	if req.Sponsor != nil {
-		p.Sponsor = *req.Sponsor
 	}
 	if req.ThinkTag != nil {
 		p.ThinkTag = *req.ThinkTag

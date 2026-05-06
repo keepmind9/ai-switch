@@ -22,7 +22,6 @@ func TestWriteConfigRoundTrip(t *testing.T) {
 				BaseURL: "https://api.minimaxi.com",
 				APIKey:  "sk-test-key",
 				Format:  "chat",
-				Sponsor: true,
 			},
 		},
 		Routes: map[string]RouteRule{
