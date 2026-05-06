@@ -104,6 +104,13 @@ function addModel() {
 }
 function removeModel(idx: number) { form.value.models.splice(idx, 1) }
 
+const fallbackKeyInput = ref("")
+function addFallbackKey() {
+  const k = fallbackKeyInput.value.trim()
+  if (k && !form.value.fallback_keys.includes(k)) { form.value.fallback_keys.push(k); fallbackKeyInput.value = "" }
+}
+function removeFallbackKey(idx: number | string) { form.value.fallback_keys.splice(Number(idx), 1) }
+
 async function handleDelete(key: string) {
   await deleteProvider(key)
   resetDelete(key)
@@ -325,15 +332,31 @@ onMounted(load)
                 </el-tooltip>
               </div>
             </template>
-            <el-select
-              v-model="form.fallback_keys"
-              multiple
-              filterable
-              allow-create
-              default-first-option
-              :placeholder="$t('providers.drawer.form.fallbackKeysPlaceholder')"
-              class="w-full"
-            />
+            <div class="flex items-center gap-2 mb-2">
+                <el-input
+                  v-model="fallbackKeyInput"
+                  :placeholder="$t('providers.drawer.form.fallbackKeysPlaceholder')"
+                  @keyup.enter="addFallbackKey"
+                  class="flex-1"
+                />
+                <el-button @click="addFallbackKey" :disabled="!fallbackKeyInput.trim()">
+                  <el-icon><Plus /></el-icon>
+                </el-button>
+              </div>
+              <div v-if="form.fallback_keys.length" class="flex flex-wrap gap-2">
+                <el-tag
+                  v-for="(key, idx) in form.fallback_keys"
+                  :key="idx"
+                  closable
+                  @close="() => removeFallbackKey(idx)"
+                  size="default"
+                  type="info"
+                  effect="plain"
+                  class="rounded-md!"
+                >
+                  {{ key.slice(0, 8) }}{{ key.length > 8 ? '...' : '' }}
+                </el-tag>
+              </div>
           </el-form-item>
           <el-row :gutter="16">
             <el-col :span="12">
