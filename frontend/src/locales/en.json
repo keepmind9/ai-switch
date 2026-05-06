@@ -34,7 +34,8 @@
       "models": "Models",
       "apiKey": "API Key",
       "actions": "Actions",
-      "noModels": "No models"
+      "noModels": "No models",
+      "sponsor": "Sponsor"
     },
     "actions": {
       "edit": "Edit Settings",
@@ -51,6 +52,11 @@
       "add": "Add New Provider",
       "edit": "Edit AI Provider",
       "presets": "Quick Setup Presets",
+      "section": {
+        "basic": "Basic Info",
+        "auth": "Authentication",
+        "config": "Configuration"
+      },
       "form": {
         "id": "Provider ID",
         "name": "Display Name",

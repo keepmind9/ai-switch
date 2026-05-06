@@ -21,7 +21,7 @@ const revealedKeys = ref<Record<string, string>>({})
 const searchQuery = ref("")
 const { confirmState, toggle: toggleDelete, reset: resetDelete } = useConfirm()
 
-const defaultForm = { key: "", name: "", base_url: "", path: "", api_key: "", fallback_keys: [] as string[], format: "chat", logo_url: "", sponsor: false, default_model: "", models: [] as string[] }
+const defaultForm = { key: "", name: "", base_url: "", path: "", api_key: "", fallback_keys: [] as string[], format: "chat", logo_url: "", default_model: "", models: [] as string[] }
 const modelInput = ref("")
 
 async function load() {
@@ -68,8 +68,7 @@ function openEdit(row: Provider) {
     api_key: "", 
     fallback_keys: [...(row.fallback_keys || [])],
     format: row.format, 
-    logo_url: row.logo_url, 
-    sponsor: row.sponsor, 
+    logo_url: row.logo_url,
     default_model: row.default_model || "",
     models: [...(row.models || [])] 
   }
@@ -180,7 +179,10 @@ onMounted(load)
                 <span v-else class="text-xs font-bold text-slate-400">{{ row.key.slice(0,2).toUpperCase() }}</span>
               </div>
               <div>
-                <div class="font-bold text-slate-700">{{ row.name }}</div>
+                <div class="flex items-center gap-1.5">
+                  <span class="font-bold text-slate-700">{{ row.name }}</span>
+                  <el-tag v-if="presets.find(p => p.key === row.key)?.is_partner" size="small" type="warning" effect="plain" class="rounded! text-[10px]! leading-none! px-1! py-0.5!">{{ $t('providers.table.sponsor') }}</el-tag>
+                </div>
                 <div class="text-xs text-slate-400 mono! mt-0.5">{{ row.key }}</div>
               </div>
             </div>
@@ -259,13 +261,13 @@ onMounted(load)
     <el-drawer
       v-model="showDrawer"
       :title="isEdit ? $t('providers.drawer.edit') : $t('providers.drawer.add')"
-      size="500px"
+      size="640px"
       destroy-on-close
     >
-      <div class="px-2">
+      <div class="px-4">
         <div v-if="!isEdit" class="mb-8">
           <div class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">{{ $t('providers.drawer.presets') }}</div>
-          <div class="grid grid-cols-2 gap-2">
+          <div class="grid grid-cols-3 gap-2">
             <div
               v-for="p in presets"
               :key="p.key"
@@ -281,47 +283,36 @@ onMounted(load)
           </div>
         </div>
 
-        <el-form :model="form" label-position="top" class="custom-form">
-          <el-row :gutter="16">
-            <el-col :span="12">
-              <el-form-item :label="$t('providers.drawer.form.id')" required>
-                <el-input v-model="form.key" :disabled="isEdit" placeholder="e.g. openai" />
-              </el-form-item>
-            </el-col>
-            <el-col :span="12">
-              <el-form-item :label="$t('providers.drawer.form.name')" required>
-                <el-input v-model="form.name" placeholder="e.g. OpenAI (Primary)" />
-              </el-form-item>
-            </el-col>
-          </el-row>
-
+        <el-form :model="form" label-position="top" class="provider-form">
+          <div class="section-title">{{ $t('providers.drawer.section.basic') }}</div>
+          <el-form-item :label="$t('providers.drawer.form.id')" required>
+            <el-input v-model="form.key" :disabled="isEdit" placeholder="e.g. openai" />
+          </el-form-item>
+          <el-form-item :label="$t('providers.drawer.form.name')" required>
+            <el-input v-model="form.name" placeholder="e.g. OpenAI (Primary)" />
+          </el-form-item>
           <el-form-item :label="$t('providers.drawer.form.baseUrl')" required>
             <el-input v-model="form.base_url" placeholder="https://api.openai.com/v1" />
           </el-form-item>
+          <el-form-item>
+            <template #label>
+              <div class="flex items-center gap-1">
+                <span>{{ $t('providers.drawer.form.path') }}</span>
+                <span class="text-[10px] text-slate-400 font-normal">(Optional)</span>
+                <el-tooltip :content="$t('providers.drawer.form.pathTip')" placement="top">
+                  <el-icon :size="12" class="text-slate-400 cursor-help"><QuestionFilled /></el-icon>
+                </el-tooltip>
+              </div>
+            </template>
+            <el-input v-model="form.path" placeholder="/v1/chat/completions" />
+          </el-form-item>
 
-          <el-row :gutter="16">
-            <el-col :span="12">
-              <el-form-item>
-                <template #label>
-                  <div class="flex items-center gap-1">
-                    <span>{{ $t('providers.drawer.form.path') }}</span>
-                    <span class="text-[10px] text-slate-400 font-normal">(Optional)</span>
-                    <el-tooltip :content="$t('providers.drawer.form.pathTip')" placement="top">
-                      <el-icon :size="12" class="text-slate-400 cursor-help"><QuestionFilled /></el-icon>
-                    </el-tooltip>
-                  </div>
-                </template>
-                <el-input v-model="form.path" placeholder="/v1/chat/completions" />
-              </el-form-item>
-            </el-col>
-            <el-col :span="12">
-              <el-form-item :label="$t('providers.drawer.form.apiKey')">
-                <el-input v-model="form.api_key" type="password" show-password :placeholder="isEdit ? $t('providers.drawer.form.apiKeyEditTip') : $t('providers.drawer.form.apiKeyPlaceholder')" />
-              </el-form-item>
-            </el-col>
-          </el-row>
+          <el-divider />
 
-
+          <div class="section-title">{{ $t('providers.drawer.section.auth') }}</div>
+          <el-form-item :label="$t('providers.drawer.form.apiKey')">
+            <el-input v-model="form.api_key" type="password" show-password :placeholder="isEdit ? $t('providers.drawer.form.apiKeyEditTip') : $t('providers.drawer.form.apiKeyPlaceholder')" />
+          </el-form-item>
           <el-form-item>
             <template #label>
               <div class="flex items-center gap-1">
@@ -333,86 +324,78 @@ onMounted(load)
               </div>
             </template>
             <div class="flex items-center gap-2 mb-2">
-                <el-input
-                  v-model="fallbackKeyInput"
-                  :placeholder="$t('providers.drawer.form.fallbackKeysPlaceholder')"
-                  @keyup.enter="addFallbackKey"
-                  class="flex-1"
-                />
-                <el-button @click="addFallbackKey" :disabled="!fallbackKeyInput.trim()">
-                  <el-icon><Plus /></el-icon>
-                </el-button>
-              </div>
-              <div v-if="form.fallback_keys.length" class="flex flex-wrap gap-2">
-                <el-tag
-                  v-for="(key, idx) in form.fallback_keys"
-                  :key="idx"
-                  closable
-                  @close="() => removeFallbackKey(idx)"
-                  size="default"
-                  type="info"
-                  effect="plain"
-                  class="rounded-md!"
-                >
-                  {{ key.slice(0, 8) }}{{ key.length > 8 ? '...' : '' }}
-                </el-tag>
-              </div>
-          </el-form-item>
-          <el-row :gutter="16">
-            <el-col :span="12">
-              <el-form-item :label="$t('providers.drawer.form.format')">
-                <el-select v-model="form.format" class="w-full">
-                  <el-option label="chat" value="chat" />
-                  <el-option label="anthropic" value="anthropic" />
-                  <el-option label="responses" value="responses" />
-                  <el-option label="gemini" value="gemini" />
-                </el-select>
-              </el-form-item>
-            </el-col>
-            <el-col :span="12">
-              <el-form-item :label="$t('providers.drawer.form.type')">
-                <div class="flex items-center h-40px gap-2">
-                  <el-switch v-model="form.sponsor" />
-                  <span class="text-sm text-slate-500">{{ $t('providers.drawer.form.isPartner') }}</span>
-                </div>
-              </el-form-item>
-            </el-col>
-          </el-row>
-
-          <div class="mb-6">
-            <div class="text-sm font-bold text-slate-500 mb-2">{{ $t('providers.drawer.form.models') }}</div>
-            <div class="flex items-center gap-2 mb-3">
-              <el-button 
-                type="primary" 
-                :loading="fetchingModels" 
-                :disabled="!form.base_url || !form.format" 
-                @click="handleFetchModels"
-                class="flex-1 shadow-sm"
-              >
-                <el-icon class="mr-1"><Refresh /></el-icon> {{ $t('providers.drawer.form.fetchModels') }}
+              <el-input
+                v-model="fallbackKeyInput"
+                :placeholder="$t('providers.drawer.form.fallbackKeysPlaceholder')"
+                @keyup.enter="addFallbackKey"
+                class="flex-1"
+              />
+              <el-button @click="addFallbackKey" :disabled="!fallbackKeyInput.trim()">
+                <el-icon><Plus /></el-icon>
               </el-button>
             </div>
-            <div v-if="fetchedModels.length > 0" class="text-xs text-emerald-600 mb-2 flex items-center">
-              <el-icon class="mr-1"><Check /></el-icon> 
-              {{ $t('providers.drawer.form.fetchSuccessDesc', { count: fetchedModels.length }) }}
+            <div v-if="form.fallback_keys.length" class="flex flex-wrap gap-2">
+              <el-tag
+                v-for="(key, idx) in form.fallback_keys"
+                :key="idx"
+                closable
+                @close="() => removeFallbackKey(idx)"
+                size="default"
+                type="info"
+                effect="plain"
+                class="rounded-md!"
+              >
+                {{ key.slice(0, 8) }}{{ key.length > 8 ? '...' : '' }}
+              </el-tag>
             </div>
-            <el-select 
-              v-model="form.models" 
-              multiple 
-              filterable 
-              allow-create 
-              default-first-option
-              :placeholder="$t('providers.drawer.form.addModel')" 
-              class="w-full"
-            >
-              <el-option 
-                v-for="m in fetchedModels" 
-                :key="m.id" 
-                :label="m.id" 
-                :value="m.id" 
-              />
+          </el-form-item>
+
+          <el-divider />
+
+          <div class="section-title">{{ $t('providers.drawer.section.config') }}</div>
+          <el-form-item :label="$t('providers.drawer.form.format')">
+            <el-select v-model="form.format" class="w-full">
+              <el-option label="chat" value="chat" />
+              <el-option label="anthropic" value="anthropic" />
+              <el-option label="responses" value="responses" />
+              <el-option label="gemini" value="gemini" />
             </el-select>
+          </el-form-item>
+
+          <el-divider />
+
+          <div class="section-title">{{ $t('providers.drawer.form.models') }}</div>
+          <div class="flex items-center gap-2 mb-3">
+            <el-button
+              type="primary"
+              :loading="fetchingModels"
+              :disabled="!form.base_url || !form.format"
+              @click="handleFetchModels"
+              class="flex-1 shadow-sm"
+            >
+              <el-icon class="mr-1"><Refresh /></el-icon> {{ $t('providers.drawer.form.fetchModels') }}
+            </el-button>
           </div>
+          <div v-if="fetchedModels.length > 0" class="text-xs text-emerald-600 mb-2 flex items-center">
+            <el-icon class="mr-1"><Check /></el-icon>
+            {{ $t('providers.drawer.form.fetchSuccessDesc', { count: fetchedModels.length }) }}
+          </div>
+          <el-select
+            v-model="form.models"
+            multiple
+            filterable
+            allow-create
+            default-first-option
+            :placeholder="$t('providers.drawer.form.addModel')"
+            class="w-full"
+          >
+            <el-option
+              v-for="m in fetchedModels"
+              :key="m.id"
+              :label="m.id"
+              :value="m.id"
+            />
+          </el-select>
         </el-form>
       </div>
       <template #footer>
@@ -469,5 +452,25 @@ onMounted(load)
     color: var(--v3-form-label-color);
     padding-bottom: 4px;
   }
+}
+
+.provider-form {
+  :deep(.el-form-item__label) {
+    font-weight: 600;
+    color: #475569;
+    padding-bottom: 4px;
+  }
+  :deep(.el-form-item) {
+    margin-bottom: 20px;
+  }
+}
+
+.section-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #334155;
+  margin-bottom: 16px;
+  padding-left: 8px;
+  border-left: 3px solid var(--el-color-primary);
 }
 </style>

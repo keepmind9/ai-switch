@@ -34,7 +34,8 @@
       "models": "可用模型",
       "apiKey": "API 密钥",
       "actions": "操作",
-      "noModels": "无模型"
+      "noModels": "无模型",
+      "sponsor": "赞助商"
     },
     "actions": {
       "edit": "编辑设置",
@@ -51,6 +52,11 @@
       "add": "添加新服务商",
       "edit": "编辑服务商",
       "presets": "快速设置预设",
+      "section": {
+        "basic": "基础信息",
+        "auth": "认证配置",
+        "config": "高级配置"
+      },
       "form": {
         "id": "服务商 ID",
         "name": "显示名称",
