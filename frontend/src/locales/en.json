@@ -70,7 +70,10 @@
         "addModel": "Add model (e.g. gpt-4o)",
         "fetchSuccess": "Models fetched successfully",
         "fetchSuccessDesc": "Successfully loaded {count} models, you can select them below.",
-        "fetchFail": "Failed to fetch models"
+        "fetchFail": "Failed to fetch models",
+        "fallbackKeys": "Fallback Keys",
+        "fallbackKeysTip": "Additional API keys for automatic failover on 429 rate limiting. Tried in order.",
+        "fallbackKeysPlaceholder": "Type or paste a key and press Enter"
       }
     }
   },

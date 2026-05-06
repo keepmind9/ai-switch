@@ -6,6 +6,7 @@ export interface Provider {
   base_url: string
   path: string
   api_key: string
+  fallback_keys: string[]
   format: string
   logo_url: string
   sponsor: boolean

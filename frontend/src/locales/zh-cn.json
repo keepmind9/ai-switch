@@ -70,7 +70,10 @@
         "addModel": "添加模型 (例如 gpt-4o)",
         "fetchSuccess": "模型列表获取成功",
         "fetchSuccessDesc": "已成功加载 {count} 个模型，可直接在下方选择。",
-        "fetchFail": "模型获取失败"
+        "fetchFail": "模型获取失败",
+        "fallbackKeys": "备用密钥",
+        "fallbackKeysTip": "在主密钥触发 429 限流时自动切换的备用 API 密钥，按顺序尝试。",
+        "fallbackKeysPlaceholder": "输入或粘贴密钥后按回车添加"
       }
     }
   },

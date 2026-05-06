@@ -53,16 +53,17 @@ func (a *AdminHandler) RegisterRoutes(r *gin.RouterGroup) {
 func (a *AdminHandler) listProviders(c *gin.Context) {
 	cfg := a.provider.Get()
 	type providerItem struct {
-		Key      string   `json:"key"`
-		Name     string   `json:"name"`
-		BaseURL  string   `json:"base_url"`
-		Path     string   `json:"path"`
-		APIKey   string   `json:"api_key"`
-		Format   string   `json:"format"`
-		LogoURL  string   `json:"logo_url"`
-		Sponsor  bool     `json:"sponsor"`
-		ThinkTag string   `json:"think_tag"`
-		Models   []string `json:"models"`
+		Key          string   `json:"key"`
+		Name         string   `json:"name"`
+		BaseURL      string   `json:"base_url"`
+		Path         string   `json:"path"`
+		APIKey       string   `json:"api_key"`
+		FallbackKeys []string `json:"fallback_keys"`
+		Format       string   `json:"format"`
+		LogoURL      string   `json:"logo_url"`
+		Sponsor      bool     `json:"sponsor"`
+		ThinkTag     string   `json:"think_tag"`
+		Models       []string `json:"models"`
 	}
 
 	items := make([]providerItem, 0, len(cfg.Providers))
@@ -74,16 +75,17 @@ func (a *AdminHandler) listProviders(c *gin.Context) {
 	for _, k := range keys {
 		p := cfg.Providers[k]
 		items = append(items, providerItem{
-			Key:      k,
-			Name:     p.Name,
-			BaseURL:  p.BaseURL,
-			Path:     p.Path,
-			APIKey:   maskKey(p.APIKey),
-			Format:   p.Format,
-			LogoURL:  p.LogoURL,
-			Sponsor:  p.Sponsor,
-			ThinkTag: p.ThinkTag,
-			Models:   p.Models,
+			Key:          k,
+			Name:         p.Name,
+			BaseURL:      p.BaseURL,
+			Path:         p.Path,
+			APIKey:       maskKey(p.APIKey),
+			FallbackKeys: maskFallbackKeys(p.FallbackKeys),
+			Format:       p.Format,
+			LogoURL:      p.LogoURL,
+			Sponsor:      p.Sponsor,
+			ThinkTag:     p.ThinkTag,
+			Models:       p.Models,
 		})
 	}
 	sendOK(c, items)
@@ -91,16 +93,17 @@ func (a *AdminHandler) listProviders(c *gin.Context) {
 
 func (a *AdminHandler) createProvider(c *gin.Context) {
 	var req struct {
-		Key      string   `json:"key" binding:"required"`
-		Name     string   `json:"name" binding:"required"`
-		BaseURL  string   `json:"base_url" binding:"required"`
-		Path     string   `json:"path"`
-		APIKey   string   `json:"api_key" binding:"required"`
-		Format   string   `json:"format"`
-		LogoURL  string   `json:"logo_url"`
-		Sponsor  bool     `json:"sponsor"`
-		ThinkTag string   `json:"think_tag"`
-		Models   []string `json:"models"`
+		Key          string   `json:"key" binding:"required"`
+		Name         string   `json:"name" binding:"required"`
+		BaseURL      string   `json:"base_url" binding:"required"`
+		Path         string   `json:"path"`
+		APIKey       string   `json:"api_key" binding:"required"`
+		Format       string   `json:"format"`
+		LogoURL      string   `json:"logo_url"`
+		Sponsor      bool     `json:"sponsor"`
+		ThinkTag     string   `json:"think_tag"`
+		FallbackKeys []string `json:"fallback_keys"`
+		Models       []string `json:"models"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		sendBindErr(c, err)
@@ -125,15 +128,16 @@ func (a *AdminHandler) createProvider(c *gin.Context) {
 	}
 
 	cfg.Providers[req.Key] = config.ProviderConfig{
-		Name:     req.Name,
-		BaseURL:  req.BaseURL,
-		Path:     req.Path,
-		APIKey:   req.APIKey,
-		Format:   req.Format,
-		LogoURL:  req.LogoURL,
-		Sponsor:  req.Sponsor,
-		ThinkTag: req.ThinkTag,
-		Models:   req.Models,
+		Name:         req.Name,
+		BaseURL:      req.BaseURL,
+		Path:         req.Path,
+		APIKey:       req.APIKey,
+		Format:       req.Format,
+		LogoURL:      req.LogoURL,
+		Sponsor:      req.Sponsor,
+		ThinkTag:     req.ThinkTag,
+		FallbackKeys: req.FallbackKeys,
+		Models:       req.Models,
 	}
 
 	if err := a.writeAndReload(cfg); err != nil {
@@ -148,15 +152,16 @@ func (a *AdminHandler) updateProvider(c *gin.Context) {
 	key := c.Param("key")
 
 	var req struct {
-		Name     *string  `json:"name"`
-		BaseURL  *string  `json:"base_url"`
-		Path     *string  `json:"path"`
-		APIKey   *string  `json:"api_key"`
-		Format   *string  `json:"format"`
-		LogoURL  *string  `json:"logo_url"`
-		Sponsor  *bool    `json:"sponsor"`
-		ThinkTag *string  `json:"think_tag"`
-		Models   []string `json:"models"`
+		Name         *string  `json:"name"`
+		BaseURL      *string  `json:"base_url"`
+		Path         *string  `json:"path"`
+		APIKey       *string  `json:"api_key"`
+		Format       *string  `json:"format"`
+		LogoURL      *string  `json:"logo_url"`
+		Sponsor      *bool    `json:"sponsor"`
+		ThinkTag     *string  `json:"think_tag"`
+		FallbackKeys []string `json:"fallback_keys"`
+		Models       []string `json:"models"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		sendBindErr(c, err)
@@ -201,6 +206,9 @@ func (a *AdminHandler) updateProvider(c *gin.Context) {
 	}
 	if req.ThinkTag != nil {
 		p.ThinkTag = *req.ThinkTag
+	}
+	if req.FallbackKeys != nil {
+		p.FallbackKeys = req.FallbackKeys
 	}
 	if req.Models != nil {
 		p.Models = req.Models
@@ -669,6 +677,14 @@ func maskKey(s string) string {
 		return "****"
 	}
 	return s[:4] + "****" + s[len(s)-4:]
+}
+
+func maskFallbackKeys(keys []string) []string {
+	out := make([]string, len(keys))
+	for i, k := range keys {
+		out[i] = maskKey(k)
+	}
+	return out
 }
 
 func copyConfig(cfg *config.Config) *config.Config {

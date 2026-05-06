@@ -21,7 +21,7 @@ const revealedKeys = ref<Record<string, string>>({})
 const searchQuery = ref("")
 const { confirmState, toggle: toggleDelete, reset: resetDelete } = useConfirm()
 
-const defaultForm = { key: "", name: "", base_url: "", path: "", api_key: "", format: "chat", logo_url: "", sponsor: false, default_model: "", models: [] as string[] }
+const defaultForm = { key: "", name: "", base_url: "", path: "", api_key: "", fallback_keys: [] as string[], format: "chat", logo_url: "", sponsor: false, default_model: "", models: [] as string[] }
 const modelInput = ref("")
 
 async function load() {
@@ -66,6 +66,7 @@ function openEdit(row: Provider) {
     base_url: row.base_url, 
     path: row.path, 
     api_key: "", 
+    fallback_keys: [...(row.fallback_keys || [])],
     format: row.format, 
     logo_url: row.logo_url, 
     sponsor: row.sponsor, 
@@ -313,6 +314,27 @@ onMounted(load)
             </el-col>
           </el-row>
 
+
+          <el-form-item>
+            <template #label>
+              <div class="flex items-center gap-1">
+                <span>{{ $t('providers.drawer.form.fallbackKeys') }}</span>
+                <span class="text-[10px] text-slate-400 font-normal">(Optional)</span>
+                <el-tooltip :content="$t('providers.drawer.form.fallbackKeysTip')" placement="top">
+                  <el-icon :size="12" class="text-slate-400 cursor-help"><QuestionFilled /></el-icon>
+                </el-tooltip>
+              </div>
+            </template>
+            <el-select
+              v-model="form.fallback_keys"
+              multiple
+              filterable
+              allow-create
+              default-first-option
+              :placeholder="$t('providers.drawer.form.fallbackKeysPlaceholder')"
+              class="w-full"
+            />
+          </el-form-item>
           <el-row :gutter="16">
             <el-col :span="12">
               <el-form-item :label="$t('providers.drawer.form.format')">
