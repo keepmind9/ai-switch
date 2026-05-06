@@ -345,10 +345,11 @@ func (h *Handler) stepForward(ctx *hook.Context) error {
 			return err
 		}
 
-		if resp.StatusCode == http.StatusTooManyRequests {
+		if isRateLimited(resp.StatusCode) {
 			resp.Body.Close()
 			cooled := h.keyMgr.Mark429(providerKey, apiKey)
-			slog.Warn("upstream 429 rate limit",
+			slog.Warn("upstream rate limited",
+				"status", resp.StatusCode,
 				"provider", providerKey, "cooled_down", cooled,
 				"tried", len(triedKeys))
 			continue

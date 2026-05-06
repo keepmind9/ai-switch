@@ -268,10 +268,10 @@ func (h *Handler) forwardRequestWithKeyFallback(result *router.RouteResult, body
 			return nil, 0, err
 		}
 
-		if resp.StatusCode == http.StatusTooManyRequests {
+		if isRateLimited(resp.StatusCode) {
 			resp.Body.Close()
 			h.keyMgr.Mark429(providerKey, apiKey)
-			slog.Warn("compact upstream 429, trying next key", "provider", providerKey)
+			slog.Warn("compact upstream rate limited", "status", resp.StatusCode, "provider", providerKey)
 			continue
 		}
 
@@ -977,4 +977,9 @@ func (h *Handler) handleAPIStatus(c *gin.Context) {
 	status["providers"] = providers
 
 	sendOK(c, status)
+}
+
+// isRateLimited returns true for upstream rate-limiting status codes (429, 529).
+func isRateLimited(statusCode int) bool {
+	return statusCode == http.StatusTooManyRequests || statusCode == 529
 }
