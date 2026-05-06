@@ -19,6 +19,8 @@
 - **管理面板**：内置 Web 管理界面，可视化管理 Provider、Route，查看用量统计和调试请求
 - **请求追踪**：记录每个请求/响应对，支持原始查看、Diff 对比、TTFB 瀑布流图
 - **用量统计**：按 Provider 和模型统计 token 用量（含缓存 token），配合趋势图表
+- **多 Key 降级**：遇到 429 限流时自动切换到备用 API Key
+- **上下文压缩**：支持 compact 端点进行上下文管理，对非 OpenAI 上游提供 LLM 摘要模拟
 - **轻量**：纯 Go 实现，单二进制，无 CGO 依赖
 
 ## 安装
@@ -123,6 +125,9 @@ providers:
     api_key: "${DEEPSEEK_API_KEY}"    # 支持 ${ENV_VAR} 环境变量展开
     format: "chat"                     # chat（默认）| responses | anthropic | gemini
     think_tag: "think"                 # 可选：去除响应中的推理标签
+    fallback_keys:                     # 可选：429 限流时的备用 API Key
+      - "${DEEPSEEK_API_KEY_2}"
+      - "${DEEPSEEK_API_KEY_3}"
     models:                            # 可选：用于配置校验警告
       - "deepseek-chat"
       - "deepseek-reasoner"

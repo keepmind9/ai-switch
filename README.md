@@ -19,6 +19,8 @@ A lightweight local proxy that lets any AI CLI tool (Claude Code, Codex CLI, etc
 - **Admin UI**: Built-in web dashboard for managing providers, routes, viewing usage statistics, and debugging requests
 - **Request tracing**: Inspect every request/response pair with raw viewer, Diff view, and TTFB waterfall chart
 - **Usage statistics**: Track token usage (input, output, cache) by provider and model with dashboard charts
+- **Multi-key fallback**: Automatically switch to fallback API keys on 429 rate limiting
+- **Context compaction**: Support compact endpoint for context window management, with LLM-based summarization for non-OpenAI upstreams
 - **Lightweight**: Pure Go, single binary, no CGO
 
 ## Installation
@@ -122,6 +124,9 @@ providers:
     api_key: "${DEEPSEEK_API_KEY}"    # supports ${ENV_VAR} expansion
     format: "chat"                     # chat (default) | responses | anthropic | gemini
     think_tag: "think"                 # optional: strip reasoning tags from responses
+    fallback_keys:                     # optional: fallback API keys on 429 rate limiting
+      - "${DEEPSEEK_API_KEY_2}"
+      - "${DEEPSEEK_API_KEY_3}"
     models:                            # optional: for validation warnings
       - "deepseek-chat"
       - "deepseek-reasoner"
