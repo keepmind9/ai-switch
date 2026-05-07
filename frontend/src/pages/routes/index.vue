@@ -401,7 +401,7 @@ onMounted(load)
           <el-row :gutter="16">
             <el-col :span="12">
               <el-form-item :label="$t('routes.drawer.form.provider')" required>
-                <el-select v-model="form.provider" :placeholder="$t('routes.drawer.form.providerPlaceholder')" class="w-full">
+                <el-select v-model="form.provider" :placeholder="$t('routes.drawer.form.providerPlaceholder')" class="w-full" filterable>
                   <el-option v-for="p in providers" :key="p.key" :label="p.name" :value="p.key" />
                 </el-select>
               </el-form-item>
