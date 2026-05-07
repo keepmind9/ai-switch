@@ -83,8 +83,12 @@ onActivated(() => {
   if (isBrowserNav) {
     // Browser back/forward: preserve cached data from keep-alive
     isBrowserNav = false
+  } else if (route.query.session_id || (route.query.start_time && route.query.end_time)) {
+    // Navigation with query params (e.g. "view all in session" from detail): apply filters
+    syncFromQuery()
+    fetchList()
   } else {
-    // Sidebar navigation or programmatic navigation: clear to show empty page
+    // Sidebar navigation: clear to show empty page
     filter.start_time = ''
     filter.end_time = ''
     filter.model = ''

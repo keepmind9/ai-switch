@@ -357,10 +357,22 @@ const sessionId = computed(() => {
   return detail.value?.records.find((r: TraceDetailRecord) => r.session_id)?.session_id
 })
 
-const viewSession = () => ({
-  name: 'Traces',
-  query: { session_id: sessionId.value, start_time: route.query.start_time, end_time: route.query.end_time }
-})
+const viewSession = () => {
+  const q: Record<string, string> = { session_id: sessionId.value! }
+  // Use route query params if available, otherwise derive from trace time
+  if (route.query.start_time && route.query.end_time) {
+    q.start_time = route.query.start_time as string
+    q.end_time = route.query.end_time as string
+  } else if (detail.value?.records.length) {
+    const times = detail.value.records.map(r => r.time).filter(Boolean).sort()
+    if (times.length) {
+      const day = times[0].slice(0, 10)
+      q.start_time = `${day} 00:00:00`
+      q.end_time = `${day} 23:59:59`
+    }
+  }
+  return { name: 'Traces', query: q }
+}
 
 onMounted(async () => {
   loading.value = true
