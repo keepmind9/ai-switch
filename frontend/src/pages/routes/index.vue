@@ -317,7 +317,7 @@ onMounted(load)
           <template #default="{ row }"><el-tag effect="plain" class="border-slate-200! text-slate-600! font-medium">{{ row.provider }}</el-tag></template>
         </el-table-column>
         <el-table-column prop="default_model" :label="$t('routes.table.model')" min-width="160">
-          <template #default="{ row }"><span class="text-sm text-slate-600 truncate block">{{ row.default_model }}</span></template>
+          <template #default="{ row }"><el-tooltip :content="row.default_model" placement="top" :show-after="300"><span class="text-sm text-slate-600 truncate block">{{ row.default_model }}</span></el-tooltip></template>
         </el-table-column>
         
         <el-table-column :label="$t('routes.table.disabled')" width="100">
