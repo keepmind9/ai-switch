@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"net"
 	"net/http"
 	"slices"
 	"sync"
@@ -573,15 +574,17 @@ func (a *AdminHandler) getSettings(c *gin.Context) {
 	sendOK(c, gin.H{
 		"host":               cfg.Server.Host,
 		"port":               cfg.Server.Port,
+		"allowed_ips":        cfg.Server.AllowedIPs,
 		"log_retention_days": cfg.LogRetentionDays,
 	})
 }
 
 func (a *AdminHandler) updateSettings(c *gin.Context) {
 	var req struct {
-		Host             *string `json:"host"`
-		Port             *int    `json:"port"`
-		LogRetentionDays *int    `json:"log_retention_days"`
+		Host             *string  `json:"host"`
+		Port             *int     `json:"port"`
+		LogRetentionDays *int     `json:"log_retention_days"`
+		AllowedIPs       []string `json:"allowed_ips"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		sendBindErr(c, err)
@@ -595,6 +598,17 @@ func (a *AdminHandler) updateSettings(c *gin.Context) {
 	if req.LogRetentionDays != nil && *req.LogRetentionDays < 1 {
 		sendFail(c, http.StatusBadRequest, CodeBadRequest, "log_retention_days must be at least 1")
 		return
+	}
+	if req.AllowedIPs != nil {
+		for _, s := range req.AllowedIPs {
+			cidr := s
+			if _, _, err := net.ParseCIDR(cidr); err != nil {
+				if ip := net.ParseIP(cidr); ip == nil {
+					sendFail(c, http.StatusBadRequest, CodeBadRequest, fmt.Sprintf("invalid IP or CIDR: %q", s))
+					return
+				}
+			}
+		}
 	}
 
 	a.mu.Lock()
@@ -611,6 +625,9 @@ func (a *AdminHandler) updateSettings(c *gin.Context) {
 	if req.LogRetentionDays != nil {
 		cfg.LogRetentionDays = *req.LogRetentionDays
 	}
+	if req.AllowedIPs != nil {
+		cfg.Server.AllowedIPs = req.AllowedIPs
+	}
 
 	if err := a.writeAndReload(cfg); err != nil {
 		sendFail(c, http.StatusInternalServerError, CodeInternalError, err.Error())
@@ -624,6 +641,7 @@ func (a *AdminHandler) updateSettings(c *gin.Context) {
 	sendOK(c, gin.H{
 		"host":               cfg.Server.Host,
 		"port":               cfg.Server.Port,
+		"allowed_ips":        cfg.Server.AllowedIPs,
 		"log_retention_days": cfg.LogRetentionDays,
 	})
 }

@@ -265,7 +265,11 @@
       "port": "监听端口",
       "portPlaceholder": "1-65535",
       "logRetention": "日志保留天数",
-      "logRetentionTip": "超过保留天数的日志文件将被自动清理。"
+      "logRetentionTip": "超过保留天数的日志文件将被自动清理。",
+      "allowedIps": "IP 白名单",
+      "allowedIpsTip": "当监听地址为非 localhost 时，仅白名单中的 IP 可访问服务。支持 CIDR 格式。",
+      "allowedIpsPlaceholder": "例如 192.168.1.0/24, 10.0.0.5，按回车添加",
+      "allowedIpsTagError": "IP 或 CIDR 格式无效"
     },
     "save": "保存",
     "restart": "重启",

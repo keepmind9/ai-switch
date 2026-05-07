@@ -3,6 +3,7 @@ import client from './client'
 export interface Settings {
   host: string
   port: number
+  allowed_ips: string[]
   log_retention_days: number
 }
 

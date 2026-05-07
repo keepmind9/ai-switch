@@ -265,7 +265,11 @@
       "port": "Listen Port",
       "portPlaceholder": "1-65535",
       "logRetention": "Log Retention Days",
-      "logRetentionTip": "Log files older than this will be auto-cleaned."
+      "logRetentionTip": "Log files older than this will be auto-cleaned.",
+      "allowedIps": "IP Whitelist",
+      "allowedIpsTip": "When binding to a non-localhost address, only IPs in this list can access the service. Supports CIDR notation.",
+      "allowedIpsPlaceholder": "e.g. 192.168.1.0/24, 10.0.0.5, press Enter to add",
+      "allowedIpsTagError": "Invalid IP or CIDR format"
     },
     "save": "Save",
     "restart": "Restart",

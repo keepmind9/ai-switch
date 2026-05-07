@@ -1,6 +1,10 @@
 server:
   host: "0.0.0.0"
   port: 12345
+  # IP whitelist (required when host is not 127.0.0.1/localhost)
+  # allowed_ips:
+  #   - "192.168.1.0/24"
+  #   - "10.0.0.5"
 
 # Number of days to retain log files (default: 30)
 # log_retention_days: 30

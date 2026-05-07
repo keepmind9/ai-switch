@@ -16,36 +16,82 @@ const restarting = ref(false)
 const stopping = ref(false)
 const restartUrl = ref('')
 const pendingRestart = ref(false)
+const newTagValue = ref('')
 
 const form = ref<Settings>({
   host: '127.0.0.1',
   port: 12345,
+  allowed_ips: [],
   log_retention_days: 30,
 })
 
 const originalPort = ref(12345)
 const originalHost = ref('127.0.0.1')
 const originalLogRetention = ref(30)
+const originalAllowedIps = ref<string[]>([])
 
 function buildUrl(host: string, port: number) {
   const h = host === '0.0.0.0' ? 'localhost' : host
   return `http://${h}:${port}/ui`
 }
 
+const isLocalhost = computed(() => form.value.host === '127.0.0.1' || form.value.host === 'localhost')
+
 const hasUnsavedChanges = computed(() =>
   form.value.host !== originalHost.value
   || form.value.port !== originalPort.value
   || form.value.log_retention_days !== originalLogRetention.value
+  || JSON.stringify(form.value.allowed_ips) !== JSON.stringify(originalAllowedIps.value)
 )
+
+function isValidIpOrCidr(s: string): boolean {
+  const cidrRegex = /^(\d{1,3}\.){3}\d{1,3}\/\d{1,3}$/
+  const ipv6CidrRegex = /^([0-9a-fA-F:]+)\/\d{1,3}$/
+  const ipv4Regex = /^(\d{1,3}\.){3}\d{1,3}$/
+  const ipv6Regex = /^([0-9a-fA-F:]+)$/
+
+  if (cidrRegex.test(s) || ipv6CidrRegex.test(s)) {
+    return true
+  }
+  if (ipv4Regex.test(s) || ipv6Regex.test(s)) {
+    return true
+  }
+  return false
+}
+
+function handleAddTag() {
+  const raw = newTagValue.value.trim()
+  if (!raw) return
+  const parts = raw.split(',').map(s => s.trim()).filter(Boolean)
+  const added: string[] = []
+  for (const part of parts) {
+    if (!isValidIpOrCidr(part)) {
+      ElMessage.warning(`${t('settings.form.allowedIpsTagError')}: ${part}`)
+      return
+    }
+    if (!form.value.allowed_ips.includes(part)) {
+      added.push(part)
+    }
+  }
+  if (added.length) {
+    form.value.allowed_ips = [...form.value.allowed_ips, ...added]
+  }
+  newTagValue.value = ''
+}
+
+function handleRemoveTag(tag: string) {
+  form.value.allowed_ips = form.value.allowed_ips.filter(t => t !== tag)
+}
 
 async function load() {
   loading.value = true
   try {
     const { data } = await getSettings()
-    form.value = { ...data }
+    form.value = { ...data, allowed_ips: data.allowed_ips || [] }
     originalHost.value = data.host
     originalPort.value = data.port
     originalLogRetention.value = data.log_retention_days
+    originalAllowedIps.value = data.allowed_ips || []
   } finally {
     loading.value = false
   }
@@ -58,12 +104,14 @@ async function handleSave() {
       host: form.value.host,
       port: form.value.port,
       log_retention_days: form.value.log_retention_days,
+      allowed_ips: form.value.allowed_ips,
     })
     const hostOrPortChanged = form.value.host !== originalHost.value || form.value.port !== originalPort.value
-    form.value = { ...data }
+    form.value = { ...data, allowed_ips: data.allowed_ips || [] }
     originalHost.value = data.host
     originalPort.value = data.port
     originalLogRetention.value = data.log_retention_days
+    originalAllowedIps.value = data.allowed_ips || []
     ElMessage.success(t('settings.successSave'))
     pendingRestart.value = true
     if (hostOrPortChanged) {
@@ -121,6 +169,24 @@ onMounted(load)
         <el-form-item :label="t('settings.form.port')">
           <el-input-number v-model="form.port" :min="1" :max="65535" controls-position="right"
             :placeholder="t('settings.form.portPlaceholder')" style="width: 100%" />
+        </el-form-item>
+
+        <el-form-item v-if="!isLocalhost">
+          <template #label>
+            {{ t('settings.form.allowedIps') }}
+            <el-text type="info" size="small" style="margin-left: 8px">
+              {{ t('settings.form.allowedIpsTip') }}
+            </el-text>
+          </template>
+          <div style="width: 100%">
+            <div class="flex flex-wrap gap-2" style="margin-bottom: 8px">
+              <el-tag v-for="tag in form.allowed_ips" :key="tag" closable @close="handleRemoveTag(tag)">
+                {{ tag }}
+              </el-tag>
+            </div>
+            <el-input v-model="newTagValue" :placeholder="t('settings.form.allowedIpsPlaceholder')"
+              @keyup.enter="handleAddTag" />
+          </div>
         </el-form-item>
 
         <el-form-item>

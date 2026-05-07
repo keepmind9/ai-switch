@@ -99,6 +99,7 @@ func runServe(configPath string) error {
 	r := gin.New()
 	r.Use(gin.Logger())
 	r.Use(gin.Recovery())
+	r.Use(middleware.IPWhitelist(cfg.Server.Host, cfg.Server.AllowedIPs))
 
 	cfgRouter := router.NewConfigRouter(provider)
 	traceRecorder := hook.NewTraceRecorder(llmWriter, idxWriter)

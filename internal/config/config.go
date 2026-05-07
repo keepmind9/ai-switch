@@ -40,8 +40,9 @@ type RouteRule struct {
 }
 
 type ServerConfig struct {
-	Host string `mapstructure:"host" yaml:"host"`
-	Port int    `mapstructure:"port" yaml:"port"`
+	Host       string   `mapstructure:"host" yaml:"host"`
+	Port       int      `mapstructure:"port" yaml:"port"`
+	AllowedIPs []string `mapstructure:"allowed_ips" yaml:"allowed_ips,omitempty"`
 }
 
 type ProviderConfig struct {
@@ -206,4 +207,9 @@ func expandEnv(s string) string {
 	return os.Expand(s, func(key string) string {
 		return os.Getenv(key)
 	})
+}
+
+// IsLocalhost returns true if the host is 127.0.0.1 or localhost.
+func (s ServerConfig) IsLocalhost() bool {
+	return s.Host == "127.0.0.1" || s.Host == "localhost"
 }
