@@ -8,7 +8,7 @@ func newRootCmd() *cobra.Command {
 	var configPath string
 
 	rootCmd := &cobra.Command{
-		Use:   "ai-switch",
+		Use:   binName,
 		Short: "AI provider switching proxy",
 	}
 	rootCmd.PersistentFlags().StringVarP(&configPath, "config", "c", "", "path to config file")

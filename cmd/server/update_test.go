@@ -224,7 +224,7 @@ func TestExtractTarGz(t *testing.T) {
 	extractDir := t.TempDir()
 	require.NoError(t, extractTarGz(extractDir, archivePath))
 
-	binPath := filepath.Join(extractDir, "ai-switch-0.2.0-linux-amd64", "ai-switch")
+	binPath := filepath.Join(extractDir, "ai-switch-0.2.0-linux-amd64", "ais")
 	data, err := os.ReadFile(binPath)
 	require.NoError(t, err)
 	assert.Equal(t, "fake-binary", string(data))
@@ -246,7 +246,7 @@ func TestExtractZip(t *testing.T) {
 	extractDir := t.TempDir()
 	require.NoError(t, extractZip(extractDir, archivePath))
 
-	binPath := filepath.Join(extractDir, "ai-switch-0.2.0-windows-amd64", "ai-switch.exe")
+	binPath := filepath.Join(extractDir, "ai-switch-0.2.0-windows-amd64", "ais.exe")
 	data, err := os.ReadFile(binPath)
 	require.NoError(t, err)
 	assert.Equal(t, "fake-binary", string(data))
@@ -267,7 +267,7 @@ func createTestTarGz(t *testing.T, dir, subdir string) string {
 	require.NoError(t, tw.WriteHeader(hdr))
 
 	content := "fake-binary"
-	hdr = &tar.Header{Name: subdir + "/ai-switch", Size: int64(len(content)), Mode: 0755}
+	hdr = &tar.Header{Name: subdir + "/ais", Size: int64(len(content)), Mode: 0755}
 	require.NoError(t, tw.WriteHeader(hdr))
 	_, err = tw.Write([]byte(content))
 	require.NoError(t, err)
@@ -287,7 +287,7 @@ func createTestZip(t *testing.T, dir, subdir string) string {
 	_, err = w.Create(subdir + "/")
 	require.NoError(t, err)
 
-	fw, err := w.Create(subdir + "/ai-switch.exe")
+	fw, err := w.Create(subdir + "/ais.exe")
 	require.NoError(t, err)
 	_, err = fw.Write([]byte("fake-binary"))
 	require.NoError(t, err)
@@ -302,9 +302,9 @@ func TestFindExtractedBinaryFound(t *testing.T) {
 	dir := t.TempDir()
 	subdir := filepath.Join(dir, "ai-switch-0.2.0-linux-amd64")
 	require.NoError(t, os.MkdirAll(subdir, 0755))
-	binName := "ai-switch"
+	binName := "ais"
 	if runtime.GOOS == "windows" {
-		binName = "ai-switch.exe"
+		binName = "ais.exe"
 	}
 	require.NoError(t, os.WriteFile(filepath.Join(subdir, binName), []byte("bin"), 0755))
 
@@ -324,7 +324,7 @@ func TestFindExtractedBinaryNoMatchingDir(t *testing.T) {
 	dir := t.TempDir()
 	otherDir := filepath.Join(dir, "other-dir")
 	require.NoError(t, os.MkdirAll(otherDir, 0755))
-	require.NoError(t, os.WriteFile(filepath.Join(otherDir, "ai-switch"), []byte("bin"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(otherDir, "ais"), []byte("bin"), 0755))
 
 	_, err := findExtractedBinary(dir)
 	assert.Error(t, err)
@@ -462,9 +462,9 @@ func TestDoApply(t *testing.T) {
 	subdir := filepath.Join(dir, subdirName)
 	require.NoError(t, os.MkdirAll(subdir, 0755))
 
-	binName := "ai-switch"
+	binName := "ais"
 	if runtime.GOOS == "windows" {
-		binName = "ai-switch.exe"
+		binName = "ais.exe"
 	}
 	newBinContent := []byte("new-binary-content")
 	require.NoError(t, os.WriteFile(filepath.Join(subdir, binName), newBinContent, 0755))

@@ -7,6 +7,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// binName is the compiled binary name used in user-facing messages.
+const binName = "ais"
+
 var (
 	version   = "dev"
 	gitCommit = "none"

@@ -1,13 +1,13 @@
-# ai-switch Windows Installation Script
+# ais Windows Installation Script
 # Downloads latest release from GitHub and installs to ~/.local/bin
 
 $ErrorActionPreference = "Stop"
 
 $Repo = "keepmind9/ai-switch"
-$Binary = "ai-switch"
+$Binary = "ais"
 $InstallDir = "$env:USERPROFILE\.local\bin"
 
-Write-Host "Checking ai-switch installation..."
+Write-Host "Checking ais installation..."
 
 # Get latest release info
 Write-Host "Fetching latest release..."
@@ -26,29 +26,29 @@ if (Get-Command $Binary -ErrorAction SilentlyContinue) {
         $currentOutput = & $Binary version 2>$null
         $currentVersion = ($currentOutput | Select-String "Version:\s+(\S+)").Matches.Groups[1].Value
         if ($currentVersion -eq $latestVersion.TrimStart("v")) {
-            Write-Host "ai-switch is already up to date ($latestVersion)."
+            Write-Host "ais is already up to date ($latestVersion)."
             exit 0
         }
         if ($currentVersion) {
-            Write-Host "ai-switch $currentVersion installed, upgrading to $latestVersion..."
+            Write-Host "ais $currentVersion installed, upgrading to $latestVersion..."
         } else {
-            Write-Host "ai-switch installed, upgrading to $latestVersion..."
+            Write-Host "ais installed, upgrading to $latestVersion..."
         }
     } catch {
-        Write-Host "ai-switch installed but broken, reinstalling $latestVersion..."
+        Write-Host "ais installed but broken, reinstalling $latestVersion..."
     }
 } else {
-    Write-Host "ai-switch not found. Installing $latestVersion..."
+    Write-Host "ais not found. Installing $latestVersion..."
 }
 
-# Check if ai-switch is currently running (cannot replace a running binary)
+# Check if ais is currently running (cannot replace a running binary)
 $runningProcess = Get-Process -Name $Binary -ErrorAction SilentlyContinue
 if ($runningProcess) {
     Write-Host ""
-    Write-Host "Error: ai-switch is currently running and cannot be replaced." -ForegroundColor Red
+    Write-Host "Error: ais is currently running and cannot be replaced." -ForegroundColor Red
     Write-Host ""
     Write-Host "Please stop it first, then re-run this script:" -ForegroundColor Yellow
-    Write-Host "  ai-switch stop"
+    Write-Host "  ais stop"
     Write-Host ""
     Write-Host "Or close the process manually:" -ForegroundColor Yellow
     Write-Host "  Stop-Process -Name `"$Binary`" -Force"
@@ -67,9 +67,9 @@ try {
         exit 1
     }
 
-    Write-Host "Downloading ai-switch $version for Windows..."
+    Write-Host "Downloading ais $version for Windows..."
 
-    $tmpDir = [System.IO.Path]::GetTempPath() + "ai-switch-install"
+    $tmpDir = [System.IO.Path]::GetTempPath() + "ais-install"
     New-Item -ItemType Directory -Path $tmpDir -Force | Out-Null
 
     $downloadPath = Join-Path $tmpDir $asset.name
@@ -112,11 +112,11 @@ try {
     }
 
     Write-Host ""
-    Write-Host "ai-switch $version installed successfully!"
+    Write-Host "ais $version installed successfully!"
     Write-Host "  Location: $InstallDir\$Binary.exe"
     Write-Host ""
     Write-Host "Verify:"
-    Write-Host "  ai-switch version"
+    Write-Host "  ais version"
 
 } catch {
     Write-Host "Installation failed: $_" -ForegroundColor Red

@@ -38,7 +38,7 @@ func newServeCmd(configPath string) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "serve",
 		Aliases: []string{"start"},
-		Short:   "Start the ai-switch proxy server",
+		Short:   fmt.Sprintf("Start the %s proxy server", binName),
 		RunE: func(_ *cobra.Command, _ []string) error {
 			if asDaemon {
 				return startDaemon(configPath)
@@ -244,7 +244,7 @@ func startDaemon(configPath string) error {
 		if pid, err := strconv.Atoi(strings.TrimSpace(string(pidData))); err == nil {
 			if proc, err := os.FindProcess(pid); err == nil {
 				if proc.Signal(syscall.Signal(0)) == nil {
-					return fmt.Errorf("ai-switch is already running (PID %d)", pid)
+					return fmt.Errorf("%s is already running (PID %d)", binName, pid)
 				}
 			}
 		}
@@ -285,13 +285,13 @@ func startDaemon(configPath string) error {
 	fmt.Println("/  |_ | || |__ \\__ \\| ' \\  | |")
 	fmt.Println("\\__/ |_||____||___/|_||_| |_|")
 	fmt.Println()
-	fmt.Printf("  ai-switch started (PID %d)\n", cmd.Process.Pid)
+	fmt.Printf("  %s started (PID %d)\n", binName, cmd.Process.Pid)
 	fmt.Printf("  Config:   %s\n", resolvedPath)
 	fmt.Printf("  Data:     %s\n", dataDir)
 	fmt.Printf("  Logs:     %s\n", log.LogDir(dataDir))
 	fmt.Printf("  Admin UI: %s\n", displayAddr)
 	fmt.Println()
-	fmt.Println("  Use 'ai-switch stop' to stop the daemon.")
+	fmt.Printf("  Use '%s stop' to stop the daemon.\n", binName)
 	return nil
 }
 

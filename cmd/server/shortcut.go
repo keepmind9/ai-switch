@@ -13,7 +13,7 @@ import (
 func newShortcutCmd(configPath string) *cobra.Command {
 	return &cobra.Command{
 		Use:   "shortcut",
-		Short: "Create desktop shortcuts to start/stop ai-switch",
+		Short: fmt.Sprintf("Create desktop shortcuts to start/stop %s", binName),
 		RunE: func(_ *cobra.Command, _ []string) error {
 			return createShortcuts(configPath)
 		},
@@ -136,28 +136,28 @@ open "%s"
 
 func createLinuxShortcuts(desktopDir, execPath, uiURL, configPath string) error {
 	// Start shortcut
-	startPath := filepath.Join(desktopDir, "ai-switch.desktop")
+	startPath := filepath.Join(desktopDir, "AIS.desktop")
 	startContent := fmt.Sprintf(`[Desktop Entry]
 Type=Application
 Name=AI Switch
-Comment=Start ai-switch and open Web UI
+Comment=Start %s and open Web UI
 Exec=bash -c '%s %s && sleep 2 && xdg-open "%s"'
 Terminal=false
-`, execPath, buildServeArgs(configPath), uiURL)
+`, binName, execPath, buildServeArgs(configPath), uiURL)
 
 	if err := os.WriteFile(startPath, []byte(startContent), 0755); err != nil {
 		return fmt.Errorf("failed to create start shortcut: %w", err)
 	}
 
 	// Stop shortcut
-	stopPath := filepath.Join(desktopDir, "stop-ai-switch.desktop")
+	stopPath := filepath.Join(desktopDir, "stop-ais.desktop")
 	stopContent := fmt.Sprintf(`[Desktop Entry]
 Type=Application
 Name=Stop AI Switch
-Comment=Stop ai-switch daemon
+Comment=Stop %s daemon
 Exec=%s %s
 Terminal=false
-`, execPath, buildStopArgs())
+`, binName, execPath, buildStopArgs())
 
 	if err := os.WriteFile(stopPath, []byte(stopContent), 0755); err != nil {
 		return fmt.Errorf("failed to create stop shortcut: %w", err)

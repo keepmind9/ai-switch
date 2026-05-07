@@ -1,14 +1,14 @@
 #!/bin/bash
-# ai-switch Auto-Installation Script
+# ais Auto-Installation Script
 # Downloads latest release from GitHub and installs to ~/.local/bin
 
 set -e
 
 REPO="keepmind9/ai-switch"
-BINARY="ai-switch"
+BINARY="ais"
 INSTALL_DIR="$HOME/.local/bin"
 
-echo "Checking ai-switch installation..."
+echo "Checking ais installation..."
 
 # Get latest version info early
 echo "Fetching latest release..."
@@ -24,24 +24,24 @@ fi
 if command -v "$BINARY" &> /dev/null; then
     CURRENT=$("$BINARY" version 2>/dev/null | grep "^Version:" | awk '{print $2}')
     if [ "$CURRENT" = "${LATEST_VERSION#v}" ]; then
-        echo "ai-switch is already up to date ($LATEST_VERSION)."
+        echo "ais is already up to date ($LATEST_VERSION)."
         exit 0
     fi
     if [ -n "$CURRENT" ]; then
-        echo "ai-switch $CURRENT installed, upgrading to $LATEST_VERSION..."
+        echo "ais $CURRENT installed, upgrading to $LATEST_VERSION..."
     else
-        echo "ai-switch installed, upgrading to $LATEST_VERSION..."
+        echo "ais installed, upgrading to $LATEST_VERSION..."
     fi
 else
-    echo "ai-switch not found. Installing $LATEST_VERSION..."
+    echo "ais not found. Installing $LATEST_VERSION..."
 fi
 
-# Check if ai-switch is currently running (cannot replace a running binary)
+# Check if ais is currently running (cannot replace a running binary)
 if pgrep -x "$BINARY" > /dev/null 2>&1; then
-    echo "Error: ai-switch is currently running and cannot be replaced."
+    echo "Error: ais is currently running and cannot be replaced."
     echo ""
     echo "Please stop it first, then re-run this script:"
-    echo "  ai-switch stop"
+    echo "  ais stop"
     echo ""
     echo "Or kill the process:"
     echo "  pkill -x $BINARY"
@@ -77,7 +77,7 @@ fi
 
 FILENAME=$(basename "$DOWNLOAD_URL")
 
-echo "Downloading ai-switch ${LATEST_VERSION} for ${OS}/${ARCH}..."
+echo "Downloading ais ${LATEST_VERSION} for ${OS}/${ARCH}..."
 
 TMPDIR=$(mktemp -d)
 trap 'rm -rf "$TMPDIR"' EXIT
@@ -129,11 +129,11 @@ if ! echo "$PATH" | grep -q "$INSTALL_DIR"; then
 fi
 
 echo ""
-echo "ai-switch ${LATEST_VERSION} installed successfully!"
+echo "ais ${LATEST_VERSION} installed successfully!"
 echo "  Location: $INSTALL_DIR/$BINARY"
 echo ""
 echo "Verify:"
-echo "  ai-switch version"
+echo "  ais version"
 echo ""
-echo "If 'ai-switch' not found, restart your shell or run:"
+echo "If 'ais' not found, restart your shell or run:"
 echo "  source ~/.zshrc  # or source ~/.bashrc"

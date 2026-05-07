@@ -56,7 +56,7 @@ make build-all   # 构建前端 + Go 二进制（包含管理面板）
 ### 1. 启动服务
 
 ```bash
-ai-switch serve
+ais serve
 ```
 
 无需配置文件——首次运行自动创建 `~/.ai-switch/config.yaml`。
@@ -266,23 +266,23 @@ routes:
 ## CLI 命令
 
 ```bash
-ai-switch serve                   # 前台启动
-ai-switch serve -d                # 后台守护进程启动
-ai-switch serve -c config.yaml    # 指定配置文件启动
-ai-switch stop                    # 停止后台守护进程
-ai-switch check -c config.yaml    # 校验配置文件
-ai-switch version                 # 查看版本信息
-ai-switch update                  # 检查更新并下载最新版本
-ai-switch update --apply          # 应用已下载的更新
-ai-switch shortcut                # 创建桌面快捷方式
-ai-switch agent <route-key> claude # 通过 ai-switch 启动 Claude Code
-ai-switch agent <route-key> codex  # 通过 ai-switch 启动 Codex CLI
+ais serve                   # 前台启动
+ais serve -d                # 后台守护进程启动
+ais serve -c config.yaml    # 指定配置文件启动
+ais stop                    # 停止后台守护进程
+ais check -c config.yaml    # 校验配置文件
+ais version                 # 查看版本信息
+ais update                  # 检查更新并下载最新版本
+ais update --apply          # 应用已下载的更新
+ais shortcut                # 创建桌面快捷方式
+ais agent <route-key> claude # 通过 ais 启动 Claude Code
+ais agent <route-key> codex  # 通过 ais 启动 Codex CLI
 ```
 
 不带子命令时默认执行 `serve`：
 
 ```bash
-ai-switch -c config.yaml          # 等同于：ai-switch serve -c config.yaml
+ais -c config.yaml          # 等同于：ais serve -c config.yaml
 ```
 
 ### Agent 启动器
@@ -291,20 +291,19 @@ ai-switch -c config.yaml          # 等同于：ai-switch serve -c config.yaml
 
 ```bash
 # 启动 Claude Code
-ai-switch agent my-route-key claude --continue
+ais agent my-route-key claude --continue
 
 # 启动 Codex CLI
-ai-switch agent my-route-key codex --model o4-mini
+ais agent my-route-key codex --model o4-mini
 ```
 
 自动配置环境变量并覆盖 agent 自身配置（Claude 通过 `--settings`，Codex 通过 `-c`），确保请求通过 route key 路由到 ai-switch。无需手动配置。
-
 route key 用作 API Key。Agent 参数和退出码会透传。
 
 ### 配置校验
 
 ```bash
-$ ai-switch check -c config.yaml
+$ ais check -c config.yaml
 
 Checking config.yaml ...
 

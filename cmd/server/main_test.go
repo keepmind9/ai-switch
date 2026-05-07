@@ -36,7 +36,7 @@ func executeCommand(root *cobra.Command, args ...string) (string, error) {
 func TestNewRootCmdConfiguresCommands(t *testing.T) {
 	cmd := newRootCmd()
 
-	assert.Equal(t, "ai-switch", cmd.Use)
+	assert.Equal(t, binName, cmd.Use)
 	require.NotNil(t, cmd.PersistentFlags().Lookup("config"))
 	assert.NotNil(t, findCommand(cmd, "serve"))
 	assert.NotNil(t, findCommand(cmd, "stop"))

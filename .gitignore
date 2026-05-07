@@ -6,6 +6,7 @@ bin/
 *.log
 /server
 /ai-switch
+/ais
 
 # IDE
 .idea/

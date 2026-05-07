@@ -21,18 +21,18 @@ BUILD_TIME := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 LDFLAGS := -s -w -X main.version=$(VERSION) -X main.gitCommit=$(GIT_COMMIT) -X main.buildTime=$(BUILD_TIME)
 
 build: lint
-	go build -trimpath -ldflags "$(LDFLAGS)" -o bin/server ./cmd/server
+	go build -trimpath -ldflags "$(LDFLAGS)" -o bin/ais ./cmd/server
 
 build-all: build-ui build
 
 run: build
-	./bin/server serve -c config.yaml
+	./bin/ais serve -c config.yaml
 
 dev:
 	go run ./cmd/server -c config.yaml
 
 clean:
-	rm -f bin/server ai-switch
+	rm -f bin/ais
 
 test:
 	go test ./...

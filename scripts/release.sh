@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # ============================================================
-# ai-switch release build script
+# ais release build script
 # Usage:
 #   ./scripts/release.sh [version]
 #
@@ -12,6 +12,7 @@ set -euo pipefail
 # ============================================================
 
 PROJECT="ai-switch"
+BINARY_NAME="ais"
 CMD="./cmd/server"
 DIST_DIR="dist"
 
@@ -45,7 +46,7 @@ mkdir -p "${DIST_DIR}"
 for target in "${TARGETS[@]}"; do
     IFS="/" read -r GOOS GOARCH <<< "$target"
 
-    BINARY="${PROJECT}"
+    BINARY="${BINARY_NAME}"
     if [ "$GOOS" = "windows" ]; then
         BINARY="${BINARY}.exe"
     fi

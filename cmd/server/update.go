@@ -115,12 +115,12 @@ func runUpdate() error {
 	if !isDaemonRunning() {
 		fmt.Println("Applying update...")
 		if err := doApply(updateDir); err != nil {
-			return fmt.Errorf("%w\n\nTry: ai-switch update --apply", err)
+			return fmt.Errorf("%w\n\nTry: %s update --apply", err, binName)
 		}
 		return nil
 	}
 
-	fmt.Printf("Run 'ai-switch update --apply' to apply the update.\n")
+	fmt.Printf("Run '%s update --apply' to apply the update.\n", binName)
 	return nil
 }
 
@@ -133,14 +133,14 @@ func runApply() error {
 	metaPath := filepath.Join(updateDir, "meta.json")
 	meta, err := loadMeta(metaPath)
 	if err != nil {
-		fmt.Println("No update available. Run 'ai-switch update' first.")
+		fmt.Printf("No update available. Run '%s update' first.\n", binName)
 		return nil
 	}
 
 	archivePath := filepath.Join(updateDir, meta.Archive)
 	info, err := os.Stat(archivePath)
 	if err != nil || info.Size() != meta.Size {
-		fmt.Println("Downloaded file is incomplete. Run 'ai-switch update' to re-download.")
+		fmt.Printf("Downloaded file is incomplete. Run '%s update' to re-download.\n", binName)
 		return nil
 	}
 
@@ -204,7 +204,7 @@ func doApply(updateDir string) error {
 	cleanUpdateDir(updateDir)
 
 	fmt.Printf("Successfully updated to %s\n", meta.Version)
-	fmt.Println("Please restart ai-switch to use the new version.")
+	fmt.Printf("Please restart %s to use the new version.\n", binName)
 	return nil
 }
 
@@ -519,9 +519,9 @@ func extractTarGz(dest, archive string) error {
 }
 
 func findExtractedBinary(dir string) (string, error) {
-	binName := "ai-switch"
+	name := binName
 	if runtime.GOOS == "windows" {
-		binName += ".exe"
+		name += ".exe"
 	}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -529,7 +529,7 @@ func findExtractedBinary(dir string) (string, error) {
 	}
 	for _, e := range entries {
 		if e.IsDir() && strings.HasPrefix(e.Name(), "ai-switch-") {
-			candidate := filepath.Join(dir, e.Name(), binName)
+			candidate := filepath.Join(dir, e.Name(), name)
 			if _, err := os.Stat(candidate); err == nil {
 				return candidate, nil
 			}
@@ -554,7 +554,7 @@ func copyFileUnix(src, dst string) error {
 	renamed := false
 	if _, err := os.Stat(dst); err == nil {
 		if err := os.Rename(dst, backup); err != nil {
-			return fmt.Errorf("failed to replace binary: %w\n\nThe binary is currently in use. Please stop the daemon first:\n  ai-switch stop && ai-switch update", err)
+			return fmt.Errorf("failed to replace binary: %w\n\nThe binary is currently in use. Please stop the daemon first:\n  %s stop && %s update", err, binName, binName)
 		}
 		renamed = true
 	}
@@ -573,7 +573,7 @@ func copyFileUnix(src, dst string) error {
 		if renamed {
 			os.Rename(backup, dst)
 		}
-		return fmt.Errorf("failed to create binary: %w\n\nThe binary may be in use. Try:\n  ai-switch stop && ai-switch update", err)
+		return fmt.Errorf("failed to create binary: %w\n\nThe binary may be in use. Try:\n  %s stop && %s update", err, binName, binName)
 	}
 	defer out.Close()
 
@@ -636,6 +636,6 @@ func copyFileWindows(src, dst string) error {
 	}
 
 	fmt.Println("Update will complete automatically after this process exits.")
-	fmt.Println("Please close this terminal and start ai-switch again.")
+	fmt.Printf("Please close this terminal and start %s again.\n", binName)
 	return errDelayedSwap
 }

@@ -28,7 +28,7 @@ func runStop(_ *cobra.Command, _ []string) error {
 	pidPath := filepath.Join(dataDir, config.PidFileName)
 	pidData, err := os.ReadFile(pidPath)
 	if err != nil {
-		return fmt.Errorf("ai-switch is not running (PID file not found)")
+		return fmt.Errorf("%s is not running (PID file not found)", binName)
 	}
 
 	pid, err := strconv.Atoi(strings.TrimSpace(string(pidData)))
@@ -46,6 +46,6 @@ func runStop(_ *cobra.Command, _ []string) error {
 		return fmt.Errorf("process %d not found, cleaned up stale PID file", pid)
 	}
 
-	fmt.Printf("ai-switch stopped (PID %d)\n", pid)
+	fmt.Printf("%s stopped (PID %d)\n", binName, pid)
 	return nil
 }

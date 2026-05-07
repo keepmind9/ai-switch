@@ -39,17 +39,17 @@ var agentEnvMap = map[string]agentEnvConfig{
 func newAgentCmd(configPath string) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "agent <route_key> <agent> [agent_args...]",
-		Short: "Launch an AI agent with ai-switch config",
-		Long: `Launch an AI agent (claude/codex) with environment variables
+		Short: fmt.Sprintf("Launch an AI agent with %s config", binName),
+		Long: fmt.Sprintf(`Launch an AI agent (claude/codex) with environment variables
 automatically configured from a route key.
 
 The route_key is used as the API key for the agent, and the base URL
-is set to the ai-switch server address from the config file.
+is set to the %s server address from the config file.
 
 Examples:
-  ai-switch agent my-key claude --continue
-  ai-switch agent my-key codex --model o4-mini
-  ai-switch agent my-key claude --dangerously-skip-permissions`,
+  %s agent my-key claude --continue
+  %s agent my-key codex --model o4-mini
+  %s agent my-key claude --dangerously-skip-permissions`, binName, binName, binName, binName),
 		Args:               cobra.MinimumNArgs(2),
 		DisableFlagParsing: true,
 		RunE: func(_ *cobra.Command, args []string) error {

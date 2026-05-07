@@ -56,7 +56,7 @@ make build-all   # build frontend + Go binary (includes Admin UI)
 ### 1. Start the server
 
 ```bash
-ai-switch serve
+ais serve
 ```
 
 No config file needed — it auto-creates `~/.ai-switch/config.yaml` with defaults on first run.
@@ -265,23 +265,23 @@ routes:
 ## CLI
 
 ```bash
-ai-switch serve                   # Start in foreground
-ai-switch serve -d                # Start as background daemon
-ai-switch serve -c config.yaml    # Start with custom config
-ai-switch stop                    # Stop the background daemon
-ai-switch check -c config.yaml    # Validate config without starting
-ai-switch version                 # Print version info
-ai-switch update                  # Check for updates and download latest version
-ai-switch update --apply          # Apply the downloaded update
-ai-switch shortcut                # Create desktop shortcuts to start/stop ai-switch
-ai-switch agent <route-key> claude # Launch Claude Code via ai-switch
-ai-switch agent <route-key> codex  # Launch Codex CLI via ai-switch
+ais serve                   # Start in foreground
+ais serve -d                # Start as background daemon
+ais serve -c config.yaml    # Start with custom config
+ais stop                    # Stop the background daemon
+ais check -c config.yaml    # Validate config without starting
+ais version                 # Print version info
+ais update                  # Check for updates and download latest version
+ais update --apply          # Apply the downloaded update
+ais shortcut                # Create desktop shortcuts to start/stop ais
+ais agent <route-key> claude # Launch Claude Code via ais
+ais agent <route-key> codex  # Launch Codex CLI via ais
 ```
 
 Running without a subcommand defaults to `serve`:
 
 ```bash
-ai-switch -c config.yaml          # Same as: ai-switch serve -c config.yaml
+ais -c config.yaml          # Same as: ais serve -c config.yaml
 ```
 
 ### Agent Launcher
@@ -290,20 +290,20 @@ Launch AI agents with environment variables auto-configured from a route key:
 
 ```bash
 # Launch Claude Code
-ai-switch agent my-route-key claude --continue
+ais agent my-route-key claude --continue
 
 # Launch Codex CLI
-ai-switch agent my-route-key codex --model o4-mini
+ais agent my-route-key codex --model o4-mini
 ```
 
-This auto-configures environment variables and overrides the agent's own config (via `--settings` for Claude, `-c` for Codex) to ensure requests route through ai-switch using the route key. No manual configuration needed.
+This auto-configures environment variables and overrides the agent's own config (via `--settings` for Claude, `-c` for Codex) to ensure requests route through ais using the route key. No manual configuration needed.
 
 The route key serves as the API key. Agent args and exit codes are passed through.
 
 ### Config validation
 
 ```bash
-$ ai-switch check -c config.yaml
+$ ais check -c config.yaml
 
 Checking config.yaml ...
 
