@@ -19,7 +19,7 @@ A lightweight local proxy that lets any AI CLI tool (Claude Code, Codex CLI, etc
 - **Admin UI**: Built-in web dashboard for managing providers, routes, viewing usage statistics, and debugging requests
 - **Request tracing**: Inspect every request/response pair with raw viewer, Diff view, and TTFB waterfall chart
 - **Usage statistics**: Track token usage (input, output, cache) by provider and model with dashboard charts
-- **Multi-key fallback**: Automatically switch to fallback API keys on 429 rate limiting
+- **Multi-key fallback**: Automatically switch to fallback API keys on 429/529 rate limiting or service overload
 - **Context compaction**: Support compact endpoint for context window management, with LLM-based summarization for non-OpenAI upstreams
 - **Lightweight**: Pure Go, single binary, no CGO
 
@@ -211,6 +211,21 @@ log_retention_days: 7
 ```
 
 Logs are stored in `~/.ai-switch/logs/`.
+
+### IP Whitelist
+
+When binding to a non-localhost address, restrict access to trusted IPs:
+
+```yaml
+server:
+  host: "0.0.0.0"
+  port: 12345
+  allowed_ips:
+    - "192.168.1.0/24"
+    - "10.0.0.5"
+```
+
+Supports CIDR notation and bare IP addresses. When `host` is `127.0.0.1` or `localhost`, the whitelist is ignored (even if configured).
 
 ### Model Map
 
