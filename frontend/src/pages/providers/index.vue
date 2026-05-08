@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from "vue"
 import { ElMessage } from "element-plus"
-import { Plus, View, Edit, Hide, CopyDocument, Search, Refresh, Link, Delete, QuestionFilled, Check, Promotion } from "@element-plus/icons-vue"
+import { Plus, View, Edit, Hide, CopyDocument, Search, Refresh, Link, Delete, QuestionFilled, Check, Promotion, DocumentCopy } from "@element-plus/icons-vue"
 import { listProviders, createProvider, updateProvider, deleteProvider, revealAPIKey, fetchModels, type Provider, type ModelInfo } from "@/api/providers"
 import { listPresets, type Preset } from "@/api/stats"
 import { useConfirm } from "@@/composables/useConfirm"
@@ -60,17 +60,36 @@ function openCreate() {
 
 function openEdit(row: Provider) {
   isEdit.value = true
-  form.value = { 
-    key: row.key, 
-    name: row.name, 
-    base_url: row.base_url, 
-    path: row.path, 
-    api_key: "", 
+  form.value = {
+    key: row.key,
+    name: row.name,
+    base_url: row.base_url,
+    path: row.path,
+    api_key: "",
     fallback_keys: [...(row.fallback_keys || [])],
-    format: row.format, 
+    format: row.format,
     logo_url: row.logo_url,
     default_model: row.default_model || "",
-    models: [...(row.models || [])] 
+    models: [...(row.models || [])],
+    enable_proxy: row.enable_proxy || false
+  }
+  selectedPreset.value = ""; fetchedModels.value = []; showDrawer.value = true
+}
+
+function openDuplicate(row: Provider) {
+  isEdit.value = false
+  form.value = {
+    key: "",
+    name: row.name,
+    base_url: row.base_url,
+    path: row.path,
+    api_key: "",
+    fallback_keys: [...(row.fallback_keys || [])],
+    format: row.format,
+    logo_url: row.logo_url,
+    default_model: row.default_model || "",
+    models: [...(row.models || [])],
+    enable_proxy: row.enable_proxy || false
   }
   selectedPreset.value = ""; fetchedModels.value = []; showDrawer.value = true
 }
@@ -242,11 +261,14 @@ onMounted(load)
           </template>
         </el-table-column>
 
-        <el-table-column :label="$t('providers.table.actions')" width="140" fixed="right" align="right">
+        <el-table-column :label="$t('providers.table.actions')" width="170" fixed="right" align="right">
           <template #default="{ row }">
             <div class="flex justify-end gap-1">
               <el-tooltip :content="$t('providers.actions.edit')" placement="top">
                 <el-button link type="primary" :icon="Edit" @click="openEdit(row)" />
+              </el-tooltip>
+              <el-tooltip :content="$t('providers.actions.duplicate')" placement="top">
+                <el-button link type="primary" :icon="DocumentCopy" @click="openDuplicate(row)" />
               </el-tooltip>
               <div class="flex items-center gap-1">
                 <template v-if="confirmState[row.key]">
