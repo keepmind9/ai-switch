@@ -72,7 +72,7 @@ func (h *Handler) forwardCompactPassthrough(c *gin.Context, body []byte, result 
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Authorization", "Bearer "+result.APIKey)
 
-	resp, err := h.client.Do(httpReq)
+	resp, err := h.httpClientFor(result.ProviderKey).Do(httpReq)
 	if err != nil {
 		writeUpstreamError(c, "failed to call upstream: "+err.Error())
 		return

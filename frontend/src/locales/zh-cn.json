@@ -79,7 +79,9 @@
         "fetchFail": "模型获取失败",
         "fallbackKeys": "备用密钥",
         "fallbackKeysTip": "在主密钥触发 429 限流时自动切换的备用 API 密钥，按顺序尝试。",
-        "fallbackKeysPlaceholder": "输入或粘贴密钥后按回车添加"
+        "fallbackKeysPlaceholder": "输入或粘贴密钥后按回车添加",
+        "enableProxy": "启用代理",
+        "enableProxyTip": "通过设置中配置的全局代理访问该 Provider。"
       }
     }
   },
@@ -269,7 +271,10 @@
       "allowedIps": "IP 白名单",
       "allowedIpsTip": "当监听地址为非 localhost 时，仅白名单中的 IP 可访问服务。支持 CIDR 格式。",
       "allowedIpsPlaceholder": "例如 192.168.1.0/24, 10.0.0.5，按回车添加",
-      "allowedIpsTagError": "IP 或 CIDR 格式无效"
+      "allowedIpsTagError": "IP 或 CIDR 格式无效",
+      "proxyUrl": "代理地址",
+      "proxyUrlTip": "全局代理，用于访问上游 LLM API（如 socks5://127.0.0.1:1080）。需要在 Provider 中单独启用。",
+      "proxyUrlPlaceholder": "例如 socks5://127.0.0.1:1080, http://proxy:8080"
     },
     "save": "保存",
     "restart": "重启",

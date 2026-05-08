@@ -43,6 +43,7 @@ type ServerConfig struct {
 	Host       string   `mapstructure:"host" yaml:"host"`
 	Port       int      `mapstructure:"port" yaml:"port"`
 	AllowedIPs []string `mapstructure:"allowed_ips" yaml:"allowed_ips,omitempty"`
+	ProxyURL   string   `mapstructure:"proxy_url" yaml:"proxy_url,omitempty"`
 }
 
 type ProviderConfig struct {
@@ -55,6 +56,7 @@ type ProviderConfig struct {
 	LogoURL      string   `mapstructure:"logo_url" yaml:"logo_url"`
 	ThinkTag     string   `mapstructure:"think_tag" yaml:"think_tag,omitempty"`
 	Models       []string `mapstructure:"models" yaml:"models,omitempty"`
+	EnableProxy  bool     `mapstructure:"enable_proxy" yaml:"enable_proxy,omitempty"`
 }
 
 var validFormats = map[string]bool{

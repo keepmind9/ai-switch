@@ -5,6 +5,8 @@ server:
   # allowed_ips:
   #   - "192.168.1.0/24"
   #   - "10.0.0.5"
+  # Global proxy for upstream LLM API requests (e.g. socks5://127.0.0.1:1080)
+  # proxy_url: ""
 
 # Number of days to retain log files (default: 30)
 # log_retention_days: 30
@@ -29,6 +31,8 @@ providers:
     # Strip think tags from responses (optional, for reasoning models)
     # think_tag: "think"
     logo_url: ""
+    # Route requests through the global proxy (default: false)
+    # enable_proxy: true
     models:
       - "MiniMax-M2.5"
   deepseek:

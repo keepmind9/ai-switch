@@ -79,7 +79,9 @@
         "fetchFail": "Failed to fetch models",
         "fallbackKeys": "Fallback Keys",
         "fallbackKeysTip": "Additional API keys for automatic failover on 429 rate limiting. Tried in order.",
-        "fallbackKeysPlaceholder": "Type or paste a key and press Enter"
+        "fallbackKeysPlaceholder": "Type or paste a key and press Enter",
+        "enableProxy": "Enable Proxy",
+        "enableProxyTip": "Route requests to this provider through the global proxy configured in Settings."
       }
     }
   },
@@ -269,7 +271,10 @@
       "allowedIps": "IP Whitelist",
       "allowedIpsTip": "When binding to a non-localhost address, only IPs in this list can access the service. Supports CIDR notation.",
       "allowedIpsPlaceholder": "e.g. 192.168.1.0/24, 10.0.0.5, press Enter to add",
-      "allowedIpsTagError": "Invalid IP or CIDR format"
+      "allowedIpsTagError": "Invalid IP or CIDR format",
+      "proxyUrl": "Proxy URL",
+      "proxyUrlTip": "Global proxy for upstream LLM API requests (e.g. socks5://127.0.0.1:1080). Providers must enable proxy individually.",
+      "proxyUrlPlaceholder": "e.g. socks5://127.0.0.1:1080, http://proxy:8080"
     },
     "save": "Save",
     "restart": "Restart",

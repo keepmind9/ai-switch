@@ -5,6 +5,7 @@ export interface Settings {
   port: number
   allowed_ips: string[]
   log_retention_days: number
+  proxy_url: string
 }
 
 export const getSettings = () => client.get<Settings>('/admin/settings')

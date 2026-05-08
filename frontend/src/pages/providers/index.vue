@@ -21,7 +21,7 @@ const revealedKeys = ref<Record<string, string>>({})
 const searchQuery = ref("")
 const { confirmState, toggle: toggleDelete, reset: resetDelete } = useConfirm()
 
-const defaultForm = { key: "", name: "", base_url: "", path: "", api_key: "", fallback_keys: [] as string[], format: "chat", logo_url: "", default_model: "", models: [] as string[] }
+const defaultForm = { key: "", name: "", base_url: "", path: "", api_key: "", fallback_keys: [] as string[], format: "chat", logo_url: "", default_model: "", models: [] as string[], enable_proxy: false }
 const modelInput = ref("")
 
 async function load() {
@@ -360,6 +360,16 @@ onMounted(load)
               <el-option label="responses" value="responses" />
               <el-option label="gemini" value="gemini" />
             </el-select>
+          </el-form-item>
+
+          <el-form-item>
+            <template #label>
+              {{ $t('providers.drawer.form.enableProxy') }}
+              <el-text type="info" size="small" style="margin-left: 8px">
+                {{ $t('providers.drawer.form.enableProxyTip') }}
+              </el-text>
+            </template>
+            <el-switch v-model="form.enable_proxy" />
           </el-form-item>
 
           <el-divider />

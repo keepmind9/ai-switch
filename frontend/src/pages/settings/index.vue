@@ -23,12 +23,14 @@ const form = ref<Settings>({
   port: 12345,
   allowed_ips: [],
   log_retention_days: 30,
+  proxy_url: '',
 })
 
 const originalPort = ref(12345)
 const originalHost = ref('127.0.0.1')
 const originalLogRetention = ref(30)
 const originalAllowedIps = ref<string[]>([])
+const originalProxyUrl = ref('')
 
 function buildUrl(host: string, port: number) {
   const h = host === '0.0.0.0' ? 'localhost' : host
@@ -42,6 +44,7 @@ const hasUnsavedChanges = computed(() =>
   || form.value.port !== originalPort.value
   || form.value.log_retention_days !== originalLogRetention.value
   || JSON.stringify(form.value.allowed_ips) !== JSON.stringify(originalAllowedIps.value)
+  || form.value.proxy_url !== originalProxyUrl.value
 )
 
 function isValidIpOrCidr(s: string): boolean {
@@ -92,6 +95,7 @@ async function load() {
     originalPort.value = data.port
     originalLogRetention.value = data.log_retention_days
     originalAllowedIps.value = data.allowed_ips || []
+    originalProxyUrl.value = data.proxy_url
   } finally {
     loading.value = false
   }
@@ -105,6 +109,7 @@ async function handleSave() {
       port: form.value.port,
       log_retention_days: form.value.log_retention_days,
       allowed_ips: form.value.allowed_ips,
+      proxy_url: form.value.proxy_url,
     })
     const hostOrPortChanged = form.value.host !== originalHost.value || form.value.port !== originalPort.value
     form.value = { ...data, allowed_ips: data.allowed_ips || [] }
@@ -112,6 +117,7 @@ async function handleSave() {
     originalPort.value = data.port
     originalLogRetention.value = data.log_retention_days
     originalAllowedIps.value = data.allowed_ips || []
+    originalProxyUrl.value = data.proxy_url
     ElMessage.success(t('settings.successSave'))
     pendingRestart.value = true
     if (hostOrPortChanged) {
@@ -198,6 +204,16 @@ onMounted(load)
           </template>
           <el-input-number v-model="form.log_retention_days" :min="1" :max="365" controls-position="right"
             style="width: 100%" />
+        </el-form-item>
+
+        <el-form-item>
+          <template #label>
+            {{ t('settings.form.proxyUrl') }}
+            <el-text type="info" size="small" style="margin-left: 8px">
+              {{ t('settings.form.proxyUrlTip') }}
+            </el-text>
+          </template>
+          <el-input v-model="form.proxy_url" :placeholder="t('settings.form.proxyUrlPlaceholder')" clearable />
         </el-form-item>
       </el-form>
 

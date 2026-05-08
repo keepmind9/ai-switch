@@ -12,6 +12,7 @@ export interface Provider {
   think_tag: string
   default_model: string
   models: string[]
+  enable_proxy: boolean
 }
 
 export interface ModelInfo {

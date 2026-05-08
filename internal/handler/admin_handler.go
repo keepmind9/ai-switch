@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"slices"
 	"sync"
 	"time"
@@ -64,6 +65,7 @@ func (a *AdminHandler) listProviders(c *gin.Context) {
 		LogoURL      string   `json:"logo_url"`
 		ThinkTag     string   `json:"think_tag"`
 		Models       []string `json:"models"`
+		EnableProxy  bool     `json:"enable_proxy"`
 	}
 
 	items := make([]providerItem, 0, len(cfg.Providers))
@@ -85,6 +87,7 @@ func (a *AdminHandler) listProviders(c *gin.Context) {
 			LogoURL:      p.LogoURL,
 			ThinkTag:     p.ThinkTag,
 			Models:       p.Models,
+			EnableProxy:  p.EnableProxy,
 		})
 	}
 	sendOK(c, items)
@@ -102,6 +105,7 @@ func (a *AdminHandler) createProvider(c *gin.Context) {
 		ThinkTag     string   `json:"think_tag"`
 		FallbackKeys []string `json:"fallback_keys"`
 		Models       []string `json:"models"`
+		EnableProxy  bool     `json:"enable_proxy"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		sendBindErr(c, err)
@@ -135,6 +139,7 @@ func (a *AdminHandler) createProvider(c *gin.Context) {
 		ThinkTag:     req.ThinkTag,
 		FallbackKeys: req.FallbackKeys,
 		Models:       req.Models,
+		EnableProxy:  req.EnableProxy,
 	}
 
 	if err := a.writeAndReload(cfg); err != nil {
@@ -158,6 +163,7 @@ func (a *AdminHandler) updateProvider(c *gin.Context) {
 		ThinkTag     *string  `json:"think_tag"`
 		FallbackKeys []string `json:"fallback_keys"`
 		Models       []string `json:"models"`
+		EnableProxy  *bool    `json:"enable_proxy"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		sendBindErr(c, err)
@@ -205,6 +211,9 @@ func (a *AdminHandler) updateProvider(c *gin.Context) {
 	}
 	if req.Models != nil {
 		p.Models = req.Models
+	}
+	if req.EnableProxy != nil {
+		p.EnableProxy = *req.EnableProxy
 	}
 
 	cfg.Providers[key] = p
@@ -576,6 +585,7 @@ func (a *AdminHandler) getSettings(c *gin.Context) {
 		"port":               cfg.Server.Port,
 		"allowed_ips":        cfg.Server.AllowedIPs,
 		"log_retention_days": cfg.LogRetentionDays,
+		"proxy_url":          cfg.Server.ProxyURL,
 	})
 }
 
@@ -585,6 +595,7 @@ func (a *AdminHandler) updateSettings(c *gin.Context) {
 		Port             *int     `json:"port"`
 		LogRetentionDays *int     `json:"log_retention_days"`
 		AllowedIPs       []string `json:"allowed_ips"`
+		ProxyURL         *string  `json:"proxy_url"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		sendBindErr(c, err)
@@ -628,6 +639,16 @@ func (a *AdminHandler) updateSettings(c *gin.Context) {
 	if req.AllowedIPs != nil {
 		cfg.Server.AllowedIPs = req.AllowedIPs
 	}
+	if req.ProxyURL != nil {
+		if *req.ProxyURL != "" {
+			parsed, err := url.Parse(*req.ProxyURL)
+			if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https" && parsed.Scheme != "socks5") {
+				sendFail(c, http.StatusBadRequest, CodeBadRequest, "invalid proxy_url: must be a valid http, https, or socks5 URL")
+				return
+			}
+		}
+		cfg.Server.ProxyURL = *req.ProxyURL
+	}
 
 	if err := a.writeAndReload(cfg); err != nil {
 		sendFail(c, http.StatusInternalServerError, CodeInternalError, err.Error())
@@ -643,6 +664,7 @@ func (a *AdminHandler) updateSettings(c *gin.Context) {
 		"port":               cfg.Server.Port,
 		"allowed_ips":        cfg.Server.AllowedIPs,
 		"log_retention_days": cfg.LogRetentionDays,
+		"proxy_url":          cfg.Server.ProxyURL,
 	})
 }
 

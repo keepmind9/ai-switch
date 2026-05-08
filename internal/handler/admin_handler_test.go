@@ -183,6 +183,158 @@ func TestUpdateProviderPreserveAPIKey(t *testing.T) {
 	}
 }
 
+func TestGetSettings_IncludeProxyURL(t *testing.T) {
+	r, _ := setupAdminTest(t)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/settings", nil)
+	r.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+
+	data := resp["data"].(map[string]any)
+	_, hasProxyURL := data["proxy_url"]
+	assert.True(t, hasProxyURL, "settings response should include proxy_url")
+}
+
+func TestUpdateSettings_ProxyURL(t *testing.T) {
+	r, cfgPath := setupAdminTest(t)
+
+	body, _ := json.Marshal(map[string]any{
+		"proxy_url": "socks5://127.0.0.1:1080",
+	})
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPut, "/api/admin/settings", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+
+	// Verify persisted to config file
+	loaded, err := config.Load(cfgPath)
+	require.NoError(t, err)
+	assert.Equal(t, "socks5://127.0.0.1:1080", loaded.Server.ProxyURL)
+}
+
+func TestUpdateSettings_ClearProxyURL(t *testing.T) {
+	r, cfgPath := setupAdminTest(t)
+
+	// Set proxy first
+	body, _ := json.Marshal(map[string]any{"proxy_url": "http://proxy:8080"})
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPut, "/api/admin/settings", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	// Clear proxy
+	body2, _ := json.Marshal(map[string]any{"proxy_url": ""})
+	w2 := httptest.NewRecorder()
+	req2 := httptest.NewRequest(http.MethodPut, "/api/admin/settings", bytes.NewReader(body2))
+	req2.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w2, req2)
+	require.Equal(t, http.StatusOK, w2.Code)
+
+	loaded, err := config.Load(cfgPath)
+	require.NoError(t, err)
+	assert.Equal(t, "", loaded.Server.ProxyURL)
+}
+
+func TestUpdateSettings_InvalidProxyURL(t *testing.T) {
+	r, _ := setupAdminTest(t)
+
+	body, _ := json.Marshal(map[string]any{
+		"proxy_url": "not-a-valid-url",
+	})
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPut, "/api/admin/settings", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestUpdateSettings_ProxyURLUnsupportedScheme(t *testing.T) {
+	r, _ := setupAdminTest(t)
+
+	body, _ := json.Marshal(map[string]any{
+		"proxy_url": "ftp://proxy:21",
+	})
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPut, "/api/admin/settings", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestCreateProvider_WithEnableProxy(t *testing.T) {
+	r, cfgPath := setupAdminTest(t)
+
+	body, _ := json.Marshal(map[string]any{
+		"key":          "openai",
+		"name":         "OpenAI",
+		"base_url":     "https://api.openai.com",
+		"api_key":      "sk-test",
+		"format":       "chat",
+		"enable_proxy": true,
+	})
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/admin/providers", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusCreated, w.Code)
+
+	loaded, err := config.Load(cfgPath)
+	require.NoError(t, err)
+	assert.True(t, loaded.Providers["openai"].EnableProxy)
+}
+
+func TestUpdateProvider_EnableProxy(t *testing.T) {
+	r, cfgPath := setupAdminTest(t)
+
+	body, _ := json.Marshal(map[string]any{
+		"enable_proxy": true,
+	})
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPut, "/api/admin/providers/minimax", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+
+	loaded, err := config.Load(cfgPath)
+	require.NoError(t, err)
+	assert.True(t, loaded.Providers["minimax"].EnableProxy)
+}
+
+func TestListProviders_IncludeEnableProxy(t *testing.T) {
+	r, _ := setupAdminTest(t)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/providers", nil)
+	r.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+
+	data := resp["data"].([]any)
+	p := data[0].(map[string]any)
+	_, hasEnableProxy := p["enable_proxy"]
+	assert.True(t, hasEnableProxy, "provider list response should include enable_proxy")
+}
+
 func TestDeleteProvider(t *testing.T) {
 	r, cfgPath := setupAdminTest(t)
 

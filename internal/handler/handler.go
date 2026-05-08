@@ -11,7 +11,9 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -43,6 +45,10 @@ type Handler struct {
 	keyMgr     *router.KeyManager
 	hooks      *hook.Manager
 	trace      *hook.TraceRecorder
+
+	proxyMu     sync.RWMutex
+	proxyClient *http.Client
+	cachedProxy string
 }
 
 func NewHandler(provider *config.Provider, usageStore *store.UsageStore, r router.Router, trace *hook.TraceRecorder) *Handler {
@@ -60,6 +66,84 @@ func NewHandler(provider *config.Provider, usageStore *store.UsageStore, r route
 		hooks:      hook.NewManager(),
 		trace:      trace,
 	}
+}
+
+// httpClientFor returns the appropriate HTTP client for the given provider.
+// If the provider has enable_proxy=true and a global proxy_url is configured,
+// a proxy-enabled client is returned; otherwise the default client is used.
+func (h *Handler) httpClientFor(providerKey string) *http.Client {
+	if h.provider == nil {
+		return h.client
+	}
+	cfg := h.provider.Get()
+	if cfg.Server.ProxyURL == "" {
+		h.clearProxyClient()
+		return h.client
+	}
+	pc, ok := cfg.Providers[providerKey]
+	if !ok || !pc.EnableProxy {
+		return h.client
+	}
+	slog.Debug("using proxy for provider", "provider", providerKey, "proxy_url", cfg.Server.ProxyURL)
+	return h.getProxyClient(cfg.Server.ProxyURL)
+}
+
+// clearProxyClient closes idle connections on the cached proxy client and releases it.
+// CloseIdleConnections only drains the idle pool — in-flight requests keep their
+// references to the old Transport and complete normally.
+func (h *Handler) clearProxyClient() {
+	h.proxyMu.RLock()
+	if h.proxyClient == nil {
+		h.proxyMu.RUnlock()
+		return
+	}
+	h.proxyMu.RUnlock()
+
+	h.proxyMu.Lock()
+	defer h.proxyMu.Unlock()
+	if h.proxyClient == nil {
+		return
+	}
+	if t, ok := h.proxyClient.Transport.(*http.Transport); ok {
+		t.CloseIdleConnections()
+	}
+	h.proxyClient = nil
+	h.cachedProxy = ""
+}
+
+func (h *Handler) getProxyClient(proxyURL string) *http.Client {
+	h.proxyMu.RLock()
+	if h.proxyClient != nil && h.cachedProxy == proxyURL {
+		defer h.proxyMu.RUnlock()
+		return h.proxyClient
+	}
+	h.proxyMu.RUnlock()
+
+	h.proxyMu.Lock()
+	defer h.proxyMu.Unlock()
+	// Double-check after acquiring write lock.
+	if h.proxyClient != nil && h.cachedProxy == proxyURL {
+		return h.proxyClient
+	}
+	proxyParsed, err := url.Parse(proxyURL)
+	if err != nil {
+		slog.Error("invalid proxy URL, falling back to direct", "proxy_url", proxyURL, "error", err)
+		return h.client
+	}
+	// Close old transport connections before replacing.
+	if h.proxyClient != nil {
+		if t, ok := h.proxyClient.Transport.(*http.Transport); ok {
+			t.CloseIdleConnections()
+		}
+	}
+	h.proxyClient = &http.Client{
+		Transport: &http.Transport{
+			ResponseHeaderTimeout: upstreamTimeout,
+			Proxy:                 http.ProxyURL(proxyParsed),
+		},
+	}
+	h.cachedProxy = proxyURL
+	return h.proxyClient
 }
 
 // SyncKeys rebuilds the KeyManager from the current config.
@@ -232,7 +316,7 @@ func (h *Handler) forwardRequest(result *router.RouteResult, body []byte) (*http
 	}
 
 	start := time.Now()
-	resp, err := h.client.Do(req)
+	resp, err := h.httpClientFor(result.ProviderKey).Do(req)
 	if err != nil {
 		return nil, 0, err
 	}

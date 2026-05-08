@@ -424,7 +424,13 @@ func (h *Handler) sendUpstreamRequest(ctx *hook.Context, upstreamURL, apiKey str
 
 	start := time.Now()
 	ctx.GinCtx.Set("_start_time", start)
-	resp, err := h.client.Do(req)
+	providerKey := ""
+	if ctx.RouteResult != nil {
+		providerKey = ctx.RouteResult.ProviderKey
+	} else {
+		slog.Debug("sendUpstreamRequest called without RouteResult, proxy will be skipped")
+	}
+	resp, err := h.httpClientFor(providerKey).Do(req)
 	if err != nil {
 		writeUpstreamError(ctx.GinCtx, "failed to call upstream: "+err.Error())
 		h.recordErrorUsage(ctx)
