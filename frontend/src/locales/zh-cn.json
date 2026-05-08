@@ -35,7 +35,8 @@
       "apiKey": "API 密钥",
       "actions": "操作",
       "noModels": "无模型",
-      "sponsor": "赞助商"
+      "sponsor": "赞助商",
+      "proxyEnabled": "已启用代理"
     },
     "actions": {
       "edit": "编辑设置",

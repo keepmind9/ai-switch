@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from "vue"
 import { ElMessage } from "element-plus"
-import { Plus, View, Edit, Hide, CopyDocument, Search, Refresh, Link, Delete, QuestionFilled, Check } from "@element-plus/icons-vue"
+import { Plus, View, Edit, Hide, CopyDocument, Search, Refresh, Link, Delete, QuestionFilled, Check, Promotion } from "@element-plus/icons-vue"
 import { listProviders, createProvider, updateProvider, deleteProvider, revealAPIKey, fetchModels, type Provider, type ModelInfo } from "@/api/providers"
 import { listPresets, type Preset } from "@/api/stats"
 import { useConfirm } from "@@/composables/useConfirm"
@@ -182,6 +182,9 @@ onMounted(load)
                 <div class="flex items-center gap-1.5">
                   <span class="font-bold text-slate-700">{{ row.name }}</span>
                   <el-tag v-if="presets.find(p => p.key === row.key)?.is_partner" size="small" type="warning" effect="plain" class="rounded! text-[10px]! leading-none! px-1! py-0.5!">{{ $t('providers.table.sponsor') }}</el-tag>
+                  <el-tooltip v-if="row.enable_proxy" :content="$t('providers.table.proxyEnabled')" placement="top">
+                    <el-icon class="text-slate-400 text-sm"><Promotion /></el-icon>
+                  </el-tooltip>
                 </div>
                 <div class="text-xs text-slate-400 mono! mt-0.5">{{ row.key }}</div>
               </div>

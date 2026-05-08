@@ -35,7 +35,8 @@
       "apiKey": "API Key",
       "actions": "Actions",
       "noModels": "No models",
-      "sponsor": "Sponsor"
+      "sponsor": "Sponsor",
+      "proxyEnabled": "Proxy enabled"
     },
     "actions": {
       "edit": "Edit Settings",
