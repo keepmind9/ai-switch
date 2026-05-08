@@ -54,7 +54,7 @@ const fetchList = async (c?: string) => {
     const res = await getTraces({
         ...filter,
         cursor: c || '',
-        status: filter.status ? Number(filter.status) : undefined
+        status: filter.status === 'error' ? 'error' : (filter.status ? Number(filter.status) : undefined)
     })
     items.value = res.items
     has_prev.value = res.has_prev
