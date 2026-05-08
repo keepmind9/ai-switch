@@ -228,6 +228,21 @@ server:
 
 支持 CIDR 格式和裸 IP 地址。当 `host` 为 `127.0.0.1` 或 `localhost` 时，白名单不生效（即使已配置）。
 
+### 上游代理（Upstream Proxy）
+
+通过 HTTP/SOCKS5 代理访问上游 LLM API：
+
+```yaml
+server:
+  proxy_url: "socks5://127.0.0.1:1080"
+
+providers:
+  openai:
+    enable_proxy: true
+```
+
+全局配置 `proxy_url`，然后在 Provider 中通过 `enable_proxy: true` 逐个启用。支持的协议：`http`、`https`、`socks5`。
+
 ### 模型映射（Model Map）
 
 将客户端模型名映射为上游模型：

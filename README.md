@@ -227,6 +227,21 @@ server:
 
 Supports CIDR notation and bare IP addresses. When `host` is `127.0.0.1` or `localhost`, the whitelist is ignored (even if configured).
 
+### Upstream Proxy
+
+Route upstream LLM API requests through an HTTP/SOCKS5 proxy:
+
+```yaml
+server:
+  proxy_url: "socks5://127.0.0.1:1080"
+
+providers:
+  openai:
+    enable_proxy: true
+```
+
+Set `proxy_url` globally, then enable per-provider with `enable_proxy: true`. Supported schemes: `http`, `https`, `socks5`.
+
 ### Model Map
 
 Map client model names to upstream models:
