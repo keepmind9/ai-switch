@@ -84,7 +84,7 @@ func createWindowsShortcuts(desktopDir, execPath, uiURL, configPath string) erro
 	// Start shortcut
 	startPath := filepath.Join(desktopDir, "AI-Switch.vbs")
 	startContent := fmt.Sprintf(`Set WshShell = CreateObject("WScript.Shell")
-WshShell.Run """%s"" %s", 0, False
+WshShell.Run "cmd /c """"%s"" %s""", 0, False
 WScript.Sleep 2000
 WshShell.Run "%s"
 `, execPath, buildServeArgs(configPath), uiURL)
@@ -96,8 +96,13 @@ WshShell.Run "%s"
 	// Stop shortcut
 	stopPath := filepath.Join(desktopDir, "Stop-AI-Switch.vbs")
 	stopContent := fmt.Sprintf(`Set WshShell = CreateObject("WScript.Shell")
-WshShell.Run """%s"" %s", 0, True
-`, execPath, buildStopArgs())
+ret = WshShell.Run("cmd /c """"%s"" %s""", 0, True)
+If ret = 0 Then
+    MsgBox "%s stopped successfully", vbInformation, "AI-Switch"
+Else
+    MsgBox "Failed to stop %s (exit code: " & ret & ")", vbExclamation, "AI-Switch"
+End If
+`, execPath, buildStopArgs(), binName, binName)
 
 	if err := os.WriteFile(stopPath, []byte(stopContent), 0644); err != nil {
 		return fmt.Errorf("failed to create stop shortcut: %w", err)
@@ -123,8 +128,12 @@ open "%s"
 	// Stop shortcut
 	stopPath := filepath.Join(desktopDir, "Stop-AI-Switch.command")
 	stopContent := fmt.Sprintf(`#!/bin/bash
-"%s" %s
-`, execPath, buildStopArgs())
+if "%s" %s; then
+    osascript -e 'display notification "%s stopped successfully" with title "AI-Switch" sound name "Glass"'
+else
+    osascript -e 'display notification "Failed to stop %s" with title "AI-Switch" sound name "Basso"'
+fi
+`, execPath, buildStopArgs(), binName, binName)
 
 	if err := os.WriteFile(stopPath, []byte(stopContent), 0755); err != nil {
 		return fmt.Errorf("failed to create stop shortcut: %w", err)
@@ -141,7 +150,7 @@ func createLinuxShortcuts(desktopDir, execPath, uiURL, configPath string) error 
 Type=Application
 Name=AI Switch
 Comment=Start %s and open Web UI
-Exec=bash -c '%s %s && sleep 2 && xdg-open "%s"'
+Exec=bash -c "\"%s\" %s && sleep 2 && xdg-open \"%s\""
 Terminal=false
 `, binName, execPath, buildServeArgs(configPath), uiURL)
 
@@ -155,9 +164,9 @@ Terminal=false
 Type=Application
 Name=Stop AI Switch
 Comment=Stop %s daemon
-Exec=%s %s
+Exec=bash -c '"%s" %s; rc=$?; if [ $rc -eq 0 ]; then notify-send "AI-Switch" "%s stopped successfully"; else notify-send "AI-Switch" "Failed to stop %s"; fi'
 Terminal=false
-`, binName, execPath, buildStopArgs())
+`, binName, execPath, buildStopArgs(), binName, binName)
 
 	if err := os.WriteFile(stopPath, []byte(stopContent), 0755); err != nil {
 		return fmt.Errorf("failed to create stop shortcut: %w", err)
