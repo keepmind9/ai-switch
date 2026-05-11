@@ -372,6 +372,7 @@ func copyUpstreamHeaders(c *gin.Context, resp *http.Response) {
 	skip := map[string]bool{
 		"Content-Type":      true,
 		"Content-Length":    true,
+		"Content-Encoding":  true,
 		"Transfer-Encoding": true,
 		"Cache-Control":     true,
 		"Connection":        true,

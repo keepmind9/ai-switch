@@ -444,6 +444,7 @@ func (h *Handler) sendUpstreamRequest(ctx *hook.Context, upstreamURL, apiKey str
 // conversion for both streaming and non-streaming paths.
 func (h *Handler) stepWriteResp(ctx *hook.Context) error {
 	defer ctx.UpstreamResp.Body.Close()
+	decompressBody(ctx.UpstreamResp)
 
 	if !ctx.IsStream {
 		ctx.ClientTTFB = time.Since(ctx.StartTime)
