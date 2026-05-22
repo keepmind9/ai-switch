@@ -21,7 +21,7 @@ const revealedKeys = ref<Record<string, string>>({})
 const searchQuery = ref("")
 const { confirmState, toggle: toggleDelete, reset: resetDelete } = useConfirm()
 
-const defaultForm = { key: "", name: "", base_url: "", path: "", api_key: "", fallback_keys: [] as string[], format: "chat", logo_url: "", default_model: "", models: [] as string[], enable_proxy: false }
+const defaultForm = { key: "", name: "", base_url: "", path: "", api_key: "", fallback_keys: [] as string[], format: "chat", logo_url: "", default_model: "", models: [] as string[], enable_proxy: false, think_tag: "" }
 const modelInput = ref("")
 
 async function load() {
@@ -71,7 +71,8 @@ function openEdit(row: Provider) {
     logo_url: row.logo_url,
     default_model: row.default_model || "",
     models: [...(row.models || [])],
-    enable_proxy: row.enable_proxy || false
+    enable_proxy: row.enable_proxy || false,
+    think_tag: row.think_tag || ""
   }
   selectedPreset.value = ""; fetchedModels.value = []; showDrawer.value = true
 }
@@ -89,7 +90,8 @@ function openDuplicate(row: Provider) {
     logo_url: row.logo_url,
     default_model: row.default_model || "",
     models: [...(row.models || [])],
-    enable_proxy: row.enable_proxy || false
+    enable_proxy: row.enable_proxy || false,
+    think_tag: row.think_tag || ""
   }
   selectedPreset.value = ""; fetchedModels.value = []; showDrawer.value = true
 }
@@ -395,6 +397,19 @@ onMounted(load)
               </el-text>
             </template>
             <el-switch v-model="form.enable_proxy" />
+          </el-form-item>
+
+          <el-form-item>
+            <template #label>
+              <div class="flex items-center gap-1">
+                <span>{{ $t('providers.drawer.form.thinkTag') }}</span>
+                <span class="text-[10px] text-slate-400 font-normal">(Optional)</span>
+                <el-tooltip :content="$t('providers.drawer.form.thinkTagTip')" placement="top">
+                  <el-icon :size="12" class="text-slate-400 cursor-help"><QuestionFilled /></el-icon>
+                </el-tooltip>
+              </div>
+            </template>
+            <el-input v-model="form.think_tag" placeholder="e.g. think" />
           </el-form-item>
 
           <el-divider />

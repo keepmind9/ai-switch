@@ -83,7 +83,9 @@
         "fallbackKeysTip": "Additional API keys for automatic failover on 429 rate limiting. Tried in order.",
         "fallbackKeysPlaceholder": "Type or paste a key and press Enter",
         "enableProxy": "Enable Proxy",
-        "enableProxyTip": "Route requests to this provider through the global proxy configured in Settings."
+        "enableProxyTip": "Route requests to this provider through the global proxy configured in Settings.",
+        "thinkTag": "Think Tag",
+        "thinkTagTip": "Strip <tag>...</tag> blocks from responses. Useful for removing model thinking/reasoning output (e.g. set to 'think' to strip <think reasoning_content>)."
       }
     }
   },
