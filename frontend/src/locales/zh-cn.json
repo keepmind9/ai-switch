@@ -48,7 +48,9 @@
       "successUpdate": "服务商更新成功",
       "successDelete": "服务商删除成功",
       "failSave": "保存服务商失败",
-      "copySuccess": "已复制到剪贴板"
+      "copySuccess": "已复制到剪贴板",
+      "autoRouteCreated": "已自动创建同名 Route '{key}'",
+      "routeWarnings": "Route 已创建，但有警告: {warnings}"
     },
     "drawer": {
       "add": "添加新服务商",
@@ -74,6 +76,7 @@
         "fetchModels": "获取可用模型",
         "defaultModel": "默认模型",
         "defaultModelPlaceholder": "选择或输入默认模型",
+        "defaultModelTip": "用于自动创建的同名 Route 的默认模型。留空可稍后在路由页面补充。",
         "models": "可用模型列表",
         "addModel": "添加模型 (例如 gpt-4o)",
         "fetchSuccess": "模型列表获取成功",

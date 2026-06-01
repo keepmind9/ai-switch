@@ -1,5 +1,7 @@
 import client from './client'
 
+// `default_model` is NOT returned by the backend (ProviderConfig has no such
+// field); it is request-only and used to initialize the auto-created Route.
 export interface Provider {
   key: string
   name: string
@@ -10,9 +12,23 @@ export interface Provider {
   format: string
   logo_url: string
   think_tag: string
-  default_model: string
   models: string[]
   enable_proxy: boolean
+}
+
+export interface CreateProviderRequest {
+  key: string
+  name: string
+  base_url: string
+  api_key: string
+  path?: string
+  format?: string
+  logo_url?: string
+  think_tag?: string
+  fallback_keys?: string[]
+  models?: string[]
+  default_model?: string
+  enable_proxy?: boolean
 }
 
 export interface ModelInfo {
@@ -21,7 +37,7 @@ export interface ModelInfo {
 }
 
 export const listProviders = () => client.get<Provider[]>('/admin/providers')
-export const createProvider = (data: Partial<Provider> & { key: string; name: string; base_url: string; api_key: string }) => client.post('/admin/providers', data)
+export const createProvider = (data: CreateProviderRequest) => client.post<{ key: string; name: string; auto_route_created: boolean; warnings?: string[] }>('/admin/providers', data)
 export const updateProvider = (key: string, data: Partial<Provider>) => client.put(`/admin/providers/${key}`, data)
 export const deleteProvider = (key: string) => client.delete(`/admin/providers/${key}`)
 export const revealAPIKey = (key: string) => client.get<{ api_key: string }>(`/admin/apikeys/provider/${key}?reveal=true`)

@@ -48,7 +48,9 @@
       "successUpdate": "Provider updated successfully",
       "successDelete": "Provider deleted successfully",
       "failSave": "Failed to save provider",
-      "copySuccess": "Copied to clipboard"
+      "copySuccess": "Copied to clipboard",
+      "autoRouteCreated": "Auto-created route '{key}'",
+      "routeWarnings": "Route created with warnings: {warnings}"
     },
     "drawer": {
       "add": "Add New Provider",
@@ -74,6 +76,7 @@
         "fetchModels": "Fetch Models",
         "defaultModel": "Default Model",
         "defaultModelPlaceholder": "Select or type default model",
+        "defaultModelTip": "Used as the default model for the auto-created Route with the same name. Leave empty to fill it in on the Routes page later.",
         "models": "Available Models",
         "addModel": "Add model (e.g. gpt-4o)",
         "fetchSuccess": "Models fetched successfully",

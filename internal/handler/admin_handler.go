@@ -109,6 +109,7 @@ func (a *AdminHandler) createProvider(c *gin.Context) {
 		ThinkTag     string   `json:"think_tag"`
 		FallbackKeys []string `json:"fallback_keys"`
 		Models       []string `json:"models"`
+		DefaultModel string   `json:"default_model"`
 		EnableProxy  bool     `json:"enable_proxy"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -146,12 +147,42 @@ func (a *AdminHandler) createProvider(c *gin.Context) {
 		EnableProxy:  req.EnableProxy,
 	}
 
+	// Auto-create a same-named Route so the new Provider is immediately
+	// usable. The Provider itself does not persist a default_model; the
+	// request field is consumed only to initialize the Route. If a Route
+	// with the same key already exists, leave it untouched.
+	autoRouteCreated := false
+	if _, exists := cfg.Routes[req.Key]; !exists {
+		if cfg.Routes == nil {
+			cfg.Routes = make(map[string]config.RouteRule)
+		}
+		defaultModel := req.DefaultModel
+		if defaultModel == "" && len(req.Models) == 1 {
+			defaultModel = req.Models[0]
+		}
+		cfg.Routes[req.Key] = config.RouteRule{
+			Provider:     req.Key,
+			DefaultModel: defaultModel,
+		}
+		autoRouteCreated = true
+	}
+
 	if err := a.writeAndReload(cfg); err != nil {
 		sendFail(c, http.StatusInternalServerError, CodeInternalError, err.Error())
 		return
 	}
 
-	sendCreated(c, gin.H{"key": req.Key, "name": req.Name})
+	resp := gin.H{
+		"key":                req.Key,
+		"name":               req.Name,
+		"auto_route_created": autoRouteCreated,
+	}
+	if autoRouteCreated {
+		if w := validateRouteModels(cfg, cfg.Routes[req.Key]); len(w) > 0 {
+			resp["warnings"] = w
+		}
+	}
+	sendCreated(c, resp)
 }
 
 func (a *AdminHandler) updateProvider(c *gin.Context) {

@@ -13,6 +13,7 @@ import (
 	"github.com/keepmind9/ai-switch/internal/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 )
 
 func setupAdminTest(t *testing.T) (*gin.Engine, string) {
@@ -713,4 +714,230 @@ func TestCleanConfigBackups_MissingKeepRejected(t *testing.T) {
 	w := doBackupRequest(t, r, http.MethodPost, "/api/admin/config/backups/clean",
 		map[string]any{})
 	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestCreateProvider_AutoRoute_ZeroModels(t *testing.T) {
+	r, cfgPath := setupAdminTest(t)
+
+	body, _ := json.Marshal(map[string]any{
+		"key":      "glm",
+		"name":     "GLM",
+		"base_url": "https://open.bigmodel.cn",
+		"api_key":  "sk-glm",
+		"format":   "chat",
+	})
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/admin/providers", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+	require.Equal(t, http.StatusCreated, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	data := resp["data"].(map[string]any)
+	assert.Equal(t, true, data["auto_route_created"])
+
+	loaded, err := config.Load(cfgPath)
+	require.NoError(t, err)
+	route, ok := loaded.Routes["glm"]
+	require.True(t, ok, "expected auto-created route 'glm' to exist")
+	assert.Equal(t, "glm", route.Provider)
+	assert.Equal(t, "", route.DefaultModel)
+}
+
+func TestCreateProvider_AutoRoute_SingleModelImpliesDefault(t *testing.T) {
+	r, cfgPath := setupAdminTest(t)
+
+	body, _ := json.Marshal(map[string]any{
+		"key":      "glm",
+		"name":     "GLM",
+		"base_url": "https://open.bigmodel.cn",
+		"api_key":  "sk-glm",
+		"format":   "chat",
+		"models":   []string{"glm-4"},
+	})
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/admin/providers", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+	require.Equal(t, http.StatusCreated, w.Code)
+
+	loaded, err := config.Load(cfgPath)
+	require.NoError(t, err)
+	require.Contains(t, loaded.Routes, "glm")
+	assert.Equal(t, "glm-4", loaded.Routes["glm"].DefaultModel)
+}
+
+func TestCreateProvider_AutoRoute_MultipleModelsNoDefault(t *testing.T) {
+	r, cfgPath := setupAdminTest(t)
+
+	body, _ := json.Marshal(map[string]any{
+		"key":      "glm",
+		"name":     "GLM",
+		"base_url": "https://open.bigmodel.cn",
+		"api_key":  "sk-glm",
+		"format":   "chat",
+		"models":   []string{"glm-4", "glm-3"},
+	})
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/admin/providers", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+	require.Equal(t, http.StatusCreated, w.Code)
+
+	loaded, err := config.Load(cfgPath)
+	require.NoError(t, err)
+	require.Contains(t, loaded.Routes, "glm")
+	assert.Equal(t, "", loaded.Routes["glm"].DefaultModel)
+}
+
+func TestCreateProvider_AutoRoute_ExplicitDefaultModel(t *testing.T) {
+	r, cfgPath := setupAdminTest(t)
+
+	body, _ := json.Marshal(map[string]any{
+		"key":           "glm",
+		"name":          "GLM",
+		"base_url":      "https://open.bigmodel.cn",
+		"api_key":       "sk-glm",
+		"format":        "chat",
+		"models":        []string{"glm-4", "glm-3"},
+		"default_model": "glm-4",
+	})
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/admin/providers", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+	require.Equal(t, http.StatusCreated, w.Code)
+
+	loaded, err := config.Load(cfgPath)
+	require.NoError(t, err)
+	require.Contains(t, loaded.Routes, "glm")
+	assert.Equal(t, "glm-4", loaded.Routes["glm"].DefaultModel)
+}
+
+func TestCreateProvider_AutoRoute_SkippedWhenRouteExists(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+
+	// Pre-create a route "glm" with a sentinel model.
+	loaded, err := config.Load(cfgPath)
+	require.NoError(t, err)
+	loaded.Providers = map[string]config.ProviderConfig{
+		"minimax": {Name: "MiniMax", BaseURL: "https://api.minimaxi.com", APIKey: "sk-test-key-12345678", Format: "chat"},
+	}
+	loaded.Routes = map[string]config.RouteRule{
+		"glm": {Provider: "glm", DefaultModel: "preset-model"},
+	}
+	require.NoError(t, config.WriteConfig(cfgPath, loaded))
+
+	// Reload so the in-memory snapshot includes the pre-existing route.
+	reloaded, err := config.Load(cfgPath)
+	require.NoError(t, err)
+	provider := config.NewProvider(reloaded, cfgPath)
+	admin := NewAdminHandler(provider, nil, nil)
+	r := gin.New()
+	adminGroup := r.Group("/api", func(c *gin.Context) { c.Next() })
+	admin.RegisterRoutes(adminGroup)
+
+	body, _ := json.Marshal(map[string]any{
+		"key":      "glm",
+		"name":     "GLM",
+		"base_url": "https://open.bigmodel.cn",
+		"api_key":  "sk-glm",
+		"format":   "chat",
+		"models":   []string{"glm-4"},
+	})
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/admin/providers", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+	require.Equal(t, http.StatusCreated, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	data := resp["data"].(map[string]any)
+	assert.Equal(t, false, data["auto_route_created"])
+
+	// Existing route is untouched.
+	finalCfg, err := config.Load(cfgPath)
+	require.NoError(t, err)
+	assert.Equal(t, "preset-model", finalCfg.Routes["glm"].DefaultModel)
+	assert.Equal(t, "glm", finalCfg.Routes["glm"].Provider)
+}
+
+func TestUpdateProvider_DoesNotTouchRoute(t *testing.T) {
+	r, cfgPath := setupAdminTest(t)
+
+	// Create provider with 2 models — auto-route will be created with empty DefaultModel.
+	createBody, _ := json.Marshal(map[string]any{
+		"key":      "glm",
+		"name":     "GLM",
+		"base_url": "https://open.bigmodel.cn",
+		"api_key":  "sk-glm",
+		"format":   "chat",
+		"models":   []string{"glm-4", "glm-3"},
+	})
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/admin/providers", bytes.NewReader(createBody))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+	require.Equal(t, http.StatusCreated, w.Code)
+
+	// Update provider — change models list.
+	updBody, _ := json.Marshal(map[string]any{"models": []string{"glm-4"}})
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPut, "/api/admin/providers/glm", bytes.NewReader(updBody))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	loaded, err := config.Load(cfgPath)
+	require.NoError(t, err)
+	// Route's DefaultModel remains empty (was empty at creation since 2+ models).
+	assert.Equal(t, "", loaded.Routes["glm"].DefaultModel)
+	// ProviderConfig still has no default_model key.
+	pcfg := loaded.Providers["glm"]
+	pcfgBytes, err := yaml.Marshal(pcfg)
+	require.NoError(t, err)
+	assert.NotContains(t, string(pcfgBytes), "default_model")
+}
+
+func TestCreateProvider_AutoRoute_DefaultModelNotInList_ReturnsWarnings(t *testing.T) {
+	r, _ := setupAdminTest(t)
+
+	// default_model is provided but not present in the provider's models list.
+	// The auto-created route should still be created (lenient behavior, matching
+	// createRoute), but the response should include a warning.
+	body, _ := json.Marshal(map[string]any{
+		"key":           "glm",
+		"name":          "GLM",
+		"base_url":      "https://open.bigmodel.cn",
+		"api_key":       "sk-glm",
+		"format":        "chat",
+		"models":        []string{"glm-4"},
+		"default_model": "glm-99-not-in-list",
+	})
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/admin/providers", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+	require.Equal(t, http.StatusCreated, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	data := resp["data"].(map[string]any)
+	assert.Equal(t, true, data["auto_route_created"])
+
+	warnings, ok := data["warnings"].([]any)
+	require.True(t, ok, "expected warnings to be a []any in the response")
+	assert.NotEmpty(t, warnings, "expected at least one warning for unknown default_model")
 }

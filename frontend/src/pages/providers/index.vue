@@ -69,7 +69,6 @@ function openEdit(row: Provider) {
     fallback_keys: [...(row.fallback_keys || [])],
     format: row.format,
     logo_url: row.logo_url,
-    default_model: row.default_model || "",
     models: [...(row.models || [])],
     enable_proxy: row.enable_proxy || false,
     think_tag: row.think_tag || ""
@@ -140,13 +139,19 @@ async function handleDelete(key: string) {
 
 async function handleSubmit() {
   try {
-    if (isEdit.value) { 
+    if (isEdit.value) {
       const { key, ...data } = form.value
       await updateProvider(key, data)
-      ElMessage.success(t("providers.actions.successUpdate")) 
-    } else { 
-      await createProvider(form.value)
-      ElMessage.success(t("providers.actions.successAdd")) 
+      ElMessage.success(t("providers.actions.successUpdate"))
+    } else {
+      const res = await createProvider(form.value)
+      ElMessage.success(t("providers.actions.successAdd"))
+      if (res.data?.auto_route_created) {
+        ElMessage.success(t("providers.actions.autoRouteCreated", { key: form.value.key }))
+      }
+      if (res.data?.warnings?.length) {
+        ElMessage.warning(t("providers.actions.routeWarnings", { warnings: res.data.warnings.join("; ") }))
+      }
     }
     showDrawer.value = false
     load()
@@ -387,6 +392,22 @@ onMounted(load)
               <el-option label="responses" value="responses" />
               <el-option label="gemini" value="gemini" />
             </el-select>
+          </el-form-item>
+
+          <el-form-item v-if="!isEdit">
+            <template #label>
+              <div class="flex items-center gap-1">
+                <span>{{ $t('providers.drawer.form.defaultModel') }}</span>
+                <span class="text-[10px] text-slate-400 font-normal">(Optional)</span>
+                <el-tooltip :content="$t('providers.drawer.form.defaultModelTip')" placement="top">
+                  <el-icon :size="12" class="text-slate-400 cursor-help"><QuestionFilled /></el-icon>
+                </el-tooltip>
+              </div>
+            </template>
+            <el-input
+              v-model="form.default_model"
+              :placeholder="$t('providers.drawer.form.defaultModelPlaceholder')"
+            />
           </el-form-item>
 
           <el-form-item>
