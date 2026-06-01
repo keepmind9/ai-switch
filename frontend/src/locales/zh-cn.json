@@ -291,6 +291,25 @@
     "stopDesc": "停止正在运行的 ai-switch 守护进程。",
     "confirmStop": "确认停止",
     "newUrl": "重启后请访问新地址：",
-    "failSave": "保存设置失败"
+    "failSave": "保存设置失败",
+    "backups": {
+      "title": "配置备份",
+      "desc": "每次保存会生成一个时间戳备份。恢复会覆盖当前配置。",
+      "empty": "暂无备份",
+      "refresh": "刷新",
+      "sizeLabel": "大小",
+      "size": "{n} 字节",
+      "modTime": "时间",
+      "restore": "恢复",
+      "confirmRestore": "确认从此备份恢复？当前配置会先被备份。",
+      "cleanTitle": "清理旧备份",
+      "keep": "保留最新",
+      "clean": "清理",
+      "successRestore": "已从 {name} 恢复",
+      "successClean": "已清理至保留 {keep} 个备份",
+      "failLoad": "加载备份列表失败",
+      "failRestore": "恢复备份失败",
+      "failClean": "清理备份失败"
+    }
   }
 }

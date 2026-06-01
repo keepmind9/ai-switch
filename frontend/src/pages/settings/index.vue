@@ -2,13 +2,14 @@
 import { ref, onMounted, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useI18n } from 'vue-i18n'
-import { getSettings, updateSettings, restartServer, stopServer } from '@/api/settings'
-import type { Settings } from '@/api/settings'
+import { getSettings, updateSettings, restartServer, stopServer, listConfigBackups, restoreConfigBackup, cleanConfigBackups } from '@/api/settings'
+import type { Settings, ConfigBackup } from '@/api/settings'
 import { useConfirm } from '@@/composables/useConfirm'
 
 const { t } = useI18n()
 const { confirmState, toggle: toggleRestart, reset: resetRestart } = useConfirm()
 const { confirmState: stopConfirmState, toggle: toggleStop, reset: resetStop } = useConfirm()
+const { confirmState: restoreConfirmState, toggle: toggleRestore, reset: resetRestore } = useConfirm()
 
 const loading = ref(true)
 const saving = ref(false)
@@ -17,6 +18,12 @@ const stopping = ref(false)
 const restartUrl = ref('')
 const pendingRestart = ref(false)
 const newTagValue = ref('')
+
+const backupsLoading = ref(false)
+const backups = ref<ConfigBackup[]>([])
+const cleanKeep = ref(10)
+const cleaning = ref(false)
+const pendingRestoreName = ref('')
 
 const form = ref<Settings>({
   host: '127.0.0.1',
@@ -159,7 +166,54 @@ async function handleStop() {
   }
 }
 
-onMounted(load)
+async function loadBackups() {
+  backupsLoading.value = true
+  try {
+    const { data } = await listConfigBackups()
+    backups.value = data || []
+  } catch {
+    ElMessage.warning(t('settings.backups.failLoad'))
+  } finally {
+    backupsLoading.value = false
+  }
+}
+
+function askRestore(name: string) {
+  pendingRestoreName.value = name
+  toggleRestore('restore')
+}
+
+async function doRestore() {
+  const name = pendingRestoreName.value
+  resetRestore('restore')
+  if (!name) return
+  try {
+    await restoreConfigBackup(name)
+    ElMessage.success(t('settings.backups.successRestore', { name }))
+    await loadBackups()
+    await load() // re-fetch main settings to reflect restored values
+  } catch {
+    ElMessage.error(t('settings.backups.failRestore'))
+  }
+}
+
+async function doClean() {
+  cleaning.value = true
+  try {
+    await cleanConfigBackups(cleanKeep.value)
+    ElMessage.success(t('settings.backups.successClean', { keep: cleanKeep.value }))
+    await loadBackups()
+  } catch {
+    ElMessage.error(t('settings.backups.failClean'))
+  } finally {
+    cleaning.value = false
+  }
+}
+
+onMounted(() => {
+  load()
+  loadBackups()
+})
 </script>
 
 <template>
@@ -263,6 +317,53 @@ onMounted(load)
         </template>
         <el-button v-else type="danger" plain @click="toggleStop('stop')">
           {{ t('settings.stop') }}
+        </el-button>
+      </div>
+    </el-card>
+
+    <el-card shadow="never" style="margin-top: 16px" v-loading="backupsLoading">
+      <template #header>
+        <div style="display: flex; align-items: center; justify-content: space-between">
+          <span>{{ t('settings.backups.title') }}</span>
+          <el-button size="small" @click="loadBackups">{{ t('settings.backups.refresh') }}</el-button>
+        </div>
+      </template>
+      <div style="margin-bottom: 12px; color: var(--el-text-color-secondary); font-size: 13px">
+        {{ t('settings.backups.desc') }}
+      </div>
+
+      <el-empty v-if="!backups.length" :description="t('settings.backups.empty')" :image-size="60" />
+
+      <el-table v-else :data="backups" size="small" style="width: 100%">
+        <el-table-column prop="name" :label="t('settings.backups.title')" />
+        <el-table-column :label="t('settings.backups.sizeLabel')" width="120">
+          <template #default="{ row }">{{ t('settings.backups.size', { n: row.size }) }}</template>
+        </el-table-column>
+        <el-table-column prop="mod_time" :label="t('settings.backups.modTime')" width="220" />
+        <el-table-column :label="t('settings.backups.restore')" width="200" align="right">
+          <template #default="{ row }">
+            <template v-if="restoreConfirmState.restore && pendingRestoreName === row.name">
+              <el-button size="small" @click="resetRestore('restore')">
+                {{ t('settings.cancel') }}
+              </el-button>
+              <el-button size="small" type="danger" @click="doRestore">
+                {{ t('settings.confirm') }}
+              </el-button>
+            </template>
+            <el-button v-else size="small" type="primary" plain @click="askRestore(row.name)">
+              {{ t('settings.backups.restore') }}
+            </el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+
+      <el-divider v-if="backups.length" />
+
+      <div v-if="backups.length" style="display: flex; gap: 12px; align-items: center">
+        <el-text size="small">{{ t('settings.backups.cleanTitle') }}</el-text>
+        <el-input-number v-model="cleanKeep" :min="0" :max="100" controls-position="right" size="small" />
+        <el-button size="small" :loading="cleaning" :disabled="!cleanKeep && cleanKeep !== 0" @click="doClean">
+          {{ t('settings.backups.clean') }}
         </el-button>
       </div>
     </el-card>

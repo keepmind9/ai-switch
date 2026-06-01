@@ -291,6 +291,25 @@
     "stopDesc": "Stop the running ai-switch daemon process.",
     "confirmStop": "Confirm Stop",
     "newUrl": "After restart, visit the new address:",
-    "failSave": "Failed to save settings"
+    "failSave": "Failed to save settings",
+    "backups": {
+      "title": "Config Backups",
+      "desc": "Each save creates a timestamped backup. Restore overwrites the current config.",
+      "empty": "No backups yet",
+      "refresh": "Refresh",
+      "sizeLabel": "Size",
+      "size": "{n} B",
+      "modTime": "Time",
+      "restore": "Restore",
+      "confirmRestore": "Restore this backup? Current config will be backed up first.",
+      "cleanTitle": "Prune Old Backups",
+      "keep": "Keep most recent",
+      "clean": "Prune",
+      "successRestore": "Restored from {name}",
+      "successClean": "Pruned to {keep} backups",
+      "failLoad": "Failed to load backups",
+      "failRestore": "Failed to restore backup",
+      "failClean": "Failed to prune backups"
+    }
   }
 }

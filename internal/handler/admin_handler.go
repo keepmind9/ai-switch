@@ -50,6 +50,10 @@ func (a *AdminHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.PUT("/admin/settings", a.updateSettings)
 	r.POST("/admin/restart", a.restartServer)
 	r.POST("/admin/stop", a.stopServer)
+
+	r.GET("/admin/config/backups", a.listConfigBackups)
+	r.POST("/admin/config/backups/restore", a.restoreConfigBackup)
+	r.POST("/admin/config/backups/clean", a.cleanConfigBackups)
 }
 
 func (a *AdminHandler) listProviders(c *gin.Context) {
@@ -695,6 +699,75 @@ func (a *AdminHandler) stopServer(c *gin.Context) {
 			a.stopCh <- struct{}{}
 		}()
 	}
+}
+
+// listConfigBackups returns timestamped backup files for the active config,
+// newest first. Read-only — does not take the write lock.
+func (a *AdminHandler) listConfigBackups(c *gin.Context) {
+	infos, err := config.ListBackups(a.provider.Path())
+	if err != nil {
+		sendFail(c, http.StatusInternalServerError, CodeInternalError, err.Error())
+		return
+	}
+	sendOK(c, infos)
+}
+
+// restoreConfigBackup replaces the main config file with a previously-taken
+// backup. The current main is itself backed up first (so the restore itself
+// is recoverable). Provider is reloaded so in-flight requests see new values.
+func (a *AdminHandler) restoreConfigBackup(c *gin.Context) {
+	var req struct {
+		Name string `json:"name" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		sendBindErr(c, err)
+		return
+	}
+
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	if err := config.RestoreConfig(a.provider.Path(), req.Name); err != nil {
+		sendFail(c, http.StatusBadRequest, CodeBadRequest, err.Error())
+		return
+	}
+	if err := a.provider.Reload(); err != nil {
+		// Disk is now the restored file but in-memory config is stale. One
+		// retry handles a transient parse race; if that also fails, tell the
+		// user the disk state is good and they should restart.
+		if retryErr := a.provider.Reload(); retryErr != nil {
+			sendFail(c, http.StatusInternalServerError, CodeInternalError,
+				"config restored on disk but reload failed: "+retryErr.Error()+"; restart required")
+			return
+		}
+	}
+	sendOK(c, gin.H{"name": req.Name})
+}
+
+// cleanConfigBackups prunes the backup chain to keep at most `keep` files.
+// `keep` must be non-negative; 0 deletes all backups.
+func (a *AdminHandler) cleanConfigBackups(c *gin.Context) {
+	var req struct {
+		Keep *int `json:"keep"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		sendBindErr(c, err)
+		return
+	}
+	if req.Keep == nil {
+		sendFail(c, http.StatusBadRequest, CodeBadRequest, "keep is required")
+		return
+	}
+	if *req.Keep < 0 {
+		sendFail(c, http.StatusBadRequest, CodeBadRequest, "keep must be non-negative")
+		return
+	}
+
+	if err := config.PruneBackups(a.provider.Path(), *req.Keep); err != nil {
+		sendFail(c, http.StatusInternalServerError, CodeInternalError, err.Error())
+		return
+	}
+	sendOK(c, gin.H{"keep": *req.Keep})
 }
 
 func (a *AdminHandler) writeAndReload(cfg *config.Config) error {

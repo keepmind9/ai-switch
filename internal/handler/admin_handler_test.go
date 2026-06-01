@@ -3,6 +3,7 @@ package handler
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -584,4 +585,132 @@ func TestUpdateDefaultRoutes(t *testing.T) {
 		assert.Equal(t, "gw-test", loaded.DefaultRoute)
 		assert.Equal(t, "gw-test", loaded.DefaultResponsesRoute)
 	})
+}
+
+// setupBackupTest seeds the config file twice so exactly one backup exists,
+// reusing the existing setupAdminTest engine.
+func setupBackupTest(t *testing.T) (*gin.Engine, string) {
+	r, cfgPath := setupAdminTest(t)
+	// Second write: produces exactly one backup of the first state.
+	require.NoError(t, config.WriteConfig(cfgPath, &config.Config{
+		Server: config.ServerConfig{Host: "0.0.0.0", Port: 22222},
+	}))
+	return r, cfgPath
+}
+
+func doBackupRequest(t *testing.T, r *gin.Engine, method, path string, body any) *httptest.ResponseRecorder {
+	t.Helper()
+	var reader *bytes.Reader
+	if body != nil {
+		raw, err := json.Marshal(body)
+		require.NoError(t, err)
+		reader = bytes.NewReader(raw)
+	} else {
+		reader = bytes.NewReader(nil)
+	}
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(method, path, reader)
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+	return w
+}
+
+func TestListConfigBackups_Empty(t *testing.T) {
+	r, _ := setupAdminTest(t)
+
+	w := doBackupRequest(t, r, http.MethodGet, "/api/admin/config/backups", nil)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Len(t, resp["data"].([]any), 0)
+}
+
+func TestListConfigBackups_Populated(t *testing.T) {
+	r, _ := setupBackupTest(t)
+
+	w := doBackupRequest(t, r, http.MethodGet, "/api/admin/config/backups", nil)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	data := resp["data"].([]any)
+	require.Len(t, data, 1, "exactly one backup should exist after the second write")
+	entry := data[0].(map[string]any)
+	assert.Contains(t, entry["name"], "config.yaml.bak.")
+	assert.Greater(t, int(entry["size"].(float64)), 0)
+}
+
+func TestRestoreConfigBackup_Success(t *testing.T) {
+	r, cfgPath := setupBackupTest(t)
+
+	// Pick the only backup from the list endpoint.
+	w := doBackupRequest(t, r, http.MethodGet, "/api/admin/config/backups", nil)
+	require.Equal(t, http.StatusOK, w.Code)
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	data := resp["data"].([]any)
+	require.Len(t, data, 1)
+	name := data[0].(map[string]any)["name"].(string)
+
+	// Restore: main should be the FIRST seeded state (port 12345).
+	w = doBackupRequest(t, r, http.MethodPost, "/api/admin/config/backups/restore",
+		map[string]any{"name": name})
+	require.Equal(t, http.StatusOK, w.Code)
+
+	// Verify disk reflects the restored value.
+	loaded, err := config.Load(cfgPath)
+	require.NoError(t, err)
+	assert.Equal(t, 12345, loaded.Server.Port)
+
+	// Verify provider reloads — the in-memory copy must match the disk copy.
+	settings := doBackupRequest(t, r, http.MethodGet, "/api/admin/settings", nil)
+	require.Equal(t, http.StatusOK, settings.Code)
+	var sresp map[string]any
+	require.NoError(t, json.Unmarshal(settings.Body.Bytes(), &sresp))
+	assert.Equal(t, float64(12345), sresp["data"].(map[string]any)["port"].(float64))
+}
+
+func TestRestoreConfigBackup_RejectsInvalidName(t *testing.T) {
+	cases := []map[string]any{
+		{"name": ""},
+		{"name": "../etc/passwd"},
+		{"name": "config.yaml.bak.NOTATIMESTAMP"},
+		{"name": "config.yaml.bak.20990101-000000"}, // well-formed but absent
+	}
+	for _, body := range cases {
+		t.Run(fmt.Sprintf("%v", body["name"]), func(t *testing.T) {
+			r, _ := setupAdminTest(t)
+			w := doBackupRequest(t, r, http.MethodPost, "/api/admin/config/backups/restore", body)
+			assert.Equal(t, http.StatusBadRequest, w.Code)
+		})
+	}
+}
+
+func TestCleanConfigBackups_KeepZero(t *testing.T) {
+	r, _ := setupBackupTest(t)
+
+	w := doBackupRequest(t, r, http.MethodPost, "/api/admin/config/backups/clean",
+		map[string]any{"keep": 0})
+	require.Equal(t, http.StatusOK, w.Code)
+
+	w = doBackupRequest(t, r, http.MethodGet, "/api/admin/config/backups", nil)
+	require.Equal(t, http.StatusOK, w.Code)
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Len(t, resp["data"].([]any), 0)
+}
+
+func TestCleanConfigBackups_NegativeKeepRejected(t *testing.T) {
+	r, _ := setupAdminTest(t)
+	w := doBackupRequest(t, r, http.MethodPost, "/api/admin/config/backups/clean",
+		map[string]any{"keep": -1})
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestCleanConfigBackups_MissingKeepRejected(t *testing.T) {
+	r, _ := setupAdminTest(t)
+	w := doBackupRequest(t, r, http.MethodPost, "/api/admin/config/backups/clean",
+		map[string]any{})
+	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
