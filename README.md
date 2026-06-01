@@ -347,11 +347,21 @@ Every request is recorded with full request/response details. Click any trace to
 
 The stats page shows token usage broken down by provider and model, including cache token metrics, with daily trend charts.
 
+### Settings
+
+The Settings page provides config management:
+
+- **Backup & Restore**: Browse config backup history and restore to any previous version
+- **Auto-recovery**: If the config file becomes corrupted, ais automatically recovers from the newest valid backup
+
+Adding a provider in the Admin UI automatically creates a same-named route, reducing setup to one step.
+
 ## Build
 
 ```bash
 make build      # fmt + vet + compile
 make build-all  # build frontend + Go binary
+make install    # build frontend + Go binary + install to ~/.local/bin
 make dev        # run in dev mode
 make test       # run tests
 make clean      # remove binary
