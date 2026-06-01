@@ -565,8 +565,18 @@ func (c *Converter) ResponsesToAnthropic(req *types.ResponsesRequest) (*Anthropi
 		anthReq.MaxTokens = 4096
 	}
 
-	if req.Instructions != "" {
-		anthReq.System = req.Instructions
+	if normalized := NormalizeInstructions(req.Instructions); normalized != "" {
+		anthReq.System = normalized
+	}
+
+	// Collect developer item texts and append to system field
+	if devText := extractDeveloperText(req.Input); devText != "" {
+		existing, _ := anthReq.System.(string)
+		if existing != "" {
+			anthReq.System = existing + "\n\n" + devText
+		} else {
+			anthReq.System = devText
+		}
 	}
 
 	// Convert input items to Anthropic messages
@@ -662,10 +672,15 @@ func convertResponsesInputToAnthropicMessages(input any) []AnthropicMessage {
 				default:
 					flushToolUse()
 					flushToolResult()
-					role := NormalizeRole(val["role"].(string))
+					role, _ := val["role"].(string)
+					normalized := NormalizeRole(role)
+					// Skip developer/system items — their content is already in the system field
+					if role == "developer" {
+						continue
+					}
 					text := extractMessageContentText(val)
 					if text != "" {
-						msgs = append(msgs, AnthropicMessage{Role: role, Content: text})
+						msgs = append(msgs, AnthropicMessage{Role: normalized, Content: text})
 					}
 				}
 			}
@@ -675,6 +690,32 @@ func convertResponsesInputToAnthropicMessages(input any) []AnthropicMessage {
 		return msgs
 	}
 	return nil
+}
+
+// extractDeveloperText collects text from input items with role "developer"
+// so they can be placed in the Anthropic system field instead of as messages.
+func extractDeveloperText(input any) string {
+	if input == nil {
+		return ""
+	}
+	var parts []string
+	switch v := input.(type) {
+	case []any:
+		for _, item := range v {
+			m, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			role, _ := m["role"].(string)
+			if role != "developer" {
+				continue
+			}
+			if text := extractMessageContentText(m); text != "" {
+				parts = append(parts, text)
+			}
+		}
+	}
+	return strings.Join(parts, "\n\n")
 }
 
 // extractMessageContentText extracts text from a message object's content array.

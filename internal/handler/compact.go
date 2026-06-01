@@ -304,7 +304,7 @@ func decodeCompactionInBody(body []byte) []byte {
 	// Chat → system message, Anthropic → system field, Gemini → via Chat conversion.
 	if len(summaries) > 0 {
 		summaryText := "[Conversation Summary]\n" + strings.Join(summaries, "\n\n")
-		existing, _ := raw["instructions"].(string)
+		existing := converter.NormalizeInstructions(raw["instructions"])
 		if existing != "" {
 			raw["instructions"] = summaryText + "\n\n" + existing
 		} else {
