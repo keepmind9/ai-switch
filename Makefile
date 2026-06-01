@@ -31,7 +31,7 @@ build-all: build-ui build
 # locations. Refuses to overwrite a running ais (matches install.sh).
 INSTALL_DIR ?= $(HOME)/.local/bin
 
-install: build
+install: build-all
 	@if pgrep -x ais > /dev/null 2>&1; then \
 		echo "Error: ais is currently running. Stop it first: 'ais stop'" >&2; \
 		exit 1; \
