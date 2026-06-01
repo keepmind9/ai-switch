@@ -5,7 +5,7 @@ package types
 type ResponsesRequest struct {
 	Model              string          `json:"model"`
 	Input              any             `json:"input,omitempty"`
-	Instructions       string          `json:"instructions,omitempty"`
+	Instructions       any             `json:"instructions,omitempty"`
 	MaxTokens          int             `json:"max_tokens,omitempty"`
 	Store              bool            `json:"store,omitempty"`
 	Metadata           map[string]any  `json:"metadata,omitempty"`
@@ -15,6 +15,9 @@ type ResponsesRequest struct {
 	Stream             bool            `json:"stream,omitempty"`
 	Tools              []ResponsesTool `json:"tools,omitempty"`
 	ToolChoice         any             `json:"tool_choice,omitempty"`
+	Truncation         string          `json:"truncation,omitempty"`
+	Reasoning          any             `json:"reasoning,omitempty"`
+	ParallelToolCalls  *bool           `json:"parallel_tool_calls,omitempty"`
 }
 
 type ResponsesTool struct {
@@ -26,12 +29,24 @@ type ResponsesTool struct {
 }
 
 type ResponsesResponse struct {
-	ID        string         `json:"id"`
-	Object    string         `json:"object"`
-	CreatedAt int64          `json:"created_at"`
-	Model     string         `json:"model"`
-	Output    []ResponseItem `json:"output,omitempty"`
-	Usage     *Usage         `json:"usage,omitempty"`
+	ID                string             `json:"id"`
+	Object            string             `json:"object"`
+	CreatedAt         int64              `json:"created_at"`
+	Model             string             `json:"model"`
+	Output            []ResponseItem     `json:"output,omitempty"`
+	Usage             *Usage             `json:"usage,omitempty"`
+	Status            string             `json:"status,omitempty"`
+	Error             *ResponseError     `json:"error,omitempty"`
+	IncompleteDetails *IncompleteDetails `json:"incomplete_details,omitempty"`
+}
+
+type ResponseError struct {
+	Type    string `json:"type"`
+	Message string `json:"message"`
+}
+
+type IncompleteDetails struct {
+	Reason string `json:"reason"`
 }
 
 type ResponseItem struct {
@@ -53,11 +68,16 @@ type ContentBlock struct {
 }
 
 type Usage struct {
-	InputTokens         int `json:"input_tokens"`
-	OutputTokens        int `json:"output_tokens"`
-	TotalTokens         int `json:"total_tokens"`
-	CacheCreationTokens int `json:"cache_creation_tokens,omitempty"`
-	CacheReadTokens     int `json:"cache_read_tokens,omitempty"`
+	InputTokens         int                  `json:"input_tokens"`
+	OutputTokens        int                  `json:"output_tokens"`
+	TotalTokens         int                  `json:"total_tokens"`
+	CacheCreationTokens int                  `json:"cache_creation_tokens,omitempty"`
+	CacheReadTokens     int                  `json:"cache_read_tokens,omitempty"`
+	OutputTokensDetails *OutputTokensDetails `json:"output_tokens_details,omitempty"`
+}
+
+type OutputTokensDetails struct {
+	ReasoningTokens int `json:"reasoning_tokens,omitempty"`
 }
 
 // CompactionPayload is the self-contained data encoded in fake encrypted_content.
