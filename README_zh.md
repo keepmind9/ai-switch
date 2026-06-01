@@ -347,11 +347,21 @@ Checking config.yaml ...
 
 统计页面按 Provider 和模型展示 token 用量明细，包含缓存 token 指标和每日趋势图表。
 
+### 系统设置
+
+系统设置页面提供配置管理功能：
+
+- **备份与恢复**：浏览配置备份历史，一键恢复到任意历史版本
+- **自动恢复**：配置文件损坏时，自动从最新的有效备份恢复
+
+在管理面板中添加 Provider 时会自动创建同名 Route，一步完成配置。
+
 ## 构建
 
 ```bash
 make build      # 格式化 + 静态检查 + 编译
 make build-all  # 构建前端 + Go 二进制
+make install    # 构建前端 + Go 二进制 + 安装到 ~/.local/bin
 make dev        # 开发模式运行
 make test       # 运行测试
 make clean      # 清理构建产物
