@@ -1,6 +1,7 @@
 package converter
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/keepmind9/ai-switch/internal/types"
@@ -272,6 +273,142 @@ func TestBuildResponsesFromChat_ToolMessages(t *testing.T) {
 	assert.Equal(t, "function_call_output", fco["type"])
 	assert.Equal(t, "call_1", fco["call_id"])
 	assert.Equal(t, `{"temp":72}`, fco["output"])
+}
+
+func TestNormalizeRole(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		// developer → system: this is critical for Codex CLI which sends developer role
+		// for system-level instructions. If mapped to "user", instruction-following degrades.
+		{"developer", "system"},
+		// empty → user: default fallback for items without explicit role
+		{"", "user"},
+		// known roles pass through unchanged
+		{"user", "user"},
+		{"assistant", "assistant"},
+		{"system", "system"},
+		{"tool", "tool"},
+	}
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("role_%q→%q", tt.input, tt.expected), func(t *testing.T) {
+			assert.Equal(t, tt.expected, NormalizeRole(tt.input))
+		})
+	}
+}
+
+func TestNormalizeInstructions(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    any
+		expected string
+	}{
+		{"nil returns empty", nil, ""},
+		{"string passes through", "You are helpful", "You are helpful"},
+		{"empty string passes through", "", ""},
+		{"array of text blocks joined with double newline", []any{
+			map[string]any{"type": "text", "text": "Rule 1"},
+			map[string]any{"type": "text", "text": "Rule 2"},
+		}, "Rule 1\n\nRule 2"},
+		{"array skips items without text field", []any{
+			map[string]any{"type": "text", "text": "Keep me"},
+			map[string]any{"type": "image"},
+			map[string]any{"type": "text", "text": "Also keep"},
+		}, "Keep me\n\nAlso keep"},
+		{"empty array returns empty", []any{}, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, NormalizeInstructions(tt.input))
+		})
+	}
+}
+
+func TestResponsesToChat_DeveloperRoleMappedToSystem(t *testing.T) {
+	c := NewConverter()
+	req := &types.ResponsesRequest{
+		Model: "gpt-4o",
+		Input: []any{
+			map[string]any{
+				"type": "message",
+				"role": "developer",
+				"content": []any{
+					map[string]any{"type": "input_text", "text": "Always respond concisely"},
+				},
+			},
+			map[string]any{
+				"type": "message",
+				"role": "user",
+				"content": []any{
+					map[string]any{"type": "input_text", "text": "Hello"},
+				},
+			},
+		},
+	}
+	chatReq, err := c.ResponsesToChat(req)
+	require.NoError(t, err)
+
+	require.Len(t, chatReq.Messages, 2)
+	// developer → system, not user. If this becomes "user", Codex instructions
+	// get treated as regular user messages and instruction-following breaks.
+	assert.Equal(t, "system", chatReq.Messages[0].Role)
+	assert.Equal(t, "Always respond concisely", derefStr(chatReq.Messages[0].Content))
+	assert.Equal(t, "user", chatReq.Messages[1].Role)
+}
+
+func TestResponsesToChat_InputItemWithoutRoleDoesNotPanic(t *testing.T) {
+	c := NewConverter()
+	// Item has type but no role key — previously caused panic via direct type assertion
+	req := &types.ResponsesRequest{
+		Model: "gpt-4o",
+		Input: []any{
+			map[string]any{
+				"type": "message",
+				// no "role" key
+				"content": []any{
+					map[string]any{"type": "input_text", "text": "Hello"},
+				},
+			},
+		},
+	}
+	chatReq, err := c.ResponsesToChat(req)
+	require.NoError(t, err)
+	// Empty role normalizes to "user"
+	require.Len(t, chatReq.Messages, 1)
+	assert.Equal(t, "user", chatReq.Messages[0].Role)
+}
+
+func TestResponsesToChat_InstructionsAsArray(t *testing.T) {
+	c := NewConverter()
+	req := &types.ResponsesRequest{
+		Model: "gpt-4o",
+		Input: "Hello",
+		Instructions: []any{
+			map[string]any{"type": "text", "text": "Rule one"},
+			map[string]any{"type": "text", "text": "Rule two"},
+		},
+	}
+	chatReq, err := c.ResponsesToChat(req)
+	require.NoError(t, err)
+
+	require.Len(t, chatReq.Messages, 2)
+	assert.Equal(t, "system", chatReq.Messages[0].Role)
+	assert.Equal(t, "Rule one\n\nRule two", derefStr(chatReq.Messages[0].Content))
+}
+
+func TestResponsesToChat_NullInstructionsNoSystemMessage(t *testing.T) {
+	c := NewConverter()
+	req := &types.ResponsesRequest{
+		Model:        "gpt-4o",
+		Input:        "Hello",
+		Instructions: nil,
+	}
+	chatReq, err := c.ResponsesToChat(req)
+	require.NoError(t, err)
+	// No instructions → no system message, only user message
+	require.Len(t, chatReq.Messages, 1)
+	assert.Equal(t, "user", chatReq.Messages[0].Role)
 }
 
 func TestBuildResponsesFromChat_AssistantWithTextAndToolCalls(t *testing.T) {

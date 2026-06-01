@@ -29,12 +29,38 @@ func NewConverter() *Converter {
 	return &Converter{}
 }
 
-// NormalizeRole maps unsupported roles to "user".
+// NormalizeRole maps unsupported roles to user.
+// Developer role is mapped to system as it represents system-level instructions.
 func NormalizeRole(role string) string {
-	if role == "" || role == "system" || role == "developer" {
+	if role == "" {
 		return "user"
 	}
+	if role == "developer" {
+		return "system"
+	}
 	return role
+}
+
+// NormalizeInstructions converts instructions from any type (nil, string, array) to a string.
+func NormalizeInstructions(instructions any) string {
+	if instructions == nil {
+		return ""
+	}
+	switch v := instructions.(type) {
+	case string:
+		return v
+	case []any:
+		var parts []string
+		for _, item := range v {
+			if m, ok := item.(map[string]any); ok {
+				if text, ok := m["text"].(string); ok && text != "" {
+					parts = append(parts, text)
+				}
+			}
+		}
+		return strings.Join(parts, "\n\n")
+	}
+	return fmt.Sprintf("%v", instructions)
 }
 
 func BuildResponsesFromChat(chatReq *types.ChatRequest, stream bool) *types.ResponsesRequest {
@@ -134,10 +160,10 @@ func (c *Converter) ResponsesToChat(req *types.ResponsesRequest) (*types.ChatReq
 	chatReq.ToolChoice = req.ToolChoice
 
 	// Add instructions as system prompt if present
-	if req.Instructions != "" {
+	if normalized := NormalizeInstructions(req.Instructions); normalized != "" {
 		chatReq.Messages = append(chatReq.Messages, types.ChatMessage{
 			Role:    "system",
-			Content: strPtr(req.Instructions),
+			Content: strPtr(normalized),
 		})
 	}
 
@@ -209,7 +235,8 @@ func convertResponsesInputToChatMessages(input any) []types.ChatMessage {
 					})
 				default:
 					flushToolCalls()
-					role := NormalizeRole(val["role"].(string))
+					role, _ := val["role"].(string)
+					role = NormalizeRole(role)
 					text := extractInputTextMessage(val)
 					if text != "" {
 						msgs = append(msgs, types.ChatMessage{Role: role, Content: strPtr(text)})
