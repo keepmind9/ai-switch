@@ -1,4 +1,4 @@
-.PHONY: fmt vet lint build run clean test test-e2e build-ui ui-dev build-all
+.PHONY: fmt vet lint build run clean test test-e2e build-ui ui-dev build-all install uninstall help
 
 fmt:
 	go fmt ./...
@@ -24,6 +24,26 @@ build: lint
 	go build -trimpath -ldflags "$(LDFLAGS)" -o bin/ais ./cmd/server
 
 build-all: build-ui build
+
+# install reuses the local build artifact (bin/ais) and copies it to the
+# same user-level path as scripts/install.sh: $(HOME)/.local/bin/ais.
+# Override with `make install INSTALL_DIR=/some/path` for CI or custom
+# locations. Refuses to overwrite a running ais (matches install.sh).
+INSTALL_DIR ?= $(HOME)/.local/bin
+
+install: build
+	@if pgrep -x ais > /dev/null 2>&1; then \
+		echo "Error: ais is currently running. Stop it first: 'ais stop'" >&2; \
+		exit 1; \
+	fi
+	@mkdir -p "$(INSTALL_DIR)"
+	@install -m 0755 bin/ais "$(INSTALL_DIR)/ais"
+	@echo "Installed: $(INSTALL_DIR)/ais"
+	@$(INSTALL_DIR)/ais version || true
+
+uninstall:
+	@rm -f "$(INSTALL_DIR)/ais"
+	@echo "Removed: $(INSTALL_DIR)/ais"
 
 run: build
 	./bin/ais serve -c config.yaml
@@ -56,6 +76,8 @@ help:
 	@echo "  ui-dev      Start frontend dev server with HMR"
 	@echo "  build       Lint and build Go binary"
 	@echo "  build-all   Build frontend + Go binary"
+	@echo "  install     Build and install to \$$HOME/.local/bin (override: INSTALL_DIR=/path)"
+	@echo "  uninstall   Remove installed binary"
 	@echo "  run         Build and run the server"
 	@echo "  dev         Run without building (go run)"
 	@echo "  clean       Remove the binary"
