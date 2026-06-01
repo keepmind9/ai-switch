@@ -154,6 +154,11 @@ func writeSSEErrorToClient(w converter.SSEWriter, msg, errType, clientFormat str
 			"type":  "error",
 			"error": map[string]any{"type": errType, "message": msg},
 		})
+	case converter.FormatResponses:
+		if errType == "" {
+			errType = "server_error"
+		}
+		converter.EmitFailedEvent(w, "", "", 0, errType, msg)
 	default:
 		w.WriteEvent("", map[string]any{
 			"error": map[string]any{"message": msg, "type": errType},

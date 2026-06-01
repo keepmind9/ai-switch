@@ -92,6 +92,7 @@ func TestConvertChatChunkToResponsesSSE_FullStream(t *testing.T) {
 	done := ConvertChatChunkToResponsesSSE(w, state, chatChunkJSON("chatcmpl-1", "assistant", "Hello", ""))
 	assert.False(t, done)
 	assert.Contains(t, w.eventTypes(), "response.created")
+	assert.Contains(t, w.eventTypes(), "response.in_progress")
 	assert.Contains(t, w.eventTypes(), "response.output_item.added")
 	assert.Contains(t, w.eventTypes(), "response.content_part.added")
 	assert.Contains(t, w.eventTypes(), "response.output_text.delta")
@@ -774,4 +775,156 @@ func TestConvertChatChunkToAnthropicSSE_SanitizeToolID(t *testing.T) {
 			}
 		})
 	}
+}
+
+// --- EmitFailedEvent ---
+
+func TestEmitFailedEvent(t *testing.T) {
+	w := &mockSSEWriter{}
+	EmitFailedEvent(w, "resp_abc", "deepseek-chat", int64(1234567890), "server_error", "upstream timeout")
+
+	require.Len(t, w.events, 1)
+	assert.Equal(t, "response.failed", w.events[0].eventType)
+
+	data, ok := w.events[0].data.(map[string]any)
+	require.True(t, ok)
+	resp, ok := data["response"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "resp_abc", resp["id"])
+	assert.Equal(t, "failed", resp["status"])
+	assert.Equal(t, "deepseek-chat", resp["model"])
+
+	errObj, ok := resp["error"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "server_error", errObj["type"])
+	assert.Equal(t, "upstream timeout", errObj["message"])
+}
+
+// --- Reasoning content streaming (DeepSeek reasoning_content) ---
+
+func chatChunkWithReasoning(id, reasoning, content string) string {
+	chunk := types.ChatStreamResponse{
+		ID:     id,
+		Object: "chat.completion.chunk",
+		Model:  "deepseek-reasoner",
+		Choices: []types.StreamChoice{
+			{
+				Index: 0,
+				Delta: types.ChatMessage{
+					ReasoningContent: strPtr(reasoning),
+					Content:          strPtr(content),
+				},
+			},
+		},
+	}
+	data, _ := json.Marshal(chunk)
+	return string(data)
+}
+
+func TestConvertChatChunkToResponsesSSE_ReasoningThenText(t *testing.T) {
+	w := &mockSSEWriter{}
+	state := &ResponsesStreamState{Created: 1234567890, Model: "deepseek-reasoner"}
+
+	// Chunk 1: reasoning content
+	done := ConvertChatChunkToResponsesSSE(w, state, chatChunkWithReasoning("rs-1", "Let me think...", ""))
+	assert.False(t, done)
+	events := w.eventTypes()
+	assert.Contains(t, events, "response.output_item.added")
+	assert.Contains(t, events, "response.reasoning_summary_text.delta")
+	assert.True(t, state.ReasoningStarted)
+	assert.False(t, state.ReasoningDone)
+
+	// Chunk 2: more reasoning
+	done = ConvertChatChunkToResponsesSSE(w, state, chatChunkWithReasoning("rs-1", " step 2", ""))
+	assert.False(t, done)
+	assert.Equal(t, "Let me think... step 2", state.AccReasoning)
+
+	// Chunk 3: text content — reasoning block closes, text block starts
+	done = ConvertChatChunkToResponsesSSE(w, state, chatChunkJSON("rs-1", "", "Answer:", ""))
+	assert.False(t, done)
+	assert.True(t, state.ReasoningDone)
+	events = w.eventTypes()
+	assert.Contains(t, events, "response.reasoning_summary_text.done")
+	assert.Contains(t, events, "response.output_item.done") // reasoning item done
+	assert.Contains(t, events, "response.output_text.delta")
+
+	// Chunk 4: [DONE]
+	done = ConvertChatChunkToResponsesSSE(w, state, "[DONE]")
+	assert.True(t, done)
+	assert.Contains(t, w.eventTypes(), "response.completed")
+}
+
+// --- CompletedToolCalls in response.completed output ---
+
+func TestConvertChatChunkToResponsesSSE_ToolCallsInCompletedOutput(t *testing.T) {
+	w := &mockSSEWriter{}
+	state := &ResponsesStreamState{Created: 1234567890, Model: "test-model"}
+
+	// Tool call chunk
+	ConvertChatChunkToResponsesSSE(w, state, chatChunkWithToolCalls("tc-1", []types.ToolCall{
+		{Index: 0, ID: "call_1", Type: "function", Function: types.FunctionCall{Name: "get_weather"}},
+	}, ""))
+	// Arguments delta
+	ConvertChatChunkToResponsesSSE(w, state, chatChunkWithToolCalls("tc-1", []types.ToolCall{
+		{Index: 0, Function: types.FunctionCall{Arguments: `{"city":"NYC"}`}},
+	}, ""))
+
+	// [DONE] — tool call should appear in response.completed output
+	done := ConvertChatChunkToResponsesSSE(w, state, "[DONE]")
+	assert.True(t, done)
+
+	var completedEvent *sseEvent
+	for i := range w.events {
+		if w.events[i].eventType == "response.completed" {
+			completedEvent = &w.events[i]
+			break
+		}
+	}
+	require.NotNil(t, completedEvent, "response.completed should be emitted")
+
+	data, ok := completedEvent.data.(map[string]any)
+	require.True(t, ok)
+	resp, ok := data["response"].(map[string]any)
+	require.True(t, ok)
+	output, ok := resp["output"].([]map[string]any)
+	require.True(t, ok)
+
+	require.Len(t, output, 1)
+	assert.Equal(t, "function_call", output[0]["type"])
+	assert.Equal(t, "call_1", output[0]["call_id"])
+	assert.Equal(t, "get_weather", output[0]["name"])
+	assert.Equal(t, `{"city":"NYC"}`, output[0]["arguments"])
+}
+
+func TestConvertChatChunkToResponsesSSE_TextAndToolCallsInCompletedOutput(t *testing.T) {
+	w := &mockSSEWriter{}
+	state := &ResponsesStreamState{Created: 1234567890, Model: "test-model"}
+
+	// Text + tool call in same stream
+	ConvertChatChunkToResponsesSSE(w, state, chatChunkJSON("id-1", "assistant", "Let me check", ""))
+	ConvertChatChunkToResponsesSSE(w, state, chatChunkWithToolCalls("id-1", []types.ToolCall{
+		{Index: 0, ID: "call_1", Type: "function", Function: types.FunctionCall{Name: "search"}},
+	}, ""))
+	ConvertChatChunkToResponsesSSE(w, state, chatChunkWithToolCalls("id-1", []types.ToolCall{
+		{Index: 0, Function: types.FunctionCall{Arguments: `{"q":"test"}`}},
+	}, "tool_calls"))
+	ConvertChatChunkToResponsesSSE(w, state, "[DONE]")
+
+	var completedEvent *sseEvent
+	for i := range w.events {
+		if w.events[i].eventType == "response.completed" {
+			completedEvent = &w.events[i]
+			break
+		}
+	}
+	require.NotNil(t, completedEvent)
+	data, _ := completedEvent.data.(map[string]any)
+	resp, _ := data["response"].(map[string]any)
+	output, ok := resp["output"].([]map[string]any)
+	require.True(t, ok)
+
+	// Output should contain both text message and tool call
+	require.Len(t, output, 2)
+	assert.Equal(t, "message", output[0]["type"])
+	assert.Equal(t, "function_call", output[1]["type"])
 }

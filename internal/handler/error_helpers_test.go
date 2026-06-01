@@ -10,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/keepmind9/ai-switch/internal/types"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestParseUpstreamError_ChatFormat(t *testing.T) {
@@ -163,4 +164,71 @@ func TestErrorTypeToStatus(t *testing.T) {
 			assert.Equal(t, tt.want, errorTypeToStatus(tt.errType))
 		})
 	}
+}
+
+type mockHandlerSSEWriter struct {
+	events []struct {
+		eventType string
+		data      any
+	}
+}
+
+func (m *mockHandlerSSEWriter) WriteEvent(eventType string, data any) {
+	m.events = append(m.events, struct {
+		eventType string
+		data      any
+	}{eventType, data})
+}
+
+func TestWriteSSEErrorToClient_ResponsesFormat(t *testing.T) {
+	w := &mockHandlerSSEWriter{}
+	writeSSEErrorToClient(w, "upstream timeout", "server_error", "responses")
+
+	require.Len(t, w.events, 1)
+	assert.Equal(t, "response.failed", w.events[0].eventType)
+
+	data, ok := w.events[0].data.(map[string]any)
+	require.True(t, ok)
+	resp, ok := data["response"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "failed", resp["status"])
+	errObj, ok := resp["error"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "server_error", errObj["type"])
+	assert.Equal(t, "upstream timeout", errObj["message"])
+}
+
+func TestWriteSSEErrorToClient_ResponsesFormatDefaultErrorType(t *testing.T) {
+	// When errType is empty, should default to "server_error" for Responses format
+	w := &mockHandlerSSEWriter{}
+	writeSSEErrorToClient(w, "unknown error", "", "responses")
+
+	require.Len(t, w.events, 1)
+	data, _ := w.events[0].data.(map[string]any)
+	resp, _ := data["response"].(map[string]any)
+	errObj, _ := resp["error"].(map[string]any)
+	assert.Equal(t, "server_error", errObj["type"])
+}
+
+func TestWriteSSEErrorToClient_AnthropicFormat(t *testing.T) {
+	w := &mockHandlerSSEWriter{}
+	writeSSEErrorToClient(w, "model not found", "not_found_error", "anthropic")
+
+	require.Len(t, w.events, 1)
+	assert.Equal(t, "error", w.events[0].eventType)
+	data, _ := w.events[0].data.(map[string]any)
+	errObj, _ := data["error"].(map[string]any)
+	assert.Equal(t, "not_found_error", errObj["type"])
+	assert.Equal(t, "model not found", errObj["message"])
+}
+
+func TestWriteSSEErrorToClient_ChatFormat(t *testing.T) {
+	w := &mockHandlerSSEWriter{}
+	writeSSEErrorToClient(w, "rate limited", "rate_limit_error", "chat")
+
+	require.Len(t, w.events, 1)
+	data, _ := w.events[0].data.(map[string]any)
+	errObj, _ := data["error"].(map[string]any)
+	assert.Equal(t, "rate limited", errObj["message"])
+	assert.Equal(t, "rate_limit_error", errObj["type"])
 }

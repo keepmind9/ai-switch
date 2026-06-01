@@ -184,7 +184,17 @@ func (h *Handler) passthroughConvertReq(ctx *hook.Context) error {
 	if ctx.ClientModel != "" {
 		raw["model"] = ctx.ClientModel
 	}
-	normalizeInputRoles(raw)
+	normalizeInputRoles(raw, true) // passthrough = same format
+
+	// Auto-inject stream_options.include_usage for Chat streaming passthrough
+	if ctx.UpstreamProtocol == converter.FormatChat && ctx.IsStream {
+		if so, _ := raw["stream_options"].(map[string]any); so == nil {
+			raw["stream_options"] = map[string]any{"include_usage": true}
+		} else if _, ok := so["include_usage"]; !ok {
+			so["include_usage"] = true
+		}
+	}
+
 	body, err := json.Marshal(raw)
 	if err != nil {
 		return err

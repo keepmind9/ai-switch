@@ -42,7 +42,7 @@ func DecodeCompactionPayload(encoded string) (*types.CompactionPayload, error) {
 }
 
 // ExtractConversationText formats Responses API input items into a readable conversation string.
-// Compaction items are skipped.
+// Compaction items are skipped. Tool call and result items are included for context.
 func ExtractConversationText(input any) string {
 	if input == nil {
 		return ""
@@ -63,10 +63,26 @@ func ExtractConversationText(input any) string {
 				if itemType == "compaction" {
 					continue
 				}
-				role, _ := val["role"].(string)
-				text := extractInputTextMessage(val)
-				if text != "" && role != "" {
-					parts = append(parts, fmt.Sprintf("[%s]: %s", role, text))
+				switch itemType {
+				case "function_call":
+					name, _ := val["name"].(string)
+					args, _ := val["arguments"].(string)
+					if len(args) > 200 {
+						args = args[:200] + "..."
+					}
+					parts = append(parts, fmt.Sprintf("[tool_call: %s(%s)]", name, args))
+				case "function_call_output":
+					output, _ := val["output"].(string)
+					if len(output) > 200 {
+						output = output[:200] + "..."
+					}
+					parts = append(parts, fmt.Sprintf("[tool_result: %s]", output))
+				default:
+					role, _ := val["role"].(string)
+					text := extractInputTextMessage(val)
+					if text != "" && role != "" {
+						parts = append(parts, fmt.Sprintf("[%s]: %s", role, text))
+					}
 				}
 			}
 		}

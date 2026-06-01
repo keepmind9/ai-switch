@@ -199,3 +199,132 @@ func TestRecordErrorUsage_NoRouteResult(t *testing.T) {
 	assert.Equal(t, "test-model", r.Model)
 	assert.Equal(t, int64(1), r.ErrorRequests)
 }
+
+func TestPassthroughConvertReq_InjectsStreamOptions(t *testing.T) {
+	// Chat streaming passthrough should auto-inject stream_options.include_usage
+	// so usage data is available in the final chunk for token counting.
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+
+	h := &Handler{}
+	ctx := hook.NewContext(c, "chat", []byte(`{"model":"gpt-4o","messages":[{"role":"user","content":"hi"}],"stream":true}`))
+	ctx.ClientProtocol = "chat"
+	ctx.UpstreamProtocol = "chat"
+	ctx.ClientModel = "gpt-4o"
+	ctx.IsStream = true
+
+	err := h.passthroughConvertReq(ctx)
+	require.NoError(t, err)
+
+	var raw map[string]any
+	require.NoError(t, json.Unmarshal(ctx.UpstreamReqBody, &raw))
+
+	so, ok := raw["stream_options"].(map[string]any)
+	require.True(t, ok, "stream_options should be auto-injected for Chat streaming")
+	assert.Equal(t, true, so["include_usage"])
+}
+
+func TestPassthroughConvertReq_PreservesExistingStreamOptions(t *testing.T) {
+	// If client already sends stream_options, don't overwrite — just add include_usage
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+
+	h := &Handler{}
+	ctx := hook.NewContext(c, "chat", []byte(`{"model":"gpt-4o","messages":[{"role":"user","content":"hi"}],"stream":true,"stream_options":{"include_usage":false}}`))
+	ctx.ClientProtocol = "chat"
+	ctx.UpstreamProtocol = "chat"
+	ctx.ClientModel = "gpt-4o"
+	ctx.IsStream = true
+
+	err := h.passthroughConvertReq(ctx)
+	require.NoError(t, err)
+
+	var raw map[string]any
+	require.NoError(t, json.Unmarshal(ctx.UpstreamReqBody, &raw))
+	so, _ := raw["stream_options"].(map[string]any)
+	// Should not overwrite existing value
+	assert.Equal(t, false, so["include_usage"])
+}
+
+func TestPassthroughConvertReq_NoInjectionForNonStreaming(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+
+	h := &Handler{}
+	ctx := hook.NewContext(c, "chat", []byte(`{"model":"gpt-4o","messages":[{"role":"user","content":"hi"}],"stream":false}`))
+	ctx.ClientProtocol = "chat"
+	ctx.UpstreamProtocol = "chat"
+	ctx.ClientModel = "gpt-4o"
+	ctx.IsStream = false
+
+	err := h.passthroughConvertReq(ctx)
+	require.NoError(t, err)
+
+	var raw map[string]any
+	require.NoError(t, json.Unmarshal(ctx.UpstreamReqBody, &raw))
+	_, hasSO := raw["stream_options"]
+	assert.False(t, hasSO, "stream_options should NOT be injected for non-streaming")
+}
+
+func TestPassthroughConvertReq_NormalizesRoles(t *testing.T) {
+	// Passthrough should still normalize developer → system in input roles
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+
+	h := &Handler{}
+	ctx := hook.NewContext(c, "responses", []byte(`{
+		"model":"gpt-4o",
+		"input":[
+			{"type":"message","role":"developer","content":[{"type":"input_text","text":"Be concise"}]},
+			{"type":"message","role":"user","content":[{"type":"input_text","text":"Hello"}]}
+		],
+		"stream":false
+	}`))
+	ctx.ClientProtocol = "responses"
+	ctx.UpstreamProtocol = "responses"
+	ctx.ClientModel = "gpt-4o"
+	ctx.IsStream = false
+
+	err := h.passthroughConvertReq(ctx)
+	require.NoError(t, err)
+
+	var raw map[string]any
+	require.NoError(t, json.Unmarshal(ctx.UpstreamReqBody, &raw))
+	input, _ := raw["input"].([]any)
+	require.Len(t, input, 2)
+	msg1, _ := input[0].(map[string]any)
+	msg2, _ := input[1].(map[string]any)
+	// developer → system
+	assert.Equal(t, "system", msg1["role"])
+	assert.Equal(t, "user", msg2["role"])
+}
+
+func TestPassthroughConvertReq_SameFormatPreservesTools(t *testing.T) {
+	// Same-format passthrough should NOT filter built-in tools without names
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+
+	h := &Handler{}
+	ctx := hook.NewContext(c, "responses", []byte(`{
+		"model":"gpt-4o",
+		"input":"Hello",
+		"stream":false,
+		"tools":[
+			{"type":"function","name":"get_weather","parameters":{"type":"object"}},
+			{"type":"web_search_preview"},
+			{"type":"code_interpreter"}
+		]
+	}`))
+	ctx.ClientProtocol = "responses"
+	ctx.UpstreamProtocol = "responses"
+	ctx.ClientModel = "gpt-4o"
+	ctx.IsStream = false
+
+	err := h.passthroughConvertReq(ctx)
+	require.NoError(t, err)
+
+	var raw map[string]any
+	require.NoError(t, json.Unmarshal(ctx.UpstreamReqBody, &raw))
+	tools, _ := raw["tools"].([]any)
+	assert.Len(t, tools, 3, "same-format passthrough should preserve all tools including built-ins")
+}

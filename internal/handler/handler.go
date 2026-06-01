@@ -256,7 +256,9 @@ func buildUpstreamURL(result *router.RouteResult) string {
 
 // normalizeInputRoles replaces unsupported roles in input/messages
 // and filters out built-in tools that lack name/parameters.
-func normalizeInputRoles(raw map[string]any) {
+// When sameFormat is true (same-format passthrough), tool filtering is skipped
+// to preserve built-in tools like web_search_preview for the upstream.
+func normalizeInputRoles(raw map[string]any, sameFormat bool) {
 	// Normalize roles in Responses API input array
 	if input, ok := raw["input"].([]any); ok {
 		for _, item := range input {
@@ -279,18 +281,20 @@ func normalizeInputRoles(raw map[string]any) {
 		}
 	}
 
-	// Filter out built-in tools without a name
-	if tools, ok := raw["tools"].([]any); ok {
-		var filtered []any
-		for _, t := range tools {
-			if m, ok := t.(map[string]any); ok {
-				if name, _ := m["name"].(string); name != "" {
-					filtered = append(filtered, m)
+	// Filter out built-in tools without a name (skip for same-format passthrough)
+	if !sameFormat {
+		if tools, ok := raw["tools"].([]any); ok {
+			var filtered []any
+			for _, t := range tools {
+				if m, ok := t.(map[string]any); ok {
+					if name, _ := m["name"].(string); name != "" {
+						filtered = append(filtered, m)
+					}
 				}
 			}
-		}
-		if len(filtered) != len(tools) {
-			raw["tools"] = filtered
+			if len(filtered) != len(tools) {
+				raw["tools"] = filtered
+			}
 		}
 	}
 }
@@ -727,6 +731,14 @@ func (h *Handler) convertResponsesJSONToSSE(c *gin.Context, body []byte) string 
 		"response": map[string]any{
 			"id": respID, "object": "response", "created_at": createdAt,
 			"model": model, "status": "in_progress", "output": []any{},
+		},
+	})
+	seq++
+
+	w.WriteEvent("response.in_progress", map[string]any{
+		"type": "response.in_progress", "sequence_number": seq,
+		"response": map[string]any{
+			"id": respID, "object": "response", "status": "in_progress",
 		},
 	})
 	seq++
