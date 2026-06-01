@@ -2,11 +2,13 @@ package config
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/spf13/viper"
+	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -90,12 +92,22 @@ func Load(path string) (*Config, error) {
 				return nil, readErr
 			}
 		} else {
-			return nil, err
+			// Main file exists but is unreadable or unparseable. Try to
+			// recover from a timestamped backup before giving up.
+			cfg, recErr := recoverFromBackup(path)
+			if recErr != nil {
+				return nil, fmt.Errorf("failed to read config (recovery from backup also failed): %w", err)
+			}
+			return cfg, nil
 		}
 	}
 
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
+		// YAML syntax error or type mismatch in main file. Try recovery.
+		if recCfg, recErr := recoverFromBackup(path); recErr == nil {
+			return recCfg, nil
+		}
 		return nil, err
 	}
 
@@ -103,25 +115,37 @@ func Load(path string) (*Config, error) {
 		cfg.LogRetentionDays = DefaultLogRetentionDays
 	}
 
+	if err := normalizeConfig(&cfg); err != nil {
+		return nil, err
+	}
+
+	return &cfg, nil
+}
+
+// normalizeConfig applies env-var expansion, default format, route reference
+// validation, and URL trimming. Called from the main Load path AND from
+// recoverFromBackup, so a recovered config behaves identically to one loaded
+// from a fresh file.
+func normalizeConfig(cfg *Config) error {
 	// Validate default_route references an existing route
 	if cfg.DefaultRoute != "" {
 		if _, ok := cfg.Routes[cfg.DefaultRoute]; !ok {
-			return nil, fmt.Errorf("default_route %q not found in routes", cfg.DefaultRoute)
+			return fmt.Errorf("default_route %q not found in routes", cfg.DefaultRoute)
 		}
 	}
 	if cfg.DefaultAnthropicRoute != "" {
 		if _, ok := cfg.Routes[cfg.DefaultAnthropicRoute]; !ok {
-			return nil, fmt.Errorf("default_anthropic_route %q not found in routes", cfg.DefaultAnthropicRoute)
+			return fmt.Errorf("default_anthropic_route %q not found in routes", cfg.DefaultAnthropicRoute)
 		}
 	}
 	if cfg.DefaultResponsesRoute != "" {
 		if _, ok := cfg.Routes[cfg.DefaultResponsesRoute]; !ok {
-			return nil, fmt.Errorf("default_responses_route %q not found in routes", cfg.DefaultResponsesRoute)
+			return fmt.Errorf("default_responses_route %q not found in routes", cfg.DefaultResponsesRoute)
 		}
 	}
 	if cfg.DefaultChatRoute != "" {
 		if _, ok := cfg.Routes[cfg.DefaultChatRoute]; !ok {
-			return nil, fmt.Errorf("default_chat_route %q not found in routes", cfg.DefaultChatRoute)
+			return fmt.Errorf("default_chat_route %q not found in routes", cfg.DefaultChatRoute)
 		}
 	}
 
@@ -135,14 +159,14 @@ func Load(path string) (*Config, error) {
 			p.Format = "chat"
 		}
 		if !validFormats[p.Format] {
-			return nil, fmt.Errorf("invalid format %q for provider %q: must be one of chat, responses, anthropic, gemini", p.Format, k)
+			return fmt.Errorf("invalid format %q for provider %q: must be one of chat, responses, anthropic, gemini", p.Format, k)
 		}
 		// Trim trailing slash to keep URL clean.
 		p.BaseURL = strings.TrimRight(p.BaseURL, "/")
 		cfg.Providers[k] = p
 	}
 
-	return &cfg, nil
+	return nil
 }
 
 // DefaultRouteConfig returns the default route rule for the given protocol,
@@ -214,4 +238,100 @@ func expandEnv(s string) string {
 // IsLocalhost returns true if the host is 127.0.0.1 or localhost.
 func (s ServerConfig) IsLocalhost() bool {
 	return s.Host == "127.0.0.1" || s.Host == "localhost"
+}
+
+// recoverFromBackup attempts to load a valid Config from a timestamped
+// backup of path. The newest valid backup wins; on success the recovered
+// config is normalized (env expansion, defaults, route validation) and
+// written back to path (so subsequent starts don't need recovery). A WARN
+// is logged identifying the recovery. Returns an error if no usable backup
+// exists.
+func recoverFromBackup(path string) (*Config, error) {
+	infos, err := ListBackups(path)
+	if err != nil {
+		return nil, fmt.Errorf("list backups: %w", err)
+	}
+	if len(infos) == 0 {
+		return nil, fmt.Errorf("no backups available")
+	}
+	for _, bi := range infos {
+		cfg, loadErr := loadFromFile(bi.Path)
+		if loadErr != nil {
+			slog.Warn("config: backup also unreadable, trying next",
+				"backup", bi.Name, "error", loadErr)
+			continue
+		}
+		// Normalize the recovered config: env expansion, format defaults,
+		// route validation. Mirrors the main Load path.
+		if normErr := normalizeConfig(cfg); normErr != nil {
+			slog.Warn("config: recovered backup failed normalization, trying next",
+				"backup", bi.Name, "error", normErr)
+			continue
+		}
+		slog.Warn("config: main file corrupt, restored from backup",
+			"main", path, "backup", bi.Name)
+		// Persist the recovered config back to the main path. Use a direct
+		// temp+rename (NOT WriteConfig) so the corrupt main file is NOT
+		// captured as a backup first. If the main file is gone or
+		// unreadable, we treat its current state as garbage to overwrite.
+		if writeErr := writeConfigDirect(path, cfg); writeErr != nil {
+			slog.Warn("config: failed to persist recovered config to main path",
+				"path", path, "error", writeErr)
+		}
+		return cfg, nil
+	}
+	return nil, fmt.Errorf("all %d backups are unreadable", len(infos))
+}
+
+// loadFromFile reads and parses a YAML config file via yaml.Unmarshal
+// directly (no viper, no mapstructure). Used only for backup recovery
+// where we want the raw parsed result without viper's strict type coercion
+// — a corrupted main file may use string-for-int tricks that viper rejects
+// but yaml.Unmarshal accepts.
+func loadFromFile(path string) (*Config, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var cfg Config
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return nil, err
+	}
+	return &cfg, nil
+}
+
+// writeConfigDirect writes cfg to path atomically (temp file + rename) but
+// does NOT create a backup and does NOT prune. Used by recoverFromBackup so
+// that a corrupt main file is never copied into the backup chain.
+func writeConfigDirect(path string, cfg *Config) error {
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("marshal: %w", err)
+	}
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, ".config-recover-*")
+	if err != nil {
+		return fmt.Errorf("create temp: %w", err)
+	}
+	tmpName := tmp.Name()
+	defer func() {
+		if _, statErr := os.Stat(tmpName); statErr == nil {
+			os.Remove(tmpName)
+		}
+	}()
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return fmt.Errorf("write temp: %w", err)
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return fmt.Errorf("sync temp: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("close temp: %w", err)
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		return fmt.Errorf("rename: %w", err)
+	}
+	return nil
 }

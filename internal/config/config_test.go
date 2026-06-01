@@ -636,3 +636,155 @@ func TestExpandEnv(t *testing.T) {
 		})
 	}
 }
+
+func TestLoad_RecoversFromCorruptMain_WithValidBackup(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+
+	// 1. Seed a valid config (this is the "first" write; no backup yet).
+	require.NoError(t, WriteConfig(path, &Config{Server: ServerConfig{Host: "127.0.0.1", Port: 12345}}))
+
+	// 2. Write a second time so the first one gets backed up.
+	require.NoError(t, WriteConfig(path, &Config{Server: ServerConfig{Host: "127.0.0.1", Port: 12345}}))
+	infos, err := ListBackups(path)
+	require.NoError(t, err)
+	require.Len(t, infos, 1, "second write should create exactly one backup")
+
+	// 3. Corrupt the main file. The backup is still intact.
+	require.NoError(t, os.WriteFile(path, []byte("not: valid: yaml: [[["), 0644))
+
+	// 4. Load must silently recover from the backup and return a valid cfg.
+	cfg, err := Load(path)
+	require.NoError(t, err)
+	assert.Equal(t, "127.0.0.1", cfg.Server.Host)
+	assert.Equal(t, 12345, cfg.Server.Port)
+}
+
+func TestLoad_FailsWhenMainAndAllBackupsCorrupt(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+
+	// Seed two writes so a backup exists.
+	require.NoError(t, WriteConfig(path, &Config{Server: ServerConfig{Host: "127.0.0.1", Port: 12345}}))
+	require.NoError(t, WriteConfig(path, &Config{Server: ServerConfig{Host: "127.0.0.1", Port: 12345}}))
+	infos, err := ListBackups(path)
+	require.NoError(t, err)
+	require.Len(t, infos, 1)
+
+	// Corrupt both main and the only backup.
+	require.NoError(t, os.WriteFile(path, []byte("garbage: [[["), 0644))
+	require.NoError(t, os.WriteFile(infos[0].Path, []byte("also: garbage: [[["), 0644))
+
+	_, err = Load(path)
+	require.Error(t, err, "Load must fail when no usable config exists")
+}
+
+func TestLoad_FailsWhenMainCorrupt_NoBackups(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+
+	// Manually create a corrupt file with no backups.
+	require.NoError(t, os.WriteFile(path, []byte("garbage: [[["), 0644))
+
+	_, err := Load(path)
+	require.Error(t, err)
+}
+
+func TestLoad_DoesNotModifyGoodMain(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	writeFile := func(p, c string) { require.NoError(t, os.WriteFile(p, []byte(c), 0644)) }
+	writeFile(path, "server:\n  host: 127.0.0.1\n  port: 12345\n")
+
+	before, err := os.ReadFile(path)
+	require.NoError(t, err)
+
+	cfg, err := Load(path)
+	require.NoError(t, err)
+	assert.Equal(t, 12345, cfg.Server.Port)
+
+	after, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Equal(t, string(before), string(after), "Load must not rewrite a good main file")
+}
+
+func TestLoad_RecoversFromInvalidYAMLTypeMismatch(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	// Two writes so a backup exists.
+	require.NoError(t, WriteConfig(path, &Config{Server: ServerConfig{Host: "127.0.0.1", Port: 12345}}))
+	require.NoError(t, WriteConfig(path, &Config{Server: ServerConfig{Host: "127.0.0.1", Port: 12345}}))
+
+	// Type mismatch: port expects int, give it a string.
+	require.NoError(t, os.WriteFile(path, []byte("server:\n  port: \"not-a-number\"\n"), 0644))
+
+	cfg, err := Load(path)
+	require.NoError(t, err, "must recover from type mismatch")
+	assert.Equal(t, 12345, cfg.Server.Port)
+}
+
+func TestLoad_RecoveryNormalizesConfig(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+
+	// Seed a config with env-var reference and a provider missing Format.
+	t.Setenv("TEST_API_KEY", "secret-from-env")
+	seeded := &Config{
+		Server: ServerConfig{Host: "127.0.0.1", Port: 12345},
+		Providers: map[string]ProviderConfig{
+			"p1": {Name: "P1", BaseURL: "https://x.test/", APIKey: "${TEST_API_KEY}"},
+		},
+		Routes: map[string]RouteRule{
+			"r1": {Provider: "p1", DefaultModel: "m"},
+		},
+	}
+	require.NoError(t, WriteConfig(path, seeded))
+	// Second write to ensure a backup exists.
+	require.NoError(t, WriteConfig(path, seeded))
+
+	// Corrupt main.
+	require.NoError(t, os.WriteFile(path, []byte("garbage: [[["), 0644))
+
+	cfg, err := Load(path)
+	require.NoError(t, err)
+	assert.Equal(t, "secret-from-env", cfg.Providers["p1"].APIKey,
+		"recovered config must have env vars expanded")
+	assert.Equal(t, "chat", cfg.Providers["p1"].Format,
+		"recovered config must have Format defaulted to 'chat'")
+	assert.Equal(t, "https://x.test", cfg.Providers["p1"].BaseURL,
+		"recovered config must have BaseURL trimmed")
+}
+
+func TestLoad_RecoveryDoesNotPolluteBackupChain(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+
+	// Seed two writes so we have one good backup.
+	require.NoError(t, WriteConfig(path, &Config{Server: ServerConfig{Host: "127.0.0.1", Port: 12345}}))
+	require.NoError(t, WriteConfig(path, &Config{Server: ServerConfig{Host: "127.0.0.1", Port: 12345}}))
+	infosBefore, err := ListBackups(path)
+	require.NoError(t, err)
+	require.Len(t, infosBefore, 1)
+
+	// Corrupt main.
+	require.NoError(t, os.WriteFile(path, []byte("garbage: [[["), 0644))
+
+	// Recover.
+	_, err = Load(path)
+	require.NoError(t, err)
+
+	// Main is now valid YAML.
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "127.0.0.1")
+
+	// The corrupt bytes must NOT have been captured as a new backup.
+	infosAfter, err := ListBackups(path)
+	require.NoError(t, err)
+	assert.Len(t, infosAfter, 1, "recovery must not add a new backup")
+	for _, bi := range infosAfter {
+		b, err := os.ReadFile(bi.Path)
+		require.NoError(t, err)
+		assert.NotContains(t, string(b), "garbage", "no backup may contain the corrupt content")
+	}
+}
