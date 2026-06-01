@@ -124,6 +124,16 @@ func (c *Converter) ChatToGeminiRequest(req *types.ChatRequest) (*GeminiRequest,
 		gemReq.ToolConfig = chatToolChoiceToGemini(req.ToolChoice)
 	}
 
+	// Build toolCallID -> functionName lookup for tool result mapping
+	toolCallNames := map[string]string{}
+	for _, msg := range req.Messages {
+		if msg.Role == "assistant" {
+			for _, tc := range msg.ToolCalls {
+				toolCallNames[tc.ID] = tc.Function.Name
+			}
+		}
+	}
+
 	// Messages
 	for _, msg := range req.Messages {
 		switch msg.Role {
@@ -132,11 +142,15 @@ func (c *Converter) ChatToGeminiRequest(req *types.ChatRequest) (*GeminiRequest,
 				Parts: []GeminiPart{{Text: derefStr(msg.Content)}},
 			}
 		case "tool":
+			funcName := toolCallNames[msg.ToolCallID]
+			if funcName == "" {
+				funcName = msg.ToolCallID
+			}
 			gemReq.Contents = append(gemReq.Contents, GeminiContent{
 				Role: "user",
 				Parts: []GeminiPart{{
 					FunctionResp: &GeminiFuncResp{
-						Name: msg.ToolCallID,
+						Name: funcName,
 						Response: map[string]any{
 							"result": derefStr(msg.Content),
 						},

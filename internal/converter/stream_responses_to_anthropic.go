@@ -17,6 +17,9 @@ type ResponsesToAnthropicState struct {
 	MessageStarted    bool
 	CurrentBlockIdx   int
 	HasToolUse        bool
+	TextBlockOpened   bool
+	TextBlockIdx      int
+	ToolBlockIndices  map[string]int // callID -> Anthropic block index
 }
 
 // ConvertResponsesEventToAnthropicSSE processes a raw Responses SSE data line and emits
@@ -24,6 +27,22 @@ type ResponsesToAnthropicState struct {
 func ConvertResponsesEventToAnthropicSSE(w SSEWriter, state *ResponsesToAnthropicState, data string) bool {
 	if data == "[DONE]" {
 		if state.MessageStarted {
+			// Close text block if it was opened but not yet closed
+			if state.TextBlockOpened {
+				w.WriteEvent("content_block_stop", map[string]any{
+					"type":  "content_block_stop",
+					"index": state.TextBlockIdx,
+				})
+			}
+			w.WriteEvent("message_delta", map[string]any{
+				"type": "message_delta",
+				"delta": map[string]any{
+					"stop_reason": "end_turn",
+				},
+				"usage": map[string]any{
+					"output_tokens": state.OutputTokens,
+				},
+			})
 			w.WriteEvent("message_stop", map[string]any{
 				"type": "message_stop",
 			})
@@ -55,17 +74,25 @@ func ConvertResponsesEventToAnthropicSSE(w SSEWriter, state *ResponsesToAnthropi
 
 		if itemType == "function_call" {
 			if !state.MessageStarted {
-				state.MessageStarted = true
-				state.ContentSent = true
 				state.ensureMessageStart(w)
 			}
 
 			callID, _ := item["call_id"].(string)
 			name, _ := item["name"].(string)
+			itemID, _ := raw["item_id"].(string)
+
+			if state.ToolBlockIndices == nil {
+				state.ToolBlockIndices = make(map[string]int)
+			}
+			blockIdx := state.CurrentBlockIdx
+			state.ToolBlockIndices[callID] = blockIdx
+			if itemID != "" {
+				state.ToolBlockIndices[itemID] = blockIdx
+			}
 
 			w.WriteEvent("content_block_start", map[string]any{
 				"type":  "content_block_start",
-				"index": state.CurrentBlockIdx,
+				"index": blockIdx,
 				"content_block": map[string]any{
 					"type": "tool_use",
 					"id":   callID,
@@ -74,14 +101,19 @@ func ConvertResponsesEventToAnthropicSSE(w SSEWriter, state *ResponsesToAnthropi
 			})
 			state.CurrentBlockIdx++
 			state.HasToolUse = true
+			state.ContentSent = true
 		}
 
 	case "response.function_call_arguments.delta":
 		delta, _ := raw["delta"].(string)
-		outputIndex := int(toFloat64(raw["output_index"]))
+		itemID, _ := raw["item_id"].(string)
+		blockIdx := 0
+		if idx, ok := state.ToolBlockIndices[itemID]; ok {
+			blockIdx = idx
+		}
 		w.WriteEvent("content_block_delta", map[string]any{
 			"type":  "content_block_delta",
-			"index": outputIndex,
+			"index": blockIdx,
 			"delta": map[string]any{
 				"type":         "input_json_delta",
 				"partial_json": delta,
@@ -98,10 +130,14 @@ func ConvertResponsesEventToAnthropicSSE(w SSEWriter, state *ResponsesToAnthropi
 		}
 		itemType, _ := item["type"].(string)
 		if itemType == "function_call" {
-			outputIndex := int(toFloat64(raw["output_index"]))
+			callID, _ := item["call_id"].(string)
+			blockIdx := 0
+			if idx, ok := state.ToolBlockIndices[callID]; ok {
+				blockIdx = idx
+			}
 			w.WriteEvent("content_block_stop", map[string]any{
 				"type":  "content_block_stop",
-				"index": outputIndex,
+				"index": blockIdx,
 			})
 		}
 
@@ -115,15 +151,17 @@ func ConvertResponsesEventToAnthropicSSE(w SSEWriter, state *ResponsesToAnthropi
 			state.ContentSent = true
 			state.ensureMessageStart(w)
 
+			state.TextBlockIdx = state.CurrentBlockIdx
 			w.WriteEvent("content_block_start", map[string]any{
 				"type":  "content_block_start",
-				"index": state.CurrentBlockIdx,
+				"index": state.TextBlockIdx,
 				"content_block": map[string]any{
 					"type": "text",
 					"text": "",
 				},
 			})
 			state.CurrentBlockIdx++
+			state.TextBlockOpened = true
 		}
 
 		state.AccText += delta
@@ -131,7 +169,7 @@ func ConvertResponsesEventToAnthropicSSE(w SSEWriter, state *ResponsesToAnthropi
 
 		w.WriteEvent("content_block_delta", map[string]any{
 			"type":  "content_block_delta",
-			"index": 0,
+			"index": state.TextBlockIdx,
 			"delta": map[string]any{
 				"type": "text_delta",
 				"text": delta,
@@ -146,15 +184,13 @@ func ConvertResponsesEventToAnthropicSSE(w SSEWriter, state *ResponsesToAnthropi
 			}
 		}
 
-		if state.ContentSent {
-			if state.MessageStarted {
-				// Close text block if it was opened
-				if state.AccText != "" {
-					w.WriteEvent("content_block_stop", map[string]any{
-						"type":  "content_block_stop",
-						"index": 0,
-					})
-				}
+		if state.MessageStarted {
+			// Close text block if it was opened
+			if state.TextBlockOpened {
+				w.WriteEvent("content_block_stop", map[string]any{
+					"type":  "content_block_stop",
+					"index": state.TextBlockIdx,
+				})
 			}
 
 			stopReason := "end_turn"

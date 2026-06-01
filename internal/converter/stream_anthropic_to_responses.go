@@ -250,6 +250,15 @@ func ConvertAnthropicLineToResponses(w SSEWriter, state *AnthropicToResponsesSta
 				"usage":      nil,
 			},
 		})
+		w.WriteEvent("response.in_progress", map[string]any{
+			"type":            "response.in_progress",
+			"sequence_number": state.NextSeq(),
+			"response": map[string]any{
+				"id":     state.ResponseID,
+				"object": "response",
+				"status": "in_progress",
+			},
+		})
 
 	case "content_block_start":
 		index := int(toFloat64(raw["index"]))

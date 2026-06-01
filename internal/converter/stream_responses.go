@@ -45,6 +45,15 @@ func ConvertChatChunkToResponsesSSE(w SSEWriter, state *ResponsesStreamState, da
 				"usage":      nil,
 			},
 		})
+		w.WriteEvent("response.in_progress", map[string]any{
+			"type":            "response.in_progress",
+			"sequence_number": state.nextSeq(),
+			"response": map[string]any{
+				"id":     chunk.ID,
+				"object": "response",
+				"status": "in_progress",
+			},
+		})
 	}
 
 	for _, choice := range chunk.Choices {
@@ -52,6 +61,63 @@ func ConvertChatChunkToResponsesSSE(w SSEWriter, state *ResponsesStreamState, da
 		if len(choice.Delta.ToolCalls) > 0 {
 			processChatToolCalls(w, state, choice.Delta.ToolCalls)
 			continue
+		}
+
+		// Handle reasoning content (e.g. DeepSeek reasoning_content field)
+		if choice.Delta.ReasoningContent != nil && *choice.Delta.ReasoningContent != "" {
+			if !state.ReasoningStarted {
+				state.ReasoningStarted = true
+				state.ReasoningOutIdx = state.FuncOutputIdx + len(state.ToolCalls) + 1
+				if state.ItemID != "" {
+					state.ReasoningOutIdx = state.OutputIndex + 1
+				}
+				state.ReasoningItemID = fmt.Sprintf("rs_%d", time.Now().UnixNano())
+				w.WriteEvent("response.output_item.added", map[string]any{
+					"type":            "response.output_item.added",
+					"sequence_number": state.nextSeq(),
+					"output_index":    state.ReasoningOutIdx,
+					"item": map[string]any{
+						"id":     state.ReasoningItemID,
+						"type":   "reasoning",
+						"status": "in_progress",
+					},
+				})
+			}
+			reasoning := *choice.Delta.ReasoningContent
+			state.AccReasoning += reasoning
+			w.WriteEvent("response.reasoning_summary_text.delta", map[string]any{
+				"type":            "response.reasoning_summary_text.delta",
+				"sequence_number": state.nextSeq(),
+				"output_index":    state.ReasoningOutIdx,
+				"item_id":         state.ReasoningItemID,
+				"delta":           reasoning,
+			})
+			continue
+		}
+
+		// Close reasoning block when transitioning to text
+		if state.ReasoningStarted && !state.ReasoningDone && choice.Delta.Content != nil {
+			state.ReasoningDone = true
+			w.WriteEvent("response.reasoning_summary_text.done", map[string]any{
+				"type":            "response.reasoning_summary_text.done",
+				"sequence_number": state.nextSeq(),
+				"output_index":    state.ReasoningOutIdx,
+				"item_id":         state.ReasoningItemID,
+				"text":            state.AccReasoning,
+			})
+			w.WriteEvent("response.output_item.done", map[string]any{
+				"type":            "response.output_item.done",
+				"sequence_number": state.nextSeq(),
+				"output_index":    state.ReasoningOutIdx,
+				"item": map[string]any{
+					"id":     state.ReasoningItemID,
+					"type":   "reasoning",
+					"status": "completed",
+					"summary": []map[string]any{
+						{"type": "summary_text", "text": state.AccReasoning},
+					},
+				},
+			})
 		}
 
 		// Handle text content
@@ -212,6 +278,15 @@ func emitToolCallsDone(w SSEWriter, state *ResponsesStreamState) {
 				"arguments": tc.Args,
 			},
 		})
+		// Accumulate for response.completed output
+		state.CompletedToolCalls = append(state.CompletedToolCalls, map[string]any{
+			"id":        tc.ItemID,
+			"type":      "function_call",
+			"status":    "completed",
+			"call_id":   tc.ID,
+			"name":      tc.Name,
+			"arguments": tc.Args,
+		})
 	}
 	// Clear to avoid re-emitting
 	state.ToolCalls = make(map[int]*chatToolCallState)
@@ -272,7 +347,7 @@ func emitResponseCompleted(w SSEWriter, state *ResponsesStreamState) {
 	var output []map[string]any
 
 	// Message item with text
-	if state.AccText != "" || (state.ItemID != "" && len(state.ToolCalls) == 0) {
+	if state.AccText != "" || (state.ItemID != "" && len(state.CompletedToolCalls) == 0) {
 		itemID := state.ItemID
 		if state.TextItemID != "" {
 			itemID = state.TextItemID
@@ -290,6 +365,9 @@ func emitResponseCompleted(w SSEWriter, state *ResponsesStreamState) {
 			},
 		})
 	}
+
+	// Append completed tool call items
+	output = append(output, state.CompletedToolCalls...)
 
 	w.WriteEvent("response.completed", map[string]any{
 		"type":            "response.completed",
@@ -327,4 +405,22 @@ func ParseSSEDataLine(line string) string {
 // FormatSSEEvent formats an SSE event string.
 func FormatSSEEvent(eventType string, data []byte) string {
 	return fmt.Sprintf("event: %s\ndata: %s\n\n", eventType, string(data))
+}
+
+// EmitFailedEvent emits a response.failed SSE event for Responses API clients.
+func EmitFailedEvent(w SSEWriter, responseID, model string, created int64, errType, errMessage string) {
+	w.WriteEvent("response.failed", map[string]any{
+		"type": "response.failed",
+		"response": map[string]any{
+			"id":         responseID,
+			"object":     "response",
+			"created_at": created,
+			"model":      model,
+			"status":     "failed",
+			"error": map[string]any{
+				"type":    errType,
+				"message": errMessage,
+			},
+		},
+	})
 }

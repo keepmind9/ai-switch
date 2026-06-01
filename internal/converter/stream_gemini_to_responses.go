@@ -22,6 +22,7 @@ type GeminiToResponsesState struct {
 	TagState      ThinkTagState
 	TextOutputIdx int
 	FuncOutputIdx int
+	AccToolCalls  []map[string]any // accumulated tool call items for completed output
 }
 
 func (s *GeminiToResponsesState) nextSeq() int {
@@ -76,6 +77,15 @@ func ConvertGeminiLineToResponsesSSE(w SSEWriter, state *GeminiToResponsesState,
 				"model":      state.Model,
 				"status":     "in_progress",
 				"output":     []any{},
+			},
+		})
+		w.WriteEvent("response.in_progress", map[string]any{
+			"type":            "response.in_progress",
+			"sequence_number": state.nextSeq(),
+			"response": map[string]any{
+				"id":     state.ResponseID,
+				"object": "response",
+				"status": "in_progress",
 			},
 		})
 	}
@@ -168,6 +178,16 @@ func ConvertGeminiLineToResponsesSSE(w SSEWriter, state *GeminiToResponsesState,
 					"arguments": string(argsJSON),
 				},
 			})
+
+			// Accumulate for response.completed output
+			state.AccToolCalls = append(state.AccToolCalls, map[string]any{
+				"id":        callID,
+				"type":      "function_call",
+				"status":    "completed",
+				"call_id":   callID,
+				"name":      part.FunctionCall.Name,
+				"arguments": string(argsJSON),
+			})
 		}
 	}
 
@@ -213,6 +233,24 @@ func ConvertGeminiLineToResponsesSSE(w SSEWriter, state *GeminiToResponsesState,
 }
 
 func emitResponseCompletedFromGemini(w SSEWriter, state *GeminiToResponsesState) {
+	var output []map[string]any
+
+	// Text message item
+	if state.AccText != "" || (state.ItemSent && len(state.AccToolCalls) == 0) {
+		output = append(output, map[string]any{
+			"id":     state.ItemID,
+			"type":   "message",
+			"status": "completed",
+			"role":   "assistant",
+			"content": []map[string]any{
+				{"type": "output_text", "text": state.AccText},
+			},
+		})
+	}
+
+	// Append completed tool call items
+	output = append(output, state.AccToolCalls...)
+
 	w.WriteEvent("response.completed", map[string]any{
 		"type":            "response.completed",
 		"sequence_number": state.nextSeq(),
@@ -222,6 +260,7 @@ func emitResponseCompletedFromGemini(w SSEWriter, state *GeminiToResponsesState)
 			"created_at": state.Created,
 			"model":      state.Model,
 			"status":     "completed",
+			"output":     output,
 			"usage": map[string]any{
 				"input_tokens":  state.InputTokens,
 				"output_tokens": state.OutputTokens,

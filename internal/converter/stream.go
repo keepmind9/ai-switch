@@ -24,10 +24,18 @@ type ResponsesStreamState struct {
 	TagState          ThinkTagState
 
 	// Tool call tracking for Chat→Responses streaming
-	ToolCalls     map[int]*chatToolCallState
-	TextDoneSent  bool
-	TextItemID    string
-	FuncOutputIdx int
+	ToolCalls          map[int]*chatToolCallState
+	CompletedToolCalls []map[string]any // completed tool call items for response.completed output
+	TextDoneSent       bool
+	TextItemID         string
+	FuncOutputIdx      int
+
+	// Reasoning tracking
+	ReasoningItemID  string
+	ReasoningStarted bool
+	ReasoningDone    bool
+	AccReasoning     string
+	ReasoningOutIdx  int
 }
 
 type chatToolCallState struct {
