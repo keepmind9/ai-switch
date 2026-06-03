@@ -393,14 +393,33 @@ Checking config.yaml ...
 
 ## Admin UI
 
-Open `http://localhost:12345` for the built-in dashboard:
+Open `http://localhost:12345/ui` for the built-in dashboard:
 
-- **Provider & Route management** — add, edit, delete providers and routes
-- **Request tracing** — inspect every request/response with raw viewer, diff view, and TTFB waterfall
-- **Usage statistics** — token usage by provider/model with daily trend charts
-- **Settings** — config backup & restore, auto-recovery from corrupt config
+**Provider & Route Management**
+
+<img src="docs/images/ai-switch-providers.png" width="600" alt="Provider management" />
+
+<img src="docs/images/ai-switch-routes.png" width="600" alt="Route management" />
 
 Adding a provider auto-creates a same-named route — one step setup.
+
+**Trace Viewer**
+
+Full request/response tracing with raw viewer, diff comparison, and TTFB waterfall:
+
+<img src="docs/images/ai-switch-trace-list.png" width="600" alt="Trace list" />
+
+<img src="docs/images/ai-switch-trace-detail.png" width="600" alt="Trace detail with TTFB waterfall" />
+
+<img src="docs/images/ai-switch-trace-inspect.png" width="600" alt="Trace raw inspect" />
+
+<img src="docs/images/ai-switch-trace-diff.png" width="600" alt="Trace diff comparison" />
+
+**Usage Statistics**
+
+Token usage by provider/model with daily trend charts:
+
+<img src="docs/images/ai-switch-usage.png" width="600" alt="Usage statistics" />
 
 ---
 

@@ -390,14 +390,33 @@ Checking config.yaml ...
 
 ## 管理面板
 
-浏览器打开 `http://localhost:12345` 即可使用内置管理面板：
+浏览器打开 `http://localhost:12345/ui` 即可使用内置管理面板：
 
-- **Provider & Route 管理** — 添加、编辑、删除 Provider 和 Route
-- **请求追踪** — 查看每个请求/响应的完整记录，支持原始查看、Diff 对比、TTFB 瀑布流
-- **用量统计** — 按 Provider 和模型展示 token 用量明细和每日趋势图表
-- **系统设置** — 配置备份与恢复，损坏配置自动恢复
+**Provider 和 Route 管理**
+
+<img src="docs/images/ai-switch-providers.png" width="600" alt="Provider 管理" />
+
+<img src="docs/images/ai-switch-routes.png" width="600" alt="Route 管理" />
 
 添加 Provider 时自动创建同名 Route — 一步完成配置。
+
+**请求追踪**
+
+完整的请求/响应追踪，支持原始查看、Diff 对比和 TTFB 瀑布流：
+
+<img src="docs/images/ai-switch-trace-list.png" width="600" alt="请求追踪列表" />
+
+<img src="docs/images/ai-switch-trace-detail.png" width="600" alt="追踪详情 TTFB 瀑布流" />
+
+<img src="docs/images/ai-switch-trace-inspect.png" width="600" alt="追踪原始查看" />
+
+<img src="docs/images/ai-switch-trace-diff.png" width="600" alt="追踪 Diff 对比" />
+
+**用量统计**
+
+按 Provider 和模型展示 token 用量明细和每日趋势图表：
+
+<img src="docs/images/ai-switch-usage.png" width="600" alt="用量统计" />
 
 ---
 
