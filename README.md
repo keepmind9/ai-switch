@@ -6,8 +6,14 @@
 
 **One binary. One config. Any AI CLI → any LLM API.**
 
+**Linux / macOS:**
 ```bash
 curl -sL https://raw.githubusercontent.com/keepmind9/ai-switch/main/scripts/install.sh | bash
+```
+
+**Windows (PowerShell):**
+```powershell
+irm https://raw.githubusercontent.com/keepmind9/ai-switch/main/scripts/install.ps1 | iex
 ```
 
 [Quick Start](#quick-start) · [Features](#features) · [Supported Providers & Clients](#supported-providers--clients) · [Configuration](#configuration) · [CLI](#cli) · [Admin UI](#admin-ui) · [FAQ](#faq)
@@ -19,8 +25,11 @@ curl -sL https://raw.githubusercontent.com/keepmind9/ai-switch/main/scripts/inst
 ## Quick Start
 
 ```bash
-# 1. Install
+# 1. Install (Linux / macOS)
 curl -sL https://raw.githubusercontent.com/keepmind9/ai-switch/main/scripts/install.sh | bash
+
+# Or Windows (PowerShell):
+# irm https://raw.githubusercontent.com/keepmind9/ai-switch/main/scripts/install.ps1 | iex
 
 # 2. Start
 ais serve
@@ -36,15 +45,7 @@ That's it — Claude Code is now using your configured LLM provider.
 > Open `http://localhost:12345` in your browser to configure providers via the Admin UI.
 
 <details>
-<summary>Other install methods</summary>
-
-**Windows (PowerShell):**
-
-```powershell
-irm https://raw.githubusercontent.com/keepmind9/ai-switch/main/scripts/install.ps1 | iex
-```
-
-**Build from source:**
+<summary>Build from source</summary>
 
 ```bash
 git clone https://github.com/keepmind9/ai-switch.git

@@ -6,8 +6,14 @@
 
 **一个二进制。一个配置。任意 AI CLI → 任意 LLM API。**
 
+**Linux / macOS：**
 ```bash
 curl -sL https://raw.githubusercontent.com/keepmind9/ai-switch/main/scripts/install.sh | bash
+```
+
+**Windows (PowerShell)：**
+```powershell
+irm https://raw.githubusercontent.com/keepmind9/ai-switch/main/scripts/install.ps1 | iex
 ```
 
 [快速开始](#快速开始) · [功能特性](#功能特性) · [支持的服务商和客户端](#支持的服务商和客户端) · [配置说明](#配置说明) · [CLI 命令](#cli-命令) · [管理面板](#管理面板) · [常见问题](#常见问题)
@@ -19,8 +25,11 @@ curl -sL https://raw.githubusercontent.com/keepmind9/ai-switch/main/scripts/inst
 ## 快速开始
 
 ```bash
-# 1. 安装
+# 1. 安装（Linux / macOS）
 curl -sL https://raw.githubusercontent.com/keepmind9/ai-switch/main/scripts/install.sh | bash
+
+# 或 Windows (PowerShell)：
+# irm https://raw.githubusercontent.com/keepmind9/ai-switch/main/scripts/install.ps1 | iex
 
 # 2. 启动
 ais serve
@@ -36,15 +45,7 @@ export ANTHROPIC_API_KEY=ais-default
 > 浏览器打开 `http://localhost:12345` 即可通过管理面板配置 Provider。
 
 <details>
-<summary>其他安装方式</summary>
-
-**Windows (PowerShell)：**
-
-```powershell
-irm https://raw.githubusercontent.com/keepmind9/ai-switch/main/scripts/install.ps1 | iex
-```
-
-**从源码构建：**
+<summary>从源码构建</summary>
 
 ```bash
 git clone https://github.com/keepmind9/ai-switch.git
