@@ -1,37 +1,42 @@
 # ai-switch
 
-[![Go Report Card](https://goreportcard.com/badge/github.com/keepmind9/ai-switch)](https://goreportcard.com/report/github.com/keepmind9/ai-switch) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Go Report Card](https://goreportcard.com/badge/github.com/keepmind9/ai-switch)](https://goreportcard.com/report/github.com/keepmind9/ai-switch) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![Release](https://img.shields.io/github/v/release/keepmind9/ai-switch?include_prereleases)](https://github.com/keepmind9/ai-switch/releases)
 
-**English** | [中文](README_zh.md)
+**Local LLM proxy — let Claude Code, Cursor, Codex CLI use any AI provider.**
 
-A lightweight local proxy that lets any AI CLI tool (Claude Code, Codex CLI, etc.) use third-party LLM APIs through a unified local endpoint.
-
-**One binary, one config, any AI CLI → any LLM API.**
-
-## Features
-
-- **Multi-protocol**: Auto-detects client protocol (Responses API, Anthropic Messages, Chat Completions) and converts transparently
-- **Zero-intrusion**: No changes to your CLI config files, just point `base_url` to the local proxy
-- **Scene routing**: Route Claude Code requests to different models based on request type (thinking, web search, background tasks)
-- **Model mapping**: Map client model names to upstream model names at the route level
-- **Cross-provider routing**: Route different scenes to different providers (e.g. thinking → DeepSeek, web search → Zhipu)
-- **Hot reload**: Update config without restart (`POST /api/reload` or `kill -HUP`)
-- **Admin UI**: Built-in web dashboard for managing providers, routes, viewing usage statistics, and debugging requests
-- **Request tracing**: Inspect every request/response pair with raw viewer, Diff view, and TTFB waterfall chart
-- **Usage statistics**: Track token usage (input, output, cache) by provider and model with dashboard charts
-- **Multi-key fallback**: Automatically switch to fallback API keys on 429/529 rate limiting or service overload
-- **Context compaction**: Support compact endpoint for context window management, with LLM-based summarization for non-OpenAI upstreams
-- **Lightweight**: Pure Go, single binary, no CGO
-
-## Installation
-
-### One-line install (recommended)
-
-**Linux / macOS:**
+**One binary. One config. Any AI CLI → any LLM API.**
 
 ```bash
 curl -sL https://raw.githubusercontent.com/keepmind9/ai-switch/main/scripts/install.sh | bash
 ```
+
+[Quick Start](#quick-start) · [Features](#features) · [Supported Providers & Clients](#supported-providers--clients) · [Configuration](#configuration) · [CLI](#cli) · [Admin UI](#admin-ui) · [FAQ](#faq)
+
+**English** | [中文](README_zh.md)
+
+---
+
+## Quick Start
+
+```bash
+# 1. Install
+curl -sL https://raw.githubusercontent.com/keepmind9/ai-switch/main/scripts/install.sh | bash
+
+# 2. Start
+ais serve
+
+# 3. Point your AI tool
+export ANTHROPIC_BASE_URL=http://localhost:12345
+export ANTHROPIC_API_KEY=ais-default
+```
+
+That's it — Claude Code is now using your configured LLM provider.
+
+> No config file needed — `ais serve` auto-creates `~/.ai-switch/config.yaml` on first run.
+> Open `http://localhost:12345` in your browser to configure providers via the Admin UI.
+
+<details>
+<summary>Other install methods</summary>
 
 **Windows (PowerShell):**
 
@@ -39,40 +44,19 @@ curl -sL https://raw.githubusercontent.com/keepmind9/ai-switch/main/scripts/inst
 irm https://raw.githubusercontent.com/keepmind9/ai-switch/main/scripts/install.ps1 | iex
 ```
 
-This downloads the latest release for your platform, installs to `~/.local/bin`, and adds it to PATH.
-
-### Build from source
+**Build from source:**
 
 ```bash
 git clone https://github.com/keepmind9/ai-switch.git
 cd ai-switch
 make build-all   # build frontend + Go binary (includes Admin UI)
+# or: make build  # Go only, no Admin UI
 ```
 
-> If you don't need the Admin UI, use `make build` instead (Go only, faster).
+</details>
 
-## Quick Start
-
-### 1. Start the server
-
-```bash
-ais serve
-```
-
-No config file needed — it auto-creates `~/.ai-switch/config.yaml` with defaults on first run.
-
-### 2. Configure via Admin UI
-
-Open `http://localhost:12345` in your browser to add providers and routes.
-
-### 3. Point your CLI tool
-
-**Claude Code:**
-
-```bash
-export ANTHROPIC_BASE_URL=http://localhost:12345
-export ANTHROPIC_API_KEY=<route-key>
-```
+<details>
+<summary>Configure other AI tools</summary>
 
 **Codex CLI:**
 
@@ -84,37 +68,119 @@ api_key = "ais-default"
 wire_api = "responses"
 ```
 
-**Any OpenAI-compatible tool:**
+**Cursor / Any OpenAI-compatible tool:**
 
 ```bash
 export OPENAI_BASE_URL=http://localhost:12345/v1
-export OPENAI_API_KEY=<route-key>
+export OPENAI_API_KEY=ais-default
 ```
 
-That's it — your CLI tool will now route requests through ai-switch to your configured provider.
+**Or use the agent launcher (zero config):**
+
+```bash
+ais agent my-route-key claude    # Launch Claude Code
+ais agent my-route-key codex     # Launch Codex CLI
+```
+
+</details>
+
+---
 
 ## How It Works
 
-```
-Claude Code ──→ ai-switch ──→ DeepSeek (chat)
-Codex CLI  ──→          ──→ Zhipu    (anthropic)
-Any tool   ──→          ──→ Gemini   (gemini)
-Any tool   ──→          ──→ MiniMax  (chat)
+```mermaid
+graph LR
+    subgraph Clients
+        CC[Claude Code]
+        CX[Cursor]
+        CO[Codex CLI]
+        OT[Any OpenAI tool]
+    end
+
+    subgraph ai-switch
+        P[Protocol Detection<br>& Conversion]
+    end
+
+    subgraph Providers
+        DS[DeepSeek]
+        ZP[Anthropic]
+        GM[Google Gemini]
+        ZH[Zhipu GLM]
+        MM[MiniMax]
+        OR[OpenRouter]
+        OT2[...any provider]
+    end
+
+    CC -->|Anthropic| P
+    CX -->|Chat| P
+    CO -->|Responses| P
+    OT -->|Chat| P
+
+    P -->|Chat| DS
+    P -->|Anthropic| ZP
+    P -->|Gemini| GM
+    P -->|Chat| ZH
+    P -->|Chat| MM
+    P -->|Chat| OR
+    P -->|Chat| OT2
 ```
 
-ai-switch sits between your CLI tool and upstream LLM providers. It:
-- Detects the client protocol automatically (Anthropic / Responses / Chat)
-- Routes requests to the correct provider based on the API key (route key)
-- Converts between protocols when needed (e.g. Anthropic → Chat Completions)
-- Detects request scenes (thinking, web search, etc.) for smart routing
+ai-switch sits between your AI tools and upstream LLM providers. It auto-detects the client protocol and converts transparently — your tools think they're talking to OpenAI/Anthropic directly.
 
-The route key (`<route-key>` in the example above) serves as both the API key for authentication and the routing identifier.
+---
+
+## Supported Providers & Clients
+
+### Clients
+
+| Client | Protocol | Config |
+|--------|----------|--------|
+| Claude Code | Anthropic | `ANTHROPIC_BASE_URL` |
+| Cursor | OpenAI Chat | `OPENAI_BASE_URL` |
+| Codex CLI | Responses API | toml config |
+| ChatGPT-Next-Web | OpenAI Chat | Settings UI |
+| Any OpenAI-compatible tool | Chat / Responses | `OPENAI_BASE_URL` |
+
+### Upstream Providers
+
+Any OpenAI-compatible API works out of the box. Verified with:
+
+DeepSeek · OpenAI · Anthropic · Google Gemini · Zhipu GLM · MiniMax · SiliconFlow · OpenRouter · Moonshot · Qwen (Alibaba) · StepFun · Doubao (ByteDance)
+
+### Protocol Conversion
+
+All 4 protocols are cross-convertible — any client can talk to any provider:
+
+| | → Chat | → Anthropic | → Responses | → Gemini |
+|---|:---:|:---:|:---:|:---:|
+| **Chat** → | ✅ | ✅ | ✅ | ✅ |
+| **Anthropic** → | ✅ | ✅ | ✅ | ✅ |
+| **Responses** → | ✅ | ✅ | ✅ | ✅ |
+
+---
+
+## Features
+
+**🔄 Multi-Protocol Conversion**
+Auto-detect client protocol (Chat / Anthropic / Responses / Gemini) and convert to any upstream format — all 4 protocols, N×N cross-conversion.
+
+**🎯 Smart Routing**
+Route requests to different models based on what the AI tool is doing — thinking tasks → DeepSeek, web search → Zhipu, background → lightweight model. Supports scene detection, model name mapping, and cross-provider routing.
+
+**🛡️ Reliability**
+Multi-key fallback on 429/529 rate limiting, hot config reload without restart, automatic config backup with one-click restore and corrupt-file auto-recovery.
+
+**📊 Observability**
+Built-in Admin UI with provider/route management, per-request tracing (raw viewer, diff view, TTFB waterfall), and token usage statistics with trend charts.
+
+**🪶 Lightweight**
+Pure Go, single binary, zero dependencies. No Python, no Docker, no runtime. Download and run.
+
+---
 
 ## Configuration
 
-### Providers
-
-Define your upstream LLM vendor connections:
+### Minimal Config
 
 ```yaml
 providers:
@@ -122,19 +188,33 @@ providers:
     name: "DeepSeek"
     base_url: "https://api.deepseek.com/v1"
     api_key: "${DEEPSEEK_API_KEY}"    # supports ${ENV_VAR} expansion
-    format: "chat"                     # chat (default) | responses | anthropic | gemini
-    think_tag: "think"                 # optional: strip reasoning tags from responses
-    fallback_keys:                     # optional: fallback API keys on 429 rate limiting
-      - "${DEEPSEEK_API_KEY_2}"
-      - "${DEEPSEEK_API_KEY_3}"
-    models:                            # optional: for validation warnings
-      - "deepseek-chat"
-      - "deepseek-reasoner"
+    format: "chat"                     # chat | responses | anthropic | gemini
+
+routes:
+  "ais-default":
+    provider: "deepseek"
+    default_model: "deepseek-chat"
 ```
 
-### Gemini Provider
+### Full Provider Options
 
-Use Google Gemini as upstream:
+```yaml
+providers:
+  deepseek:
+    name: "DeepSeek"
+    base_url: "https://api.deepseek.com/v1"
+    api_key: "${DEEPSEEK_API_KEY}"
+    format: "chat"
+    think_tag: "think"                 # optional: strip reasoning tags
+    fallback_keys:                     # optional: backup keys for 429 fallback
+      - "${DEEPSEEK_API_KEY_2}"
+    models:                            # optional: for GET /v1/models & validation
+      - "deepseek-chat"
+      - "deepseek-reasoner"
+    enable_proxy: true                 # optional: use global proxy_url
+```
+
+### Google Gemini
 
 ```yaml
 providers:
@@ -145,20 +225,10 @@ providers:
     format: "gemini"
 ```
 
-No `path` needed — ai-switch automatically builds `/v1beta/models/{model}:generateContent`.
+No `path` needed — ai-switch auto-builds `/v1beta/models/{model}:generateContent`.
 
-### Routes
-
-Routes map API keys to providers and models:
-
-```yaml
-routes:
-  "ais-default":
-    provider: "deepseek"
-    default_model: "deepseek-chat"
-```
-
-### Scene Map
+<details>
+<summary><strong>Scene Map — route by request type</strong></summary>
 
 Route Claude Code requests to different models based on what it's doing:
 
@@ -187,64 +257,10 @@ routes:
 
 Priority: `longContext` > `background` > `websearch` > `think` > `image` > `default`
 
-### Default Routes
+</details>
 
-Control which route is used when a request has no matching API key:
-
-```yaml
-default_route: "ais-default"              # global fallback
-default_anthropic_route: "ais-zhipu"      # /v1/messages (Claude Code)
-default_responses_route: "ais-default"    # /v1/responses (Codex CLI)
-default_chat_route: "ais-default"         # /v1/chat/completions
-```
-
-**Routing priority:** route key match > protocol-specific default > global `default_route`
-
-All fields are optional. Protocol-specific defaults fall back to `default_route` when not set.
-
-### Log Retention
-
-Control how many days of log files to keep (default: 30):
-
-```yaml
-log_retention_days: 7
-```
-
-Logs are stored in `~/.ai-switch/logs/`.
-
-### IP Whitelist
-
-When binding to a non-localhost address, restrict access to trusted IPs:
-
-```yaml
-server:
-  host: "0.0.0.0"
-  port: 12345
-  allowed_ips:
-    - "192.168.1.0/24"
-    - "10.0.0.5"
-```
-
-Supports CIDR notation and bare IP addresses. When `host` is `127.0.0.1` or `localhost`, the whitelist is ignored (even if configured).
-
-### Upstream Proxy
-
-Route upstream LLM API requests through an HTTP/SOCKS5 proxy:
-
-```yaml
-server:
-  proxy_url: "socks5://127.0.0.1:1080"
-
-providers:
-  openai:
-    enable_proxy: true
-```
-
-Set `proxy_url` globally, then enable per-provider with `enable_proxy: true`. Supported schemes: `http`, `https`, `socks5`.
-
-### Model Map
-
-Map client model names to upstream models:
+<details>
+<summary><strong>Model Map — map client model names</strong></summary>
 
 ```yaml
 routes:
@@ -256,7 +272,10 @@ routes:
       "gpt-4o": "deepseek-chat"
 ```
 
-### Cross-Provider Routing
+</details>
+
+<details>
+<summary><strong>Cross-Provider Routing</strong></summary>
 
 Use `provider|model` to route to a different provider within the same route:
 
@@ -271,11 +290,56 @@ routes:
       websearch: "zhipu|glm-4.7"
 ```
 
+</details>
+
+<details>
+<summary><strong>Default Routes — fallback routing</strong></summary>
+
+```yaml
+default_route: "ais-default"              # global fallback
+default_anthropic_route: "ais-zhipu"      # /v1/messages (Claude Code)
+default_responses_route: "ais-default"    # /v1/responses (Codex CLI)
+default_chat_route: "ais-default"         # /v1/chat/completions
+```
+
+**Routing priority:** route key match > protocol-specific default > global `default_route`
+
+</details>
+
+<details>
+<summary><strong>IP Whitelist & Upstream Proxy</strong></summary>
+
+**IP Whitelist** (for non-localhost binding):
+
+```yaml
+server:
+  host: "0.0.0.0"
+  port: 12345
+  allowed_ips:
+    - "192.168.1.0/24"
+    - "10.0.0.5"
+```
+
+**Upstream Proxy** (HTTP/SOCKS5):
+
+```yaml
+server:
+  proxy_url: "socks5://127.0.0.1:1080"
+
+providers:
+  openai:
+    enable_proxy: true
+```
+
+</details>
+
 ### Model Resolution Priority
 
 1. **ModelMap** — exact model name match (case-insensitive)
 2. **SceneMap** — scene detection (Anthropic protocol only)
 3. **DefaultModel** — fallback
+
+---
 
 ## CLI
 
@@ -286,11 +350,11 @@ ais serve -c config.yaml    # Start with custom config
 ais stop                    # Stop the background daemon
 ais check -c config.yaml    # Validate config without starting
 ais version                 # Print version info
-ais update                  # Check for updates and download latest version
+ais update                  # Check for updates
 ais update --apply          # Apply the downloaded update
-ais shortcut                # Create desktop shortcuts to start/stop ais
-ais agent <route-key> claude # Launch Claude Code via ais
-ais agent <route-key> codex  # Launch Codex CLI via ais
+ais shortcut                # Create desktop shortcuts
+ais agent <key> claude      # Launch Claude Code via ais
+ais agent <key> codex       # Launch Codex CLI via ais
 ```
 
 Running without a subcommand defaults to `serve`:
@@ -301,21 +365,16 @@ ais -c config.yaml          # Same as: ais serve -c config.yaml
 
 ### Agent Launcher
 
-Launch AI agents with environment variables auto-configured from a route key:
+Launch AI agents with environment variables auto-configured:
 
 ```bash
-# Launch Claude Code
 ais agent my-route-key claude --continue
-
-# Launch Codex CLI
 ais agent my-route-key codex --model o4-mini
 ```
 
-This auto-configures environment variables and overrides the agent's own config (via `--settings` for Claude, `-c` for Codex) to ensure requests route through ais using the route key. No manual configuration needed.
+Auto-configures environment and overrides agent settings — no manual setup needed.
 
-The route key serves as the API key. Agent args and exit codes are passed through.
-
-### Config validation
+### Config Validation
 
 ```bash
 $ ais check -c config.yaml
@@ -329,40 +388,51 @@ Checking config.yaml ...
 ✓ Config is valid.
 ```
 
-Exit codes: `0` = valid, `1` = has errors, `2` = warnings only.
+---
 
 ## Admin UI
 
-Open `http://localhost:12345` in your browser for a built-in dashboard to manage providers, routes, view usage statistics, and inspect request traces.
+Open `http://localhost:12345` for the built-in dashboard:
 
-### Traces
+- **Provider & Route management** — add, edit, delete providers and routes
+- **Request tracing** — inspect every request/response with raw viewer, diff view, and TTFB waterfall
+- **Usage statistics** — token usage by provider/model with daily trend charts
+- **Settings** — config backup & restore, auto-recovery from corrupt config
 
-Every request is recorded with full request/response details. Click any trace to inspect:
+Adding a provider auto-creates a same-named route — one step setup.
 
-- **Raw viewer**: See the exact request and response payloads
-- **Diff view**: Side-by-side comparison of request and response
-- **TTFB waterfall**: Visualize time-to-first-byte and upstream latency
+---
 
-### Usage Stats
+## FAQ
 
-The stats page shows token usage broken down by provider and model, including cache token metrics, with daily trend charts.
+**Does it support streaming?**
 
-### Settings
+Yes — full SSE streaming with protocol conversion. Stream from Anthropic → Chat, Gemini → Responses, any combination.
 
-The Settings page provides config management:
+**Can I use it with Cursor / Copilot / ChatGPT-Next-Web?**
 
-- **Backup & Restore**: Browse config backup history and restore to any previous version
-- **Auto-recovery**: If the config file becomes corrupted, ais automatically recovers from the newest valid backup
+Yes — any tool that supports OpenAI-compatible API. Just set `OPENAI_BASE_URL=http://localhost:12345/v1`.
 
-Adding a provider in the Admin UI automatically creates a same-named route, reducing setup to one step.
+**What if my provider isn't listed?**
+
+Any OpenAI-compatible API works out of the box. Just add it as a provider with `format: "chat"`.
+
+**How does it handle rate limiting?**
+
+Configure `fallback_keys` on your provider — ai-switch automatically switches to the next key on 429/529.
+
+**Can different scenes use different providers?**
+
+Yes — use `scene_map` with `provider|model` syntax to route thinking → DeepSeek, web search → Zhipu, etc.
+
+---
 
 ## Build
 
 ```bash
 make build      # fmt + vet + compile
 make build-all  # build frontend + Go binary
-make install    # build frontend + Go binary + install to ~/.local/bin
-make dev        # run in dev mode
+make install    # build all + install to ~/.local/bin
 make test       # run tests
 make clean      # remove binary
 ```

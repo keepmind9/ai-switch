@@ -1,78 +1,62 @@
 # ai-switch
 
-[![Go Report Card](https://goreportcard.com/badge/github.com/keepmind9/ai-switch)](https://goreportcard.com/report/github.com/keepmind9/ai-switch) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Go Report Card](https://goreportcard.com/badge/github.com/keepmind9/ai-switch)](https://goreportcard.com/report/github.com/keepmind9/ai-switch) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![Release](https://img.shields.io/github/v/release/keepmind9/ai-switch?include_prereleases)](https://github.com/keepmind9/ai-switch/releases)
 
-**English** | [中文](README_zh.md)
+**本地 LLM 代理 — 让 Claude Code、Cursor、Codex CLI 使用任意 AI 服务商。**
 
-一个轻量级本地代理，让任何 AI CLI 工具（Claude Code、Codex CLI 等）通过统一的本地端点使用第三方 LLM API。
-
-**一个二进制，一个配置，任意 AI CLI → 任意 LLM API。**
-
-## 特性
-
-- **多协议自动转换**：自动检测客户端协议（Responses API、Anthropic Messages、Chat Completions）并透明转换
-- **零侵入**：无需修改 CLI 工具的配置文件，只需将 `base_url` 指向本地代理
-- **场景路由**：根据请求类型（思考、联网搜索、后台任务）将 Claude Code 的请求路由到不同模型
-- **模型映射**：在路由层将客户端模型名映射为上游模型名
-- **跨 Provider 路由**：不同场景路由到不同 Provider（如思考 → DeepSeek，联网 → 智谱）
-- **热重载**：无需重启即可更新配置（`POST /api/reload` 或 `kill -HUP`）
-- **管理面板**：内置 Web 管理界面，可视化管理 Provider、Route，查看用量统计和调试请求
-- **请求追踪**：记录每个请求/响应对，支持原始查看、Diff 对比、TTFB 瀑布流图
-- **用量统计**：按 Provider 和模型统计 token 用量（含缓存 token），配合趋势图表
-- **多 Key 降级**：遇到 429/529 限流或服务过载时自动切换到备用 API Key
-- **上下文压缩**：支持 compact 端点进行上下文管理，对非 OpenAI 上游提供 LLM 摘要模拟
-- **轻量**：纯 Go 实现，单二进制，无 CGO 依赖
-
-## 安装
-
-### 一键安装（推荐）
-
-**Linux / macOS:**
+**一个二进制。一个配置。任意 AI CLI → 任意 LLM API。**
 
 ```bash
 curl -sL https://raw.githubusercontent.com/keepmind9/ai-switch/main/scripts/install.sh | bash
 ```
 
-**Windows (PowerShell):**
+[快速开始](#快速开始) · [功能特性](#功能特性) · [支持的服务商和客户端](#支持的服务商和客户端) · [配置说明](#配置说明) · [CLI 命令](#cli-命令) · [管理面板](#管理面板) · [常见问题](#常见问题)
+
+[English](README.md) | **中文**
+
+---
+
+## 快速开始
+
+```bash
+# 1. 安装
+curl -sL https://raw.githubusercontent.com/keepmind9/ai-switch/main/scripts/install.sh | bash
+
+# 2. 启动
+ais serve
+
+# 3. 配置你的 AI 工具
+export ANTHROPIC_BASE_URL=http://localhost:12345
+export ANTHROPIC_API_KEY=ais-default
+```
+
+完成 — Claude Code 现在走你配置的 LLM 服务商了。
+
+> 无需配置文件 — `ais serve` 首次运行自动创建 `~/.ai-switch/config.yaml`。
+> 浏览器打开 `http://localhost:12345` 即可通过管理面板配置 Provider。
+
+<details>
+<summary>其他安装方式</summary>
+
+**Windows (PowerShell)：**
 
 ```powershell
 irm https://raw.githubusercontent.com/keepmind9/ai-switch/main/scripts/install.ps1 | iex
 ```
 
-自动下载最新版本，安装到 `~/.local/bin`，并添加到 PATH。
-
-### 从源码构建
+**从源码构建：**
 
 ```bash
 git clone https://github.com/keepmind9/ai-switch.git
 cd ai-switch
 make build-all   # 构建前端 + Go 二进制（包含管理面板）
+# 或：make build  # 仅构建 Go 二进制，不含管理面板
 ```
 
-> 如不需要管理面板，可使用 `make build`（仅构建 Go 二进制，速度更快）。
+</details>
 
-## 快速开始
-
-### 1. 启动服务
-
-```bash
-ais serve
-```
-
-无需配置文件——首次运行自动创建 `~/.ai-switch/config.yaml`。
-
-### 2. 通过管理面板配置
-
-在浏览器打开 `http://localhost:12345`，添加 Provider 和 Route。
-
-### 3. 配置你的 CLI 工具
-
-**Claude Code：**
-
-```bash
-export ANTHROPIC_BASE_URL=http://localhost:12345
-export ANTHROPIC_API_KEY=<route-key>
-```
+<details>
+<summary>配置其他 AI 工具</summary>
 
 **Codex CLI：**
 
@@ -84,38 +68,119 @@ api_key = "ais-default"
 wire_api = "responses"
 ```
 
-**任何 OpenAI 兼容工具：**
+**Cursor / 任何 OpenAI 兼容工具：**
 
 ```bash
 export OPENAI_BASE_URL=http://localhost:12345/v1
-export OPENAI_API_KEY=<route-key>
+export OPENAI_API_KEY=ais-default
 ```
 
-完成！你的 CLI 工具将通过 ai-switch 路由到你配置的 Provider。
+**或使用 Agent 启动器（零配置）：**
+
+```bash
+ais agent my-route-key claude    # 启动 Claude Code
+ais agent my-route-key codex     # 启动 Codex CLI
+```
+
+</details>
+
+---
 
 ## 工作原理
 
+```mermaid
+graph LR
+    subgraph 客户端
+        CC[Claude Code]
+        CX[Cursor]
+        CO[Codex CLI]
+        OT[任意 OpenAI 工具]
+    end
+
+    subgraph ai-switch
+        P[协议检测<br>& 转换]
+    end
+
+    subgraph 服务商
+        DS[DeepSeek]
+        ZP[Anthropic]
+        GM[Google Gemini]
+        ZH[智谱 GLM]
+        MM[MiniMax]
+        OR[OpenRouter]
+        OT2[...任意服务商]
+    end
+
+    CC -->|Anthropic| P
+    CX -->|Chat| P
+    CO -->|Responses| P
+    OT -->|Chat| P
+
+    P -->|Chat| DS
+    P -->|Anthropic| ZP
+    P -->|Gemini| GM
+    P -->|Chat| ZH
+    P -->|Chat| MM
+    P -->|Chat| OR
+    P -->|Chat| OT2
 ```
-Claude Code ──→ ai-switch ──→ DeepSeek (chat)
-Codex CLI  ──→          ──→ 智谱    (anthropic)
-任意工具    ──→          ──→ Gemini   (gemini)
-任意工具    ──→          ──→ MiniMax  (chat)
-```
 
-ai-switch 位于你的 CLI 工具和上游 LLM Provider 之间，它会：
+ai-switch 位于你的 AI 工具和上游 LLM 服务商之间。自动检测客户端协议并透明转换 — 你的工具以为自己在直连 OpenAI / Anthropic。
 
-- 自动检测客户端协议（Anthropic / Responses / Chat）
-- 根据 API Key（路由 Key）将请求路由到正确的 Provider
-- 在需要时进行协议转换（如 Anthropic → Chat Completions）
-- 检测请求场景（思考、联网搜索等）实现智能路由
+---
 
-路由 Key（上例中的 `<route-key>`）同时用作认证的 API Key 和路由标识。
+## 支持的服务商和客户端
+
+### 客户端
+
+| 客户端 | 协议 | 配置方式 |
+|--------|------|----------|
+| Claude Code | Anthropic | `ANTHROPIC_BASE_URL` |
+| Cursor | OpenAI Chat | `OPENAI_BASE_URL` |
+| Codex CLI | Responses API | toml 配置 |
+| ChatGPT-Next-Web | OpenAI Chat | 设置界面 |
+| 任意 OpenAI 兼容工具 | Chat / Responses | `OPENAI_BASE_URL` |
+
+### 上游服务商
+
+任何 OpenAI 兼容 API 开箱即用。已验证：
+
+DeepSeek · OpenAI · Anthropic · Google Gemini · 智谱 GLM · MiniMax · 硅基流动 · OpenRouter · 月之暗面 · 通义千问 · 阶跃星辰 · 豆包（字节跳动）
+
+### 协议转换
+
+4 种协议全部可互转 — 任意客户端可对接任意服务商：
+
+| | → Chat | → Anthropic | → Responses | → Gemini |
+|---|:---:|:---:|:---:|:---:|
+| **Chat** → | ✅ | ✅ | ✅ | ✅ |
+| **Anthropic** → | ✅ | ✅ | ✅ | ✅ |
+| **Responses** → | ✅ | ✅ | ✅ | ✅ |
+
+---
+
+## 功能特性
+
+**🔄 多协议自动转换**
+自动检测客户端协议（Chat / Anthropic / Responses / Gemini）并转换为任意上游格式 — 4 种协议，N×N 全交叉转换。
+
+**🎯 智能路由**
+根据 AI 工具正在执行的操作路由到不同模型 — 思考任务 → DeepSeek，联网搜索 → 智谱，后台任务 → 轻量模型。支持场景检测、模型名映射、跨服务商路由。
+
+**🛡️ 高可用**
+429/529 限流自动切换备用 Key，无需重启热更新配置，配置自动备份 + 一键恢复 + 损坏自动恢复。
+
+**📊 可观测性**
+内置管理面板，可视化管理 Provider 和 Route，每请求追踪（原始查看、Diff 对比、TTFB 瀑布流），token 用量统计及趋势图表。
+
+**🪶 轻量**
+纯 Go 实现，单二进制，零依赖。不需要 Python、不需要 Docker、不需要运行时环境。下载即用。
+
+---
 
 ## 配置说明
 
-### Provider
-
-定义上游 LLM 服务商连接：
+### 最小配置
 
 ```yaml
 providers:
@@ -123,19 +188,33 @@ providers:
     name: "DeepSeek"
     base_url: "https://api.deepseek.com/v1"
     api_key: "${DEEPSEEK_API_KEY}"    # 支持 ${ENV_VAR} 环境变量展开
-    format: "chat"                     # chat（默认）| responses | anthropic | gemini
-    think_tag: "think"                 # 可选：去除响应中的推理标签
-    fallback_keys:                     # 可选：429 限流时的备用 API Key
-      - "${DEEPSEEK_API_KEY_2}"
-      - "${DEEPSEEK_API_KEY_3}"
-    models:                            # 可选：用于配置校验警告
-      - "deepseek-chat"
-      - "deepseek-reasoner"
+    format: "chat"                     # chat | responses | anthropic | gemini
+
+routes:
+  "ais-default":
+    provider: "deepseek"
+    default_model: "deepseek-chat"
 ```
 
-### Gemini Provider
+### Provider 完整配置
 
-将 Google Gemini 作为上游：
+```yaml
+providers:
+  deepseek:
+    name: "DeepSeek"
+    base_url: "https://api.deepseek.com/v1"
+    api_key: "${DEEPSEEK_API_KEY}"
+    format: "chat"
+    think_tag: "think"                 # 可选：去除推理标签
+    fallback_keys:                     # 可选：429 限流备用 Key
+      - "${DEEPSEEK_API_KEY_2}"
+    models:                            # 可选：用于 GET /v1/models 和校验
+      - "deepseek-chat"
+      - "deepseek-reasoner"
+    enable_proxy: true                 # 可选：使用全局代理
+```
+
+### Google Gemini
 
 ```yaml
 providers:
@@ -146,22 +225,12 @@ providers:
     format: "gemini"
 ```
 
-无需配置 `path` — ai-switch 会自动构建 `/v1beta/models/{model}:generateContent`。
+无需配置 `path` — ai-switch 自动构建 `/v1beta/models/{model}:generateContent`。
 
-### Route
+<details>
+<summary><strong>场景映射 — 按请求类型路由</strong></summary>
 
-Route 将 API Key 映射到 Provider 和模型：
-
-```yaml
-routes:
-  "ais-default":
-    provider: "deepseek"
-    default_model: "deepseek-chat"
-```
-
-### 场景映射（Scene Map）
-
-根据 Claude Code 正在执行的操作类型路由到不同模型：
+根据 Claude Code 正在执行的操作路由到不同模型：
 
 ```yaml
 routes:
@@ -188,64 +257,10 @@ routes:
 
 优先级：`longContext` > `background` > `websearch` > `think` > `image` > `default`
 
-### 默认路由（Default Routes）
+</details>
 
-控制请求没有匹配 API Key 时使用哪条路由：
-
-```yaml
-default_route: "ais-default"              # 全局兜底
-default_anthropic_route: "ais-zhipu"      # /v1/messages（Claude Code）
-default_responses_route: "ais-default"    # /v1/responses（Codex CLI）
-default_chat_route: "ais-default"         # /v1/chat/completions
-```
-
-**路由优先级：** route key 匹配 > 协议级默认 > 全局 `default_route`
-
-所有字段均可选。未设置的协议级默认会回退到 `default_route`。
-
-### 日志保留（Log Retention）
-
-控制日志文件保留天数（默认 30 天）：
-
-```yaml
-log_retention_days: 7
-```
-
-日志文件存储在 `~/.ai-switch/logs/`。
-
-### IP 白名单
-
-当监听地址为非 localhost 时，限制只允许信任的 IP 访问：
-
-```yaml
-server:
-  host: "0.0.0.0"
-  port: 12345
-  allowed_ips:
-    - "192.168.1.0/24"
-    - "10.0.0.5"
-```
-
-支持 CIDR 格式和裸 IP 地址。当 `host` 为 `127.0.0.1` 或 `localhost` 时，白名单不生效（即使已配置）。
-
-### 上游代理（Upstream Proxy）
-
-通过 HTTP/SOCKS5 代理访问上游 LLM API：
-
-```yaml
-server:
-  proxy_url: "socks5://127.0.0.1:1080"
-
-providers:
-  openai:
-    enable_proxy: true
-```
-
-全局配置 `proxy_url`，然后在 Provider 中通过 `enable_proxy: true` 逐个启用。支持的协议：`http`、`https`、`socks5`。
-
-### 模型映射（Model Map）
-
-将客户端模型名映射为上游模型：
+<details>
+<summary><strong>模型映射 — 映射客户端模型名</strong></summary>
 
 ```yaml
 routes:
@@ -257,7 +272,10 @@ routes:
       "gpt-4o": "deepseek-chat"
 ```
 
-### 跨 Provider 路由
+</details>
+
+<details>
+<summary><strong>跨服务商路由</strong></summary>
 
 使用 `provider|model` 格式在同一 Route 中路由到其他 Provider：
 
@@ -272,11 +290,53 @@ routes:
       websearch: "zhipu|glm-4.7"
 ```
 
+</details>
+
+<details>
+<summary><strong>默认路由 & IP 白名单 & 代理</strong></summary>
+
+**默认路由：**
+
+```yaml
+default_route: "ais-default"              # 全局兜底
+default_anthropic_route: "ais-zhipu"      # /v1/messages（Claude Code）
+default_responses_route: "ais-default"    # /v1/responses（Codex CLI）
+default_chat_route: "ais-default"         # /v1/chat/completions
+```
+
+**路由优先级：** route key 匹配 > 协议级默认 > 全局 `default_route`
+
+**IP 白名单**（非 localhost 绑定时）：
+
+```yaml
+server:
+  host: "0.0.0.0"
+  port: 12345
+  allowed_ips:
+    - "192.168.1.0/24"
+    - "10.0.0.5"
+```
+
+**上游代理**（HTTP/SOCKS5）：
+
+```yaml
+server:
+  proxy_url: "socks5://127.0.0.1:1080"
+
+providers:
+  openai:
+    enable_proxy: true
+```
+
+</details>
+
 ### 模型解析优先级
 
 1. **ModelMap** — 精确模型名匹配（不区分大小写）
 2. **SceneMap** — 场景检测（仅 Anthropic 协议）
 3. **DefaultModel** — 兜底
+
+---
 
 ## CLI 命令
 
@@ -287,11 +347,11 @@ ais serve -c config.yaml    # 指定配置文件启动
 ais stop                    # 停止后台守护进程
 ais check -c config.yaml    # 校验配置文件
 ais version                 # 查看版本信息
-ais update                  # 检查更新并下载最新版本
+ais update                  # 检查更新
 ais update --apply          # 应用已下载的更新
 ais shortcut                # 创建桌面快捷方式
-ais agent <route-key> claude # 通过 ais 启动 Claude Code
-ais agent <route-key> codex  # 通过 ais 启动 Codex CLI
+ais agent <key> claude      # 通过 ais 启动 Claude Code
+ais agent <key> codex       # 通过 ais 启动 Codex CLI
 ```
 
 不带子命令时默认执行 `serve`：
@@ -305,15 +365,11 @@ ais -c config.yaml          # 等同于：ais serve -c config.yaml
 自动配置环境变量，一键启动 AI Agent：
 
 ```bash
-# 启动 Claude Code
 ais agent my-route-key claude --continue
-
-# 启动 Codex CLI
 ais agent my-route-key codex --model o4-mini
 ```
 
-自动配置环境变量并覆盖 agent 自身配置（Claude 通过 `--settings`，Codex 通过 `-c`），确保请求通过 route key 路由到 ai-switch。无需手动配置。
-route key 用作 API Key。Agent 参数和退出码会透传。
+自动配置环境变量并覆盖 agent 自身配置 — 无需手动设置。
 
 ### 配置校验
 
@@ -329,52 +385,54 @@ Checking config.yaml ...
 ✓ Config is valid.
 ```
 
-退出码：`0` = 有效，`1` = 有错误，`2` = 仅警告。
+---
 
 ## 管理面板
 
-在浏览器打开 `http://localhost:12345`，使用内置管理面板管理 Provider、Route，查看用量统计，以及检查请求追踪记录。
+浏览器打开 `http://localhost:12345` 即可使用内置管理面板：
 
-### 请求追踪（Trace）
+- **Provider & Route 管理** — 添加、编辑、删除 Provider 和 Route
+- **请求追踪** — 查看每个请求/响应的完整记录，支持原始查看、Diff 对比、TTFB 瀑布流
+- **用量统计** — 按 Provider 和模型展示 token 用量明细和每日趋势图表
+- **系统设置** — 配置备份与恢复，损坏配置自动恢复
 
-每个请求都会完整记录请求/响应详情。点击任意追踪记录可以查看：
+添加 Provider 时自动创建同名 Route — 一步完成配置。
 
-- **原始查看器**：查看请求和响应的完整载荷
-- **Diff 对比**：请求和响应的并排对比
-- **TTFB 瀑布流**：可视化首字节时间和上游延迟
+---
 
-### 用量统计
+## 常见问题
 
-统计页面按 Provider 和模型展示 token 用量明细，包含缓存 token 指标和每日趋势图表。
+**支持流式输出吗？**
 
-### 系统设置
+支持 — 完整的 SSE 流式传输，并带协议转换。Anthropic → Chat、Gemini → Responses，任意组合。
 
-系统设置页面提供配置管理功能：
+**能在 Cursor / Copilot / ChatGPT-Next-Web 上用吗？**
 
-- **备份与恢复**：浏览配置备份历史，一键恢复到任意历史版本
-- **自动恢复**：配置文件损坏时，自动从最新的有效备份恢复
+可以 — 任何支持 OpenAI 兼容 API 的工具都能用。设置 `OPENAI_BASE_URL=http://localhost:12345/v1` 即可。
 
-在管理面板中添加 Provider 时会自动创建同名 Route，一步完成配置。
+**我的服务商不在列表里怎么办？**
+
+任何 OpenAI 兼容 API 都能开箱即用。添加 Provider 时设 `format: "chat"` 即可。
+
+**怎么处理限流？**
+
+在 Provider 上配置 `fallback_keys` — 遇到 429/529 时自动切换到下一个 Key。
+
+**不同场景能用不同服务商吗？**
+
+可以 — 使用 `scene_map` 配合 `provider|model` 语法，思考 → DeepSeek，联网 → 智谱，随心组合。
+
+---
 
 ## 构建
 
 ```bash
 make build      # 格式化 + 静态检查 + 编译
 make build-all  # 构建前端 + Go 二进制
-make install    # 构建前端 + Go 二进制 + 安装到 ~/.local/bin
-make dev        # 开发模式运行
+make install    # 构建全部 + 安装到 ~/.local/bin
 make test       # 运行测试
 make clean      # 清理构建产物
 ```
-
-### Release 构建
-
-```bash
-./scripts/release.sh           # 自动检测 git tag 作为版本号
-./scripts/release.sh v0.1.0    # 指定版本号
-```
-
-产物输出到 `dist/` 目录，包含跨平台二进制和 SHA256 校验文件。
 
 ## 许可证
 
