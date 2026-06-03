@@ -42,7 +42,7 @@ export ANTHROPIC_API_KEY=ais-default
 完成 — Claude Code 现在走你配置的 LLM 服务商了。
 
 > 无需配置文件 — `ais serve` 首次运行自动创建 `~/.ai-switch/config.yaml`。
-> 浏览器打开 `http://localhost:12345` 即可通过管理面板配置 Provider。
+> 浏览器打开 `http://localhost:12345/ui` 即可通过管理面板配置 Provider。
 
 <details>
 <summary>从源码构建</summary>

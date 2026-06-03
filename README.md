@@ -42,7 +42,7 @@ export ANTHROPIC_API_KEY=ais-default
 That's it — Claude Code is now using your configured LLM provider.
 
 > No config file needed — `ais serve` auto-creates `~/.ai-switch/config.yaml` on first run.
-> Open `http://localhost:12345` in your browser to configure providers via the Admin UI.
+> Open `http://localhost:12345/ui` in your browser to configure providers via the Admin UI.
 
 <details>
 <summary>Build from source</summary>
