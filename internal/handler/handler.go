@@ -1078,8 +1078,9 @@ func (h *Handler) handleAPIStatus(c *gin.Context) {
 }
 
 // handleModels implements GET /v1/models — returns available models for the
-// authenticated client. The client's API key is resolved to a route → provider,
-// and the provider's configured Models list is returned in OpenAI-compatible format.
+// authenticated client. The response format is selected by auth header:
+//   - x-api-key (Anthropic clients like Claude Code) → Anthropic format
+//   - Authorization: Bearer (OpenAI clients like Cursor, Codex) → OpenAI format
 func (h *Handler) handleModels(c *gin.Context) {
 	apiKey := extractClientAPIKey(c)
 	if apiKey == "" {
@@ -1102,27 +1103,59 @@ func (h *Handler) handleModels(c *gin.Context) {
 	cfg := h.provider.Get()
 	prov, ok := cfg.Providers[result.ProviderKey]
 	if !ok || len(prov.Models) == 0 {
-		c.JSON(http.StatusOK, gin.H{
-			"object": "list",
-			"data":   []any{},
-		})
+		if isAnthropicClient(c) {
+			c.JSON(http.StatusOK, gin.H{
+				"data":     []any{},
+				"has_more": false,
+			})
+		} else {
+			c.JSON(http.StatusOK, gin.H{
+				"object": "list",
+				"data":   []any{},
+			})
+		}
 		return
 	}
 
-	data := make([]gin.H, 0, len(prov.Models))
-	for _, id := range prov.Models {
-		data = append(data, gin.H{
-			"id":       id,
-			"object":   "model",
-			"created":  0,
-			"owned_by": result.ProviderKey,
+	if isAnthropicClient(c) {
+		// Anthropic format: {"data": [{"type":"model","id":"..."}], "has_more": false, ...}
+		data := make([]gin.H, 0, len(prov.Models))
+		for _, id := range prov.Models {
+			data = append(data, gin.H{
+				"type": "model",
+				"id":   id,
+			})
+		}
+		firstID := prov.Models[0]
+		lastID := prov.Models[len(prov.Models)-1]
+		c.JSON(http.StatusOK, gin.H{
+			"data":     data,
+			"has_more": false,
+			"first_id": firstID,
+			"last_id":  lastID,
+		})
+	} else {
+		// OpenAI format: {"object": "list", "data": [{"id":"...","object":"model",...}]}
+		data := make([]gin.H, 0, len(prov.Models))
+		for _, id := range prov.Models {
+			data = append(data, gin.H{
+				"id":       id,
+				"object":   "model",
+				"created":  0,
+				"owned_by": result.ProviderKey,
+			})
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"object": "list",
+			"data":   data,
 		})
 	}
+}
 
-	c.JSON(http.StatusOK, gin.H{
-		"object": "list",
-		"data":   data,
-	})
+// isAnthropicClient returns true when the request uses Anthropic-style auth
+// (x-api-key header), indicating an Anthropic client such as Claude Code.
+func isAnthropicClient(c *gin.Context) bool {
+	return c.GetHeader("x-api-key") != ""
 }
 
 // isRateLimited returns true for upstream rate-limiting status codes (429, 529).

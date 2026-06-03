@@ -683,8 +683,8 @@ func TestHandleModels_InvalidAPIKey(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
 }
 
-func TestHandleModels_XAPIKey(t *testing.T) {
-	r := setupModelsRouter(t, "anthropic", []string{"claude-sonnet-4-20250514"})
+func TestHandleModels_XAPIKey_AnthropicFormat(t *testing.T) {
+	r := setupModelsRouter(t, "anthropic", []string{"claude-sonnet-4-20250514", "claude-opus-4-20250115"})
 
 	req := httptest.NewRequest("GET", "/v1/models", nil)
 	req.Header.Set("x-api-key", "ais-testkey123")
@@ -695,7 +695,36 @@ func TestHandleModels_XAPIKey(t *testing.T) {
 
 	var resp map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+
+	// Anthropic format: no "object" field, has "has_more", "first_id", "last_id"
+	assert.Nil(t, resp["object"])
+	assert.Equal(t, false, resp["has_more"])
+	assert.Equal(t, "claude-sonnet-4-20250514", resp["first_id"])
+	assert.Equal(t, "claude-opus-4-20250115", resp["last_id"])
+
 	data := resp["data"].([]any)
-	assert.Len(t, data, 1)
+	assert.Len(t, data, 2)
+	assert.Equal(t, "model", data[0].(map[string]any)["type"])
 	assert.Equal(t, "claude-sonnet-4-20250514", data[0].(map[string]any)["id"])
+	assert.Equal(t, "model", data[1].(map[string]any)["type"])
+	assert.Equal(t, "claude-opus-4-20250115", data[1].(map[string]any)["id"])
+}
+
+func TestHandleModels_AnthropicEmptyList(t *testing.T) {
+	r := setupModelsRouter(t, "anthropic", nil)
+
+	req := httptest.NewRequest("GET", "/v1/models", nil)
+	req.Header.Set("x-api-key", "ais-testkey123")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Nil(t, resp["object"])
+	assert.Equal(t, false, resp["has_more"])
+	assert.Nil(t, resp["first_id"])
+	assert.Nil(t, resp["last_id"])
+	assert.Empty(t, resp["data"])
 }
