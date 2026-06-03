@@ -173,6 +173,7 @@ func (h *Handler) RegisterRoutes(r *gin.Engine) {
 	r.POST("/v1/messages", h.handleAnthropic)
 	r.POST("/v1/messages/count_tokens", h.handleCountTokens)
 	r.POST("/v1/chat/completions", h.handleChat)
+	r.GET("/v1/models", h.handleModels)
 	r.POST("/api/reload", h.handleReload)
 	r.GET("/api/status", h.handleAPIStatus)
 
@@ -1074,6 +1075,54 @@ func (h *Handler) handleAPIStatus(c *gin.Context) {
 	status["providers"] = providers
 
 	sendOK(c, status)
+}
+
+// handleModels implements GET /v1/models — returns available models for the
+// authenticated client. The client's API key is resolved to a route → provider,
+// and the provider's configured Models list is returned in OpenAI-compatible format.
+func (h *Handler) handleModels(c *gin.Context) {
+	apiKey := extractClientAPIKey(c)
+	if apiKey == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": gin.H{"message": "missing API key", "type": "invalid_request_error"},
+		})
+		return
+	}
+
+	// Resolve key → route → provider. Nil body is safe: the router's model
+	// resolution falls back to DefaultModel when body is empty/unparsable.
+	result, err := h.router.Route("chat", apiKey, nil)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": gin.H{"message": "invalid API key", "type": "invalid_request_error"},
+		})
+		return
+	}
+
+	cfg := h.provider.Get()
+	prov, ok := cfg.Providers[result.ProviderKey]
+	if !ok || len(prov.Models) == 0 {
+		c.JSON(http.StatusOK, gin.H{
+			"object": "list",
+			"data":   []any{},
+		})
+		return
+	}
+
+	data := make([]gin.H, 0, len(prov.Models))
+	for _, id := range prov.Models {
+		data = append(data, gin.H{
+			"id":       id,
+			"object":   "model",
+			"created":  0,
+			"owned_by": result.ProviderKey,
+		})
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"object": "list",
+		"data":   data,
+	})
 }
 
 // isRateLimited returns true for upstream rate-limiting status codes (429, 529).

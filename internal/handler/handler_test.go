@@ -591,3 +591,111 @@ func TestExtractClientAPIKey(t *testing.T) {
 		})
 	}
 }
+
+// --- Tests for GET /v1/models ---
+
+func newModelsTestConfig(providerKey string, models []string) *config.Config {
+	return &config.Config{
+		Providers: map[string]config.ProviderConfig{
+			providerKey: {
+				Name:    "test-provider",
+				BaseURL: "https://api.example.com",
+				APIKey:  "upstream-key",
+				Format:  "chat",
+				Models:  models,
+			},
+		},
+		Routes: map[string]config.RouteRule{
+			"ais-testkey123": {
+				Provider:     providerKey,
+				DefaultModel: "gpt-4o",
+			},
+		},
+	}
+}
+
+func setupModelsRouter(t *testing.T, providerKey string, models []string) *gin.Engine {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
+	provider := config.NewProvider(newModelsTestConfig(providerKey, models), "")
+	r := router.NewConfigRouter(provider)
+	h := NewHandler(provider, nil, r, nil)
+	engine := gin.New()
+	h.RegisterRoutes(engine)
+	return engine
+}
+
+func TestHandleModels_Success(t *testing.T) {
+	r := setupModelsRouter(t, "openai", []string{"gpt-4o", "gpt-4o-mini", "o3"})
+
+	req := httptest.NewRequest("GET", "/v1/models", nil)
+	req.Header.Set("Authorization", "Bearer ais-testkey123")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, "list", resp["object"])
+
+	data := resp["data"].([]any)
+	assert.Len(t, data, 3)
+	assert.Equal(t, "gpt-4o", data[0].(map[string]any)["id"])
+	assert.Equal(t, "model", data[0].(map[string]any)["object"])
+	assert.Equal(t, "openai", data[0].(map[string]any)["owned_by"])
+}
+
+func TestHandleModels_EmptyList(t *testing.T) {
+	r := setupModelsRouter(t, "empty-prov", nil)
+
+	req := httptest.NewRequest("GET", "/v1/models", nil)
+	req.Header.Set("Authorization", "Bearer ais-testkey123")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, "list", resp["object"])
+	assert.Empty(t, resp["data"])
+}
+
+func TestHandleModels_NoAPIKey(t *testing.T) {
+	r := setupModelsRouter(t, "openai", []string{"gpt-4o"})
+
+	req := httptest.NewRequest("GET", "/v1/models", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestHandleModels_InvalidAPIKey(t *testing.T) {
+	r := setupModelsRouter(t, "openai", []string{"gpt-4o"})
+
+	req := httptest.NewRequest("GET", "/v1/models", nil)
+	req.Header.Set("Authorization", "Bearer wrong-key")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestHandleModels_XAPIKey(t *testing.T) {
+	r := setupModelsRouter(t, "anthropic", []string{"claude-sonnet-4-20250514"})
+
+	req := httptest.NewRequest("GET", "/v1/models", nil)
+	req.Header.Set("x-api-key", "ais-testkey123")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	data := resp["data"].([]any)
+	assert.Len(t, data, 1)
+	assert.Equal(t, "claude-sonnet-4-20250514", data[0].(map[string]any)["id"])
+}
