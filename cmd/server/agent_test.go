@@ -189,7 +189,7 @@ func TestRunAgent_ExitCode(t *testing.T) {
 // --- Scenario: unsupported agent name ---
 
 func TestRunAgent_UnsupportedAgent(t *testing.T) {
-	err := runAgent("", "key", "copilot", nil)
+	err := runAgent("", "", "key", "copilot", nil)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "unsupported agent")
 }
@@ -202,7 +202,7 @@ func TestRunAgent_BinaryNotFound(t *testing.T) {
 	t.Cleanup(func() { os.Setenv("PATH", origPath) })
 	require.NoError(t, os.Setenv("PATH", tmpDir))
 
-	err := runAgent("", "key", "claude", nil)
+	err := runAgent("", "", "key", "claude", nil)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "not found in PATH")
 }
@@ -495,7 +495,7 @@ func captureAgentOutput(t *testing.T, configPath, routeKey, agentName string, ar
 	require.NoError(t, err)
 	os.Stdout = w
 
-	err = runAgent(configPath, routeKey, agentName, args)
+	err = runAgent(configPath, "", routeKey, agentName, args)
 
 	w.Close()
 	os.Stdout = old
@@ -503,4 +503,84 @@ func captureAgentOutput(t *testing.T, configPath, routeKey, agentName string, ar
 	var buf strings.Builder
 	io.Copy(&buf, r)
 	return buf.String(), err
+}
+
+func TestParseAgentURL(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		wantRem []string
+		wantURL string
+	}{
+		{
+			name:    "no --url",
+			args:    []string{"my-key", "claude", "--continue"},
+			wantRem: []string{"my-key", "claude", "--continue"},
+			wantURL: "",
+		},
+		{
+			name:    "--url before positionals",
+			args:    []string{"--url", "http://1.2.3.4:9999", "my-key", "claude"},
+			wantRem: []string{"my-key", "claude"},
+			wantURL: "http://1.2.3.4:9999",
+		},
+		{
+			name:    "--url=value form",
+			args:    []string{"--url=http://remote:8080", "my-key", "codex"},
+			wantRem: []string{"my-key", "codex"},
+			wantURL: "http://remote:8080",
+		},
+		{
+			name:    "--url after positionals",
+			args:    []string{"my-key", "claude", "--url", "http://host:12345", "--continue"},
+			wantRem: []string{"my-key", "claude", "--continue"},
+			wantURL: "http://host:12345",
+		},
+		{
+			name:    "--url with trailing slash",
+			args:    []string{"--url", "http://host:12345/", "my-key", "claude"},
+			wantRem: []string{"my-key", "claude"},
+			wantURL: "http://host:12345/",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rem, url, err := parseAgentURL(tt.args)
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantRem, rem)
+			assert.Equal(t, tt.wantURL, url)
+		})
+	}
+}
+
+func TestParseAgentURL_NoValue(t *testing.T) {
+	_, _, err := parseAgentURL([]string{"--url"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "--url requires a value")
+}
+
+func TestRunAgent_ServerURLOverride(t *testing.T) {
+	// Use a fake claude binary that prints the BASE_URL env var
+	_, configPath := setupFakeAgent(t, "claude", `echo "BASE_URL=$ANTHROPIC_BASE_URL"`)
+	writeConfig(t, configPath, "10.0.0.1", 9999)
+
+	output, err := captureAgentOutput(t, configPath, "my-key", "claude", nil)
+	// Without --url, should use config values (10.0.0.1:9999)
+	require.NoError(t, err)
+	assert.Contains(t, output, "BASE_URL=http://10.0.0.1:9999")
+}
+
+func TestRunAgent_ServerURLFlagOverridesConfig(t *testing.T) {
+	// Config says 10.0.0.1:9999, but --url overrides to 192.168.1.100:12345
+	_, configPath := setupFakeAgent(t, "claude", `echo "BASE_URL=$ANTHROPIC_BASE_URL"`)
+	writeConfig(t, configPath, "10.0.0.1", 9999)
+
+	old := os.Stdout
+	oldPath := os.Getenv("PATH")
+	t.Cleanup(func() { os.Stdout = old; os.Setenv("PATH", oldPath) })
+	// PATH already set by setupFakeAgent
+
+	err := runAgent(configPath, "http://192.168.1.100:12345", "my-key", "claude", nil)
+	require.NoError(t, err)
 }

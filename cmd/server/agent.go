@@ -37,8 +37,10 @@ var agentEnvMap = map[string]agentEnvConfig{
 }
 
 func newAgentCmd(configPath string) *cobra.Command {
+	var serverURL string
+
 	cmd := &cobra.Command{
-		Use:   "agent <route_key> <agent> [agent_args...]",
+		Use:   "agent [--url <server_url>] <route_key> <agent> [agent_args...]",
 		Short: fmt.Sprintf("Launch an AI agent with %s config", binName),
 		Long: fmt.Sprintf(`Launch an AI agent (claude/codex) with environment variables
 automatically configured from a route key.
@@ -46,17 +48,54 @@ automatically configured from a route key.
 The route_key is used as the API key for the agent, and the base URL
 is set to the %s server address from the config file.
 
+Use --url to override the server address (e.g. connect to a remote server).
+
 Examples:
   %s agent my-key claude --continue
   %s agent my-key codex --model o4-mini
-  %s agent my-key claude --dangerously-skip-permissions`, binName, binName, binName, binName),
+  %s agent --url http://192.168.1.100:12345 my-key claude
+  %s agent --url http://remote:12345 my-key claude --dangerously-skip-permissions`, binName, binName, binName, binName, binName),
 		Args:               cobra.MinimumNArgs(2),
 		DisableFlagParsing: true,
 		RunE: func(_ *cobra.Command, args []string) error {
-			return runAgent(configPath, args[0], args[1], args[2:])
+			// Manually extract --url from args before positionals
+			filtered, parsedURL, err := parseAgentURL(args)
+			if err != nil {
+				return err
+			}
+			if len(filtered) < 2 {
+				return fmt.Errorf("requires at least 2 arguments: <route_key> <agent>")
+			}
+			return runAgent(configPath, parsedURL, filtered[0], filtered[1], filtered[2:])
 		},
 	}
+	// Stored on cmd for documentation only; actual parsing is manual.
+	cmd.Flags().StringVar(&serverURL, "url", "", "Override server URL (e.g. http://host:port)")
+	_ = serverURL
 	return cmd
+}
+
+// parseAgentURL scans args for --url <value> or --url=<value>, removes them,
+// and returns the remaining args and the parsed URL (empty string if not set).
+// Returns an error if --url is provided without a value.
+func parseAgentURL(args []string) (remaining []string, url string, err error) {
+	remaining = make([]string, 0, len(args))
+	for i := 0; i < len(args); i++ {
+		if args[i] == "--url" {
+			if i+1 >= len(args) {
+				return nil, "", fmt.Errorf("--url requires a value")
+			}
+			url = args[i+1]
+			i++ // skip value
+			continue
+		}
+		if strings.HasPrefix(args[i], "--url=") {
+			url = strings.TrimPrefix(args[i], "--url=")
+			continue
+		}
+		remaining = append(remaining, args[i])
+	}
+	return remaining, url, nil
 }
 
 // getCodexModelProvider reads model_provider from the codex config file.
@@ -96,7 +135,7 @@ func buildAuthEnvMap(envConfig agentEnvConfig, authKey, routeKey, baseURL string
 	return m
 }
 
-func runAgent(configPath, routeKey, agentName string, agentArgs []string) error {
+func runAgent(configPath, serverURL, routeKey, agentName string, agentArgs []string) error {
 	envConfig, ok := agentEnvMap[agentName]
 	if !ok {
 		return fmt.Errorf("unsupported agent %q, supported: %s", agentName, supportedAgents())
@@ -111,26 +150,31 @@ func runAgent(configPath, routeKey, agentName string, agentArgs []string) error 
 		return fmt.Errorf("agent %q not found in PATH", agentName)
 	}
 
-	// Resolve server address: config file > defaults; load failure is fatal
-	host := config.DefaultHost
-	port := config.DefaultPort
+	// Resolve server address: --url flag > config file > defaults
+	var baseURL string
+	if serverURL != "" {
+		baseURL = strings.TrimRight(serverURL, "/") + envConfig.pathSuffix
+	} else {
+		host := config.DefaultHost
+		port := config.DefaultPort
 
-	resolvedPath, _ := config.DefaultConfigPath(configPath)
-	if resolvedPath != "" {
-		if _, statErr := os.Stat(resolvedPath); statErr == nil {
-			cfg, err := config.Load(resolvedPath)
-			if err != nil {
-				return fmt.Errorf("failed to load config from %s: %w", resolvedPath, err)
+		resolvedPath, _ := config.DefaultConfigPath(configPath)
+		if resolvedPath != "" {
+			if _, statErr := os.Stat(resolvedPath); statErr == nil {
+				cfg, err := config.Load(resolvedPath)
+				if err != nil {
+					return fmt.Errorf("failed to load config from %s: %w", resolvedPath, err)
+				}
+				host = cfg.Server.Host
+				port = cfg.Server.Port
 			}
-			host = cfg.Server.Host
-			port = cfg.Server.Port
 		}
-	}
 
-	if host == "0.0.0.0" {
-		host = "127.0.0.1"
+		if host == "0.0.0.0" {
+			host = "127.0.0.1"
+		}
+		baseURL = fmt.Sprintf("http://%s:%d%s", host, port, envConfig.pathSuffix)
 	}
-	baseURL := fmt.Sprintf("http://%s:%d%s", host, port, envConfig.pathSuffix)
 
 	// Pick auth key: prefer one already set in env, fallback to first in list.
 	authKey := envConfig.authKeys[0]
