@@ -97,7 +97,7 @@ func runServe(configPath string) error {
 
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
-	r.Use(gin.Logger())
+	r.Use(middleware.GinLogger())
 	r.Use(gin.Recovery())
 	r.Use(middleware.IPWhitelist(cfg.Server.Host, cfg.Server.AllowedIPs))
 
