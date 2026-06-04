@@ -145,6 +145,14 @@ func runAgent(configPath, serverURL, routeKey, agentName string, agentArgs []str
 		return fmt.Errorf("agent %q has no auth keys configured", agentName)
 	}
 
+	// Validate --url early, before expensive operations like binary lookup
+	if serverURL != "" {
+		parsed, err := url.Parse(serverURL)
+		if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Hostname() == "" {
+			return fmt.Errorf("invalid --url value %q: must be a valid http/https URL", serverURL)
+		}
+	}
+
 	// Look up agent binary
 	binary, err := exec.LookPath(agentName)
 	if err != nil {
@@ -154,10 +162,6 @@ func runAgent(configPath, serverURL, routeKey, agentName string, agentArgs []str
 	// Resolve server address: --url flag > config file > defaults
 	var baseURL string
 	if serverURL != "" {
-		parsed, err := url.Parse(serverURL)
-		if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Hostname() == "" {
-			return fmt.Errorf("invalid --url value %q: must be a valid http/https URL", serverURL)
-		}
 		baseURL = strings.TrimRight(serverURL, "/") + envConfig.pathSuffix
 	} else {
 		host := config.DefaultHost
