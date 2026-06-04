@@ -9,10 +9,9 @@ import (
 )
 
 // GinLogger returns a gin middleware that logs request details via slog,
-// producing output similar to gin.Logger() but routed through the structured
-// logger so entries appear in both console and the app log file.
-//
-// Format: [GIN] 2026/06/04 - 08:46:01 | 200 | 5.593s | 127.0.0.1 | POST "/v1/messages"
+// so entries appear in both console and the app log file.
+// Logs are structured with status, latency, client_ip, method, path fields.
+// Log level: INFO for 1xx-3xx, WARN for 4xx, ERROR for 5xx.
 func GinLogger() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		path := c.Request.URL.Path
