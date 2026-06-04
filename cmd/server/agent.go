@@ -58,7 +58,13 @@ Examples:
   %s agent --url http://remote:12345 my-key claude --dangerously-skip-permissions`, binName, binName, binName, binName, binName),
 		Args:               cobra.MinimumNArgs(2),
 		DisableFlagParsing: true,
-		RunE: func(_ *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// Handle help manually since DisableFlagParsing bypasses cobra's -h/--help
+			for _, a := range args {
+				if a == "-h" || a == "--help" {
+					return cmd.Help()
+				}
+			}
 			// Manually extract --url from args before positionals
 			filtered, parsedURL, err := parseAgentURL(args)
 			if err != nil {
