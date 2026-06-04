@@ -199,12 +199,7 @@ func runAgent(configPath, serverURL, routeKey, agentName string, agentArgs []str
 	if err != nil {
 		return err
 	}
-	cmd := exec.Command(binary, finalArgs...)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	// Inherit current env, filtering out all auth and base URL keys
+	// Build environment: inherit current env, filtering out all auth and base URL keys
 	filterKeys := map[string]bool{envConfig.baseURLKey: true}
 	for _, k := range envConfig.authKeys {
 		filterKeys[k] = true
@@ -223,16 +218,8 @@ func runAgent(configPath, serverURL, routeKey, agentName string, agentArgs []str
 	for k, v := range envMap {
 		envOverrides = append(envOverrides, k+"="+v)
 	}
-	cmd.Env = append(baseEnv, envOverrides...)
 
-	if err := cmd.Run(); err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			return errExitCode{code: exitErr.ExitCode()}
-		}
-		return fmt.Errorf("failed to run agent: %w", err)
-	}
-
-	return nil
+	return execAgentFunc(binary, finalArgs, append(baseEnv, envOverrides...))
 }
 
 // buildAgentArgs prepends config override arguments so the agent uses the

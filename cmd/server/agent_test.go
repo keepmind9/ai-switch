@@ -13,6 +13,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestMain(m *testing.M) {
+	// Use child-process mode in tests: syscall.Exec would replace the test process.
+	execAgentFunc = execAgentChildProcess
+	os.Exit(m.Run())
+}
+
 // --- Unit tests ---
 
 func TestAgentEnvMap(t *testing.T) {
@@ -583,4 +589,53 @@ func TestRunAgent_ServerURLFlagOverridesConfig(t *testing.T) {
 
 	err := runAgent(configPath, "http://192.168.1.100:12345", "my-key", "claude", nil)
 	require.NoError(t, err)
+}
+
+// --- execAgentChildProcess direct tests ---
+
+func TestExecAgentChildProcess_Success(t *testing.T) {
+	tmpDir := t.TempDir()
+	script := filepath.Join(tmpDir, "test-bin")
+	require.NoError(t, os.WriteFile(script, []byte("#!/bin/sh\necho hello"), 0755))
+
+	err := execAgentChildProcess(script, nil, os.Environ())
+	require.NoError(t, err)
+}
+
+func TestExecAgentChildProcess_ExitCode(t *testing.T) {
+	tmpDir := t.TempDir()
+	script := filepath.Join(tmpDir, "test-bin")
+	require.NoError(t, os.WriteFile(script, []byte("#!/bin/sh\nexit 7"), 0755))
+
+	err := execAgentChildProcess(script, nil, os.Environ())
+	require.Error(t, err)
+	var eec errExitCode
+	require.ErrorAs(t, err, &eec)
+	assert.Equal(t, 7, eec.code)
+}
+
+func TestExecAgentChildProcess_NonexistentBinary(t *testing.T) {
+	err := execAgentChildProcess("/nonexistent/binary", nil, os.Environ())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to run agent")
+}
+
+func TestExecAgentChildProcess_EnvVars(t *testing.T) {
+	tmpDir := t.TempDir()
+	script := filepath.Join(tmpDir, "test-bin")
+	require.NoError(t, os.WriteFile(script, []byte("#!/bin/sh\necho \"MY_VAR=$MY_VAR\""), 0755))
+
+	env := append(os.Environ(), "MY_VAR=testvalue")
+	err := execAgentChildProcess(script, nil, env)
+	require.NoError(t, err)
+}
+
+func TestExecAgentFunc_SetByTestMain(t *testing.T) {
+	// Verify TestMain correctly set execAgentFunc to the test-safe implementation
+	assert.NotNil(t, execAgentFunc)
+	tmpDir := t.TempDir()
+	script := filepath.Join(tmpDir, "test-bin")
+	require.NoError(t, os.WriteFile(script, []byte("#!/bin/sh\nexit 0"), 0755))
+	err := execAgentFunc(script, nil, os.Environ())
+	assert.NoError(t, err)
 }
