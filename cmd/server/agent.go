@@ -56,7 +56,6 @@ Examples:
   %s agent my-key codex --model o4-mini
   %s agent --url http://192.168.1.100:12345 my-key claude
   %s agent --url http://remote:12345 my-key claude --dangerously-skip-permissions`, binName, binName, binName, binName, binName),
-		Args:               cobra.MinimumNArgs(2),
 		DisableFlagParsing: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Handle help manually since DisableFlagParsing bypasses cobra's -h/--help
@@ -71,7 +70,7 @@ Examples:
 				return err
 			}
 			if len(filtered) < 2 {
-				return fmt.Errorf("requires at least 2 arguments: <route_key> <agent>")
+				return cmd.Help()
 			}
 			return runAgent(configPath, parsedURL, filtered[0], filtered[1], filtered[2:])
 		},

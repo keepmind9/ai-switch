@@ -46,7 +46,7 @@ func TestAgentCmdValidation(t *testing.T) {
 	cmd := newAgentCmd("")
 	cmd.SetArgs([]string{})
 	err := cmd.Execute()
-	assert.Error(t, err)
+	assert.NoError(t, err)
 }
 
 // --- Helper: set up a fake binary in a temp dir with clean PATH ---
