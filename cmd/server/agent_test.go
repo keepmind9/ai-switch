@@ -639,3 +639,23 @@ func TestExecAgentFunc_SetByTestMain(t *testing.T) {
 	err := execAgentFunc(script, nil, os.Environ())
 	assert.NoError(t, err)
 }
+
+func TestRunAgent_InvalidServerURL(t *testing.T) {
+	tests := []struct {
+		name string
+		url  string
+	}{
+		{"not a URL", "not-a-url"},
+		{"ftp scheme", "ftp://example.com"},
+		{"empty host", "http://"},
+		{"hostname only port", "http://:8080"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := runAgent("", tt.url, "key", "claude", nil)
+			assert.Error(t, err)
+			assert.Contains(t, err.Error(), "invalid --url value")
+		})
+	}
+}

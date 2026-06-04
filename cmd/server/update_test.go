@@ -655,7 +655,9 @@ var _ = bytes.NewReader
 func TestBuildUpdateClient_NoProxy(t *testing.T) {
 	client, err := buildUpdateClient("")
 	require.NoError(t, err)
-	assert.Equal(t, http.DefaultClient, client)
+	assert.NotNil(t, client)
+	assert.NotEqual(t, http.DefaultClient, client) // never returns shared global
+	assert.Equal(t, http.DefaultTransport, client.Transport)
 }
 
 func TestBuildUpdateClient_HTTPProxy(t *testing.T) {

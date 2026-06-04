@@ -67,21 +67,20 @@ func newUpdateCmd() *cobra.Command {
 }
 
 // buildUpdateClient creates an HTTP client for the update command.
-// If proxyURL is empty, returns http.DefaultClient (respects HTTP_PROXY/HTTPS_PROXY env vars).
-// Otherwise, creates a client with the specified proxy, without affecting the global client.
+// If proxyURL is empty, returns a client with default transport (respects HTTP_PROXY/HTTPS_PROXY env vars).
+// Otherwise, creates a client with the specified proxy.
 func buildUpdateClient(proxyURL string) (*http.Client, error) {
 	if proxyURL == "" {
-		return http.DefaultClient, nil
+		return &http.Client{Transport: http.DefaultTransport}, nil
 	}
 	parsed, err := url.Parse(proxyURL)
 	if err != nil {
 		return nil, fmt.Errorf("invalid proxy URL: %w", err)
 	}
-	transport := &http.Transport{
-		Proxy: http.ProxyURL(parsed),
-	}
 	return &http.Client{
-		Transport: transport,
+		Transport: &http.Transport{
+			Proxy: http.ProxyURL(parsed),
+		},
 	}, nil
 }
 

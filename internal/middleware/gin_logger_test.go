@@ -1,12 +1,16 @@
 package middleware
 
 import (
+	"bytes"
+	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestGinLogger(t *testing.T) {
@@ -140,24 +144,40 @@ func TestGinLogger_404(t *testing.T) {
 }
 
 func TestGinLogger_StatusLevels(t *testing.T) {
-	// Verify the level classification logic
+	gin.SetMode(gin.TestMode)
+
 	tests := []struct {
-		status int
-		level  string
+		status    int
+		wantLevel string
 	}{
 		{200, "INFO"},
-		{201, "INFO"},
 		{301, "INFO"},
 		{400, "WARN"},
 		{404, "WARN"},
 		{500, "ERROR"},
-		{503, "ERROR"},
 	}
 
 	for _, tt := range tests {
-		t.Run(string(rune(tt.status)), func(t *testing.T) {
-			assert.True(t, true) // placeholder; actual level tested via integration
-			_ = tt.level
+		t.Run(fmt.Sprintf("status_%d_%s", tt.status, tt.wantLevel), func(t *testing.T) {
+			// Capture slog output to verify log level
+			var buf bytes.Buffer
+			orig := slog.Default()
+			defer slog.SetDefault(orig)
+			slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+
+			r := gin.New()
+			r.Use(GinLogger())
+			r.GET("/test", func(c *gin.Context) {
+				c.Status(tt.status)
+			})
+
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, "/test", nil)
+			r.ServeHTTP(w, req)
+
+			assert.Equal(t, tt.status, w.Code)
+			require.NotEmpty(t, buf.String(), "expected slog output")
+			assert.Contains(t, buf.String(), "level="+tt.wantLevel)
 		})
 	}
 }

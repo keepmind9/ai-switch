@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -153,6 +154,10 @@ func runAgent(configPath, serverURL, routeKey, agentName string, agentArgs []str
 	// Resolve server address: --url flag > config file > defaults
 	var baseURL string
 	if serverURL != "" {
+		parsed, err := url.Parse(serverURL)
+		if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Hostname() == "" {
+			return fmt.Errorf("invalid --url value %q: must be a valid http/https URL", serverURL)
+		}
 		baseURL = strings.TrimRight(serverURL, "/") + envConfig.pathSuffix
 	} else {
 		host := config.DefaultHost
