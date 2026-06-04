@@ -135,7 +135,7 @@ func TestDownloadWithResumeFresh(t *testing.T) {
 	defer srv.Close()
 
 	dest := filepath.Join(t.TempDir(), "archive.tar.gz")
-	require.NoError(t, downloadWithResume(srv.URL, dest, int64(len(content))))
+	require.NoError(t, downloadWithResume(http.DefaultClient, srv.URL, dest, int64(len(content))))
 
 	data, err := os.ReadFile(dest)
 	require.NoError(t, err)
@@ -154,7 +154,7 @@ func TestDownloadWithResumeAlreadyComplete(t *testing.T) {
 	dest := filepath.Join(t.TempDir(), "archive.tar.gz")
 	require.NoError(t, os.WriteFile(dest, content, 0644))
 
-	require.NoError(t, downloadWithResume(srv.URL, dest, int64(len(content))))
+	require.NoError(t, downloadWithResume(http.DefaultClient, srv.URL, dest, int64(len(content))))
 	assert.False(t, called, "should not make HTTP request for complete file")
 }
 
@@ -177,7 +177,7 @@ func TestDownloadWithResumePartial(t *testing.T) {
 	dest := filepath.Join(t.TempDir(), "archive.tar.gz")
 	require.NoError(t, os.WriteFile(dest, partialContent, 0644))
 
-	require.NoError(t, downloadWithResume(srv.URL, dest, int64(len(fullContent))))
+	require.NoError(t, downloadWithResume(http.DefaultClient, srv.URL, dest, int64(len(fullContent))))
 
 	data, err := os.ReadFile(dest)
 	require.NoError(t, err)
@@ -196,7 +196,7 @@ func TestDownloadWithResumeServerNoResume(t *testing.T) {
 	dest := filepath.Join(t.TempDir(), "archive.tar.gz")
 	require.NoError(t, os.WriteFile(dest, []byte("hel"), 0644))
 
-	require.NoError(t, downloadWithResume(srv.URL, dest, int64(len(fullContent))))
+	require.NoError(t, downloadWithResume(http.DefaultClient, srv.URL, dest, int64(len(fullContent))))
 
 	data, err := os.ReadFile(dest)
 	require.NoError(t, err)
@@ -211,7 +211,7 @@ func TestDownloadWithResumeServerError(t *testing.T) {
 	defer srv.Close()
 
 	dest := filepath.Join(t.TempDir(), "archive.tar.gz")
-	err := downloadWithResume(srv.URL, dest, 100)
+	err := downloadWithResume(http.DefaultClient, srv.URL, dest, 100)
 	assert.Error(t, err)
 }
 
@@ -379,7 +379,7 @@ func TestFetchLatestVersion(t *testing.T) {
 	updateAPIURL = srv.URL
 	defer func() { updateAPIURL = orig }()
 
-	v, err := fetchLatestVersion()
+	v, err := fetchLatestVersion(http.DefaultClient)
 	require.NoError(t, err)
 	assert.Equal(t, "0.3.0", v)
 }
@@ -394,7 +394,7 @@ func TestFetchLatestVersionNon200(t *testing.T) {
 	updateAPIURL = srv.URL
 	defer func() { updateAPIURL = orig }()
 
-	_, err := fetchLatestVersion()
+	_, err := fetchLatestVersion(http.DefaultClient)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "404")
 }
@@ -409,7 +409,7 @@ func TestFetchLatestVersionInvalidJSON(t *testing.T) {
 	updateAPIURL = srv.URL
 	defer func() { updateAPIURL = orig }()
 
-	_, err := fetchLatestVersion()
+	_, err := fetchLatestVersion(http.DefaultClient)
 	assert.Error(t, err)
 }
 
@@ -423,7 +423,7 @@ func TestGetRemoteSize(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	size, err := getRemoteSize(srv.URL)
+	size, err := getRemoteSize(http.DefaultClient, srv.URL)
 	require.NoError(t, err)
 	assert.Equal(t, int64(98765), size)
 }
@@ -434,7 +434,7 @@ func TestGetRemoteSizeError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, err := getRemoteSize(srv.URL)
+	_, err := getRemoteSize(http.DefaultClient, srv.URL)
 	assert.Error(t, err)
 }
 
@@ -521,7 +521,7 @@ func TestResumeScenarioEndToEnd(t *testing.T) {
 	require.NoError(t, os.WriteFile(dest, fullContent[:500], 0644))
 
 	// Resume
-	require.NoError(t, downloadWithResume(srv.URL, dest, int64(len(fullContent))))
+	require.NoError(t, downloadWithResume(http.DefaultClient, srv.URL, dest, int64(len(fullContent))))
 
 	data, err := os.ReadFile(dest)
 	require.NoError(t, err)
@@ -649,3 +649,32 @@ func fileSize(t *testing.T, path string) int64 {
 // --- Unused import guard ---
 
 var _ = bytes.NewReader
+
+// --- buildUpdateClient tests ---
+
+func TestBuildUpdateClient_NoProxy(t *testing.T) {
+	client, err := buildUpdateClient("")
+	require.NoError(t, err)
+	assert.Equal(t, http.DefaultClient, client)
+}
+
+func TestBuildUpdateClient_HTTPProxy(t *testing.T) {
+	client, err := buildUpdateClient("http://127.0.0.1:7890")
+	require.NoError(t, err)
+	assert.NotNil(t, client)
+	assert.NotEqual(t, http.DefaultClient, client)
+	assert.NotNil(t, client.Transport)
+}
+
+func TestBuildUpdateClient_SOCKS5Proxy(t *testing.T) {
+	client, err := buildUpdateClient("socks5://127.0.0.1:1080")
+	require.NoError(t, err)
+	assert.NotNil(t, client)
+	assert.NotNil(t, client.Transport)
+}
+
+func TestBuildUpdateClient_InvalidProxy(t *testing.T) {
+	_, err := buildUpdateClient("://invalid")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid proxy URL")
+}

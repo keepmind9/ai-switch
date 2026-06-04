@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -29,7 +30,6 @@ const (
 
 var (
 	updateAPIURL = "https://api.github.com/repos/" + updateRepo + "/releases/latest"
-	updateClient = http.DefaultClient
 )
 
 // errDelayedSwap indicates the new binary was saved but the actual replacement
@@ -45,6 +45,7 @@ type updateMeta struct {
 
 func newUpdateCmd() *cobra.Command {
 	var apply bool
+	var proxy string
 
 	cmd := &cobra.Command{
 		Use:   "update",
@@ -53,15 +54,39 @@ func newUpdateCmd() *cobra.Command {
 			if apply {
 				return runApply()
 			}
-			return runUpdate()
+			client, err := buildUpdateClient(proxy)
+			if err != nil {
+				return err
+			}
+			return runUpdate(client)
 		},
 	}
 	cmd.Flags().BoolVar(&apply, "apply", false, "apply a downloaded update (stop daemon, replace binary, restart)")
+	cmd.Flags().StringVar(&proxy, "proxy", "", "HTTP/SOCKS5 proxy for downloading (e.g. http://127.0.0.1:7890)")
 	return cmd
 }
 
-func runUpdate() error {
-	latest, err := fetchLatestVersion()
+// buildUpdateClient creates an HTTP client for the update command.
+// If proxyURL is empty, returns http.DefaultClient (respects HTTP_PROXY/HTTPS_PROXY env vars).
+// Otherwise, creates a client with the specified proxy, without affecting the global client.
+func buildUpdateClient(proxyURL string) (*http.Client, error) {
+	if proxyURL == "" {
+		return http.DefaultClient, nil
+	}
+	parsed, err := url.Parse(proxyURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid proxy URL: %w", err)
+	}
+	transport := &http.Transport{
+		Proxy: http.ProxyURL(parsed),
+	}
+	return &http.Client{
+		Transport: transport,
+	}, nil
+}
+
+func runUpdate(client *http.Client) error {
+	latest, err := fetchLatestVersion(client)
 	if err != nil {
 		return fmt.Errorf("failed to fetch latest version: %w", err)
 	}
@@ -90,7 +115,7 @@ func runUpdate() error {
 		totalSize = meta.Size
 	} else {
 		cleanUpdateDir(updateDir)
-		totalSize, err = getRemoteSize(archiveURL)
+		totalSize, err = getRemoteSize(client, archiveURL)
 		if err != nil {
 			return fmt.Errorf("failed to get remote file size: %w", err)
 		}
@@ -105,7 +130,7 @@ func runUpdate() error {
 	}
 
 	// Download (with resume support)
-	if err := downloadWithResume(archiveURL, archivePath, totalSize); err != nil {
+	if err := downloadWithResume(client, archiveURL, archivePath, totalSize); err != nil {
 		return fmt.Errorf("download failed: %w", err)
 	}
 
@@ -210,7 +235,7 @@ func doApply(updateDir string) error {
 
 // --- Version ---
 
-func fetchLatestVersion() (string, error) {
+func fetchLatestVersion(client *http.Client) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), httpTimeout)
 	defer cancel()
 
@@ -218,7 +243,7 @@ func fetchLatestVersion() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	resp, err := updateClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return "", err
 	}
@@ -284,7 +309,7 @@ func buildArchiveURL(latest, archive string) string {
 	return fmt.Sprintf("https://github.com/%s/releases/download/v%s/%s", updateRepo, latest, archive)
 }
 
-func getRemoteSize(url string) (int64, error) {
+func getRemoteSize(client *http.Client, url string) (int64, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), httpTimeout)
 	defer cancel()
 
@@ -292,7 +317,7 @@ func getRemoteSize(url string) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	resp, err := updateClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return 0, err
 	}
@@ -303,7 +328,7 @@ func getRemoteSize(url string) (int64, error) {
 	return resp.ContentLength, nil
 }
 
-func downloadWithResume(url, dest string, totalSize int64) error {
+func downloadWithResume(client *http.Client, url, dest string, totalSize int64) error {
 	ctx, cancel := context.WithTimeout(context.Background(), downloadTimeout)
 	defer cancel()
 
@@ -323,7 +348,7 @@ func downloadWithResume(url, dest string, totalSize int64) error {
 		}
 		req.Header.Set("Range", fmt.Sprintf("bytes=%d-", offset))
 
-		resp, err := updateClient.Do(req)
+		resp, err := client.Do(req)
 		if err != nil {
 			return err
 		}
@@ -353,7 +378,7 @@ func downloadWithResume(url, dest string, totalSize int64) error {
 	if err != nil {
 		return err
 	}
-	resp, err := updateClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}
