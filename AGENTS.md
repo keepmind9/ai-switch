@@ -27,6 +27,7 @@ This includes: variable/function names, error messages, comments, documentation,
 
 - **DO NOT** automatically commit to git without explicit user instruction
 - **DO NOT** run `git commit` or `git push` unless user explicitly requests it
+- **MUST**: Run `codex-review` (via `codex:codex-rescue` agent) on code changes before committing — do not commit code that has not been reviewed
 - Wait for user confirmation before making any commits
 - **One atomic change per commit**: Each commit should contain only one logical change or feature. Do not combine multiple unrelated changes in a single commit
 
