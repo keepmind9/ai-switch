@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -68,7 +69,7 @@ func (a *AdminHandler) fetchModels(c *gin.Context) {
 	var models []ModelInfo
 	var err error
 
-	models, err = fetchOpenAIModels(baseURL, apiKey)
+	models, err = fetchOpenAIModels(c.Request.Context(), baseURL, apiKey)
 
 	if err != nil {
 		slog.Warn("failed to fetch models", "base_url", req.BaseURL, "format", req.Format, "error", err)
@@ -103,10 +104,10 @@ func userFriendlyErr(err error) string {
 }
 
 // fetchOpenAIModels calls GET {baseURL}/models with Bearer auth.
-func fetchOpenAIModels(baseURL, apiKey string) ([]ModelInfo, error) {
+func fetchOpenAIModels(ctx context.Context, baseURL, apiKey string) ([]ModelInfo, error) {
 	url := strings.TrimRight(baseURL, "/") + "/models"
 
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("invalid URL: %w", err)
 	}

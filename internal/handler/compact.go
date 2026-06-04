@@ -127,7 +127,7 @@ func (h *Handler) handleSimulatedCompact(c *gin.Context, req *types.ResponsesReq
 		return
 	}
 
-	resp, latency, fwdErr := h.forwardRequestWithKeyFallback(result, upstreamBody)
+	resp, latency, fwdErr := h.forwardRequestWithKeyFallback(c.Request.Context(), result, upstreamBody)
 	if fwdErr != nil {
 		writeUpstreamError(c, "summarization request failed: "+fwdErr.Error())
 		return

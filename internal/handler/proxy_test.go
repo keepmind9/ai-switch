@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -162,7 +163,7 @@ func TestForwardRequest_UsesProxy(t *testing.T) {
 		},
 	}, nil)
 
-	_, _, err := h.forwardRequest(&router.RouteResult{
+	_, _, err := h.forwardRequest(context.Background(), &router.RouteResult{
 		ProviderKey: "test",
 		BaseURL:     upstream.URL,
 		Path:        "/v1/chat/completions",
@@ -197,7 +198,7 @@ func TestForwardRequest_NoProxy(t *testing.T) {
 	provider := config.NewProvider(cfg, "")
 	h := NewHandler(provider, nil, &staticRouter{}, nil)
 
-	_, _, err := h.forwardRequest(&router.RouteResult{
+	_, _, err := h.forwardRequest(context.Background(), &router.RouteResult{
 		ProviderKey: "test",
 		BaseURL:     upstream.URL,
 		Path:        "/v1/chat/completions",

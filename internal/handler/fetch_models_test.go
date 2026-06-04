@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -35,7 +36,7 @@ func TestFetchOpenAIModels_Success(t *testing.T) {
 	}))
 	defer server.Close()
 
-	models, err := fetchOpenAIModels(server.URL, "test-key")
+	models, err := fetchOpenAIModels(context.Background(), server.URL, "test-key")
 	require.NoError(t, err)
 	assert.Equal(t, []ModelInfo{
 		{ID: "gpt-4.1", Name: "gpt-4.1"},
@@ -56,7 +57,7 @@ func TestFetchOpenAIModels_DeduplicatesAndSorts(t *testing.T) {
 	}))
 	defer server.Close()
 
-	models, err := fetchOpenAIModels(server.URL, "key")
+	models, err := fetchOpenAIModels(context.Background(), server.URL, "key")
 	require.NoError(t, err)
 	assert.Equal(t, []ModelInfo{
 		{ID: "gpt-4o", Name: "gpt-4o"},
@@ -65,7 +66,7 @@ func TestFetchOpenAIModels_DeduplicatesAndSorts(t *testing.T) {
 }
 
 func TestFetchOpenAIModels_Unreachable(t *testing.T) {
-	_, err := fetchOpenAIModels("http://127.0.0.1:0", "key")
+	_, err := fetchOpenAIModels(context.Background(), "http://127.0.0.1:0", "key")
 	assert.Error(t, err)
 }
 
@@ -75,7 +76,7 @@ func TestFetchOpenAIModels_EmptyData(t *testing.T) {
 	}))
 	defer server.Close()
 
-	models, err := fetchOpenAIModels(server.URL, "key")
+	models, err := fetchOpenAIModels(context.Background(), server.URL, "key")
 	require.NoError(t, err)
 	assert.Empty(t, models)
 }
@@ -86,7 +87,7 @@ func TestFetchOpenAIModels_InvalidJSON(t *testing.T) {
 	}))
 	defer server.Close()
 
-	_, err := fetchOpenAIModels(server.URL, "key")
+	_, err := fetchOpenAIModels(context.Background(), server.URL, "key")
 	assert.Error(t, err)
 }
 
@@ -97,7 +98,7 @@ func TestFetchOpenAIModels_HTTPError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	_, err := fetchOpenAIModels(server.URL, "bad-key")
+	_, err := fetchOpenAIModels(context.Background(), server.URL, "bad-key")
 	assert.Error(t, err)
 }
 

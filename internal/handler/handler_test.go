@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -62,7 +63,7 @@ func TestForwardRequest_DefaultPath(t *testing.T) {
 		Path:    "/v1/chat/completions",
 	}
 
-	resp, _, err := h.forwardRequest(result, []byte(`{}`))
+	resp, _, err := h.forwardRequest(context.Background(), result, []byte(`{}`))
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
@@ -87,7 +88,7 @@ func TestForwardRequest_PathOverride(t *testing.T) {
 		Format:  "chat",
 	}
 
-	resp, _, err := h.forwardRequest(result, []byte(`{}`))
+	resp, _, err := h.forwardRequest(context.Background(), result, []byte(`{}`))
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
@@ -111,7 +112,7 @@ func TestForwardRequest_TrailingSlash(t *testing.T) {
 		Path:    "/v1/chat/completions",
 	}
 
-	resp, _, err := h.forwardRequest(result, []byte(`{}`))
+	resp, _, err := h.forwardRequest(context.Background(), result, []byte(`{}`))
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
@@ -136,7 +137,7 @@ func TestForwardRequest_AnthropicHeaders(t *testing.T) {
 		Path:    "/v1/messages",
 	}
 
-	resp, _, err := h.forwardRequest(result, []byte(`{}`))
+	resp, _, err := h.forwardRequest(context.Background(), result, []byte(`{}`))
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
@@ -161,7 +162,7 @@ func TestForwardRequest_ChatBearerHeader(t *testing.T) {
 		Path:    "/v1/chat/completions",
 	}
 
-	resp, _, err := h.forwardRequest(result, []byte(`{}`))
+	resp, _, err := h.forwardRequest(context.Background(), result, []byte(`{}`))
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
@@ -183,7 +184,7 @@ func TestForwardRequest_UpstreamError(t *testing.T) {
 		Path:    "/v1/chat/completions",
 	}
 
-	resp, _, err := h.forwardRequest(result, []byte(`{}`))
+	resp, _, err := h.forwardRequest(context.Background(), result, []byte(`{}`))
 	require.NoError(t, err)
 	defer resp.Body.Close()
 

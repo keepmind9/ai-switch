@@ -3,6 +3,7 @@ package handler
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"embed"
 	"encoding/json"
 	"fmt"
@@ -32,7 +33,6 @@ const ctxProviderKey = "provider_key"
 
 const (
 	upstreamTimeout     = 3 * time.Minute  // connection + first-byte timeout for upstream requests
-	upstreamBodyTimeout = 10 * time.Minute // overall timeout for upstream response body
 	maxRequestBodyBytes = 50 * 1024 * 1024 // 50 MiB max request body
 )
 
@@ -301,9 +301,9 @@ func normalizeInputRoles(raw map[string]any, sameFormat bool) {
 }
 
 // forwardRequest sends a request to the upstream API and returns the response with latency.
-func (h *Handler) forwardRequest(result *router.RouteResult, body []byte) (*http.Response, time.Duration, error) {
+func (h *Handler) forwardRequest(ctx context.Context, result *router.RouteResult, body []byte) (*http.Response, time.Duration, error) {
 	upstreamURL := buildUpstreamURL(result)
-	req, err := http.NewRequest("POST", upstreamURL, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, upstreamURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, 0, err
 	}
@@ -330,11 +330,11 @@ func (h *Handler) forwardRequest(result *router.RouteResult, body []byte) (*http
 
 // forwardRequestWithKeyFallback sends a request with 429 key fallback support.
 // Used by endpoints that don't go through the pipeline (e.g. compact).
-func (h *Handler) forwardRequestWithKeyFallback(result *router.RouteResult, body []byte) (*http.Response, time.Duration, error) {
+func (h *Handler) forwardRequestWithKeyFallback(ctx context.Context, result *router.RouteResult, body []byte) (*http.Response, time.Duration, error) {
 	providerKey := result.ProviderKey
 
 	if !h.keyMgr.HasFallbackKeys(providerKey) {
-		return h.forwardRequest(result, body)
+		return h.forwardRequest(ctx, result, body)
 	}
 
 	triedKeys := make(map[string]bool)
@@ -352,7 +352,7 @@ func (h *Handler) forwardRequestWithKeyFallback(result *router.RouteResult, body
 		cloned := *result
 		cloned.APIKey = apiKey
 
-		resp, latency, err := h.forwardRequest(&cloned, body)
+		resp, latency, err := h.forwardRequest(ctx, &cloned, body)
 		if err != nil {
 			return nil, 0, err
 		}
