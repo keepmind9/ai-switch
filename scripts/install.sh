@@ -1,18 +1,57 @@
 #!/bin/bash
 # ais Auto-Installation Script
 # Downloads latest release from GitHub and installs to ~/.local/bin
+#
+# Usage:
+#   curl -sL https://raw.githubusercontent.com/keepmind9/ai-switch/main/scripts/install.sh | bash
+#
+# With proxy:
+#   curl -sL ... | bash -s -- --proxy http://127.0.0.1:10808
 
 set -e
 
 REPO="keepmind9/ai-switch"
 BINARY="ais"
 INSTALL_DIR="$HOME/.local/bin"
+CURL_PROXY=""
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --proxy)
+            CURL_PROXY="$2"
+            shift 2
+            ;;
+        *)
+            shift
+            ;;
+    esac
+done
+
+# Auto-detect proxy from environment if not specified
+if [ -z "$CURL_PROXY" ]; then
+    if [ -n "$https_proxy" ]; then
+        CURL_PROXY="$https_proxy"
+    elif [ -n "$HTTPS_PROXY" ]; then
+        CURL_PROXY="$HTTPS_PROXY"
+    elif [ -n "$http_proxy" ]; then
+        CURL_PROXY="$http_proxy"
+    elif [ -n "$HTTP_PROXY" ]; then
+        CURL_PROXY="$HTTP_PROXY"
+    fi
+fi
+
+# Build curl flags as an array (avoids word-splitting issues)
+CURL_FLAGS=(-sL)
+if [ -n "$CURL_PROXY" ]; then
+    CURL_FLAGS+=(-x "$CURL_PROXY")
+fi
 
 echo "Checking ais installation..."
 
 # Get latest version info early
 echo "Fetching latest release..."
-RELEASE=$(curl -sf "https://api.github.com/repos/${REPO}/releases/latest")
+RELEASE=$(curl "${CURL_FLAGS[@]}" -sf "https://api.github.com/repos/${REPO}/releases/latest")
 LATEST_VERSION=$(echo "$RELEASE" | grep -o '"tag_name": "[^"]*"' | head -1 | sed 's/.*: "//;s/"//')
 
 if [ -z "$LATEST_VERSION" ]; then
@@ -82,8 +121,13 @@ echo "Downloading ais ${LATEST_VERSION} for ${OS}/${ARCH}..."
 TMPDIR=$(mktemp -d)
 trap 'rm -rf "$TMPDIR"' EXIT
 
-if ! curl -sL "$DOWNLOAD_URL" -o "$TMPDIR/$FILENAME"; then
-    echo "Download failed. Install manually:"
+if ! curl "${CURL_FLAGS[@]}" --connect-timeout 30 "$DOWNLOAD_URL" -o "$TMPDIR/$FILENAME"; then
+    echo "Download failed."
+    if [ -z "$CURL_PROXY" ]; then
+        echo "Hint: if you are behind a firewall, try with proxy:"
+        echo "  curl -sL ... | bash -s -- --proxy http://127.0.0.1:10808"
+    fi
+    echo "Or install manually:"
     echo "  https://github.com/${REPO}/releases"
     exit 1
 fi

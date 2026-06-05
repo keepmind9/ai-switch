@@ -1,5 +1,11 @@
 # ais Windows Installation Script
 # Downloads latest release from GitHub and installs to ~/.local/bin
+#
+# Usage:
+#   irm https://raw.githubusercontent.com/keepmind9/ai-switch/main/scripts/install.ps1 | iex
+#
+# With proxy:
+#   $env:HTTPS_PROXY="http://127.0.0.1:10808"; irm ... | iex
 
 $ErrorActionPreference = "Stop"
 
@@ -7,11 +13,20 @@ $Repo = "keepmind9/ai-switch"
 $Binary = "ais"
 $InstallDir = "$env:USERPROFILE\.local\bin"
 
+# Detect proxy from environment
+$ProxyUrl = $null
+if ($env:HTTPS_PROXY) { $ProxyUrl = $env:HTTPS_PROXY }
+elseif ($env:https_proxy) { $ProxyUrl = $env:https_proxy }
+elseif ($env:HTTP_PROXY) { $ProxyUrl = $env:HTTP_PROXY }
+elseif ($env:http_proxy) { $ProxyUrl = $env:http_proxy }
+
 Write-Host "Checking ais installation..."
 
 # Get latest release info
 Write-Host "Fetching latest release..."
-$releaseInfo = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/latest" -TimeoutSec 30
+$irmParams = @{ Uri = "https://api.github.com/repos/$Repo/releases/latest"; TimeoutSec = 30 }
+if ($ProxyUrl) { $irmParams["Proxy"] = $ProxyUrl }
+$releaseInfo = Invoke-RestMethod @irmParams
 
 if (-not $releaseInfo.tag_name) {
     Write-Host "No releases found. Install manually:" -ForegroundColor Red
@@ -73,7 +88,9 @@ try {
     New-Item -ItemType Directory -Path $tmpDir -Force | Out-Null
 
     $downloadPath = Join-Path $tmpDir $asset.name
-    Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $downloadPath -TimeoutSec 120
+    $iwrParams = @{ Uri = $asset.browser_download_url; OutFile = $downloadPath; TimeoutSec = 120 }
+    if ($ProxyUrl) { $iwrParams["Proxy"] = $ProxyUrl }
+    Invoke-WebRequest @iwrParams
 
     Write-Host "Extracting..."
 
