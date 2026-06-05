@@ -353,6 +353,9 @@ ais update --apply          # 应用已下载的更新
 ais shortcut                # 创建桌面快捷方式
 ais agent <key> claude      # 通过 ais 启动 Claude Code
 ais agent <key> codex       # 通过 ais 启动 Codex CLI
+ais admin                   # 交互式管理终端
+ais admin provider list     # 查看所有 provider
+ais admin route list        # 查看所有路由
 ```
 
 不带子命令时默认执行 `serve`：
@@ -371,6 +374,34 @@ ais agent my-route-key codex --model o4-mini
 ```
 
 自动配置环境变量并覆盖 agent 自身配置 — 无需手动设置。
+
+### Admin CLI
+
+在终端管理 provider、路由、设置等（无需浏览器）：
+
+```bash
+# 单命令模式
+ais admin provider list                         # 查看所有 provider
+ais admin provider add --key openai --name OpenAI --base-url https://api.openai.com --api-key sk-xxx
+ais admin route list                            # 查看所有路由
+ais admin route enable mykey                    # 启用路由
+ais admin route disable mykey                   # 禁用路由
+ais admin route default list                    # 查看默认路由
+ais admin route default set --anthropic claude  # 设置 Anthropic 默认路由
+ais admin route default remove --anthropic      # 清除 Anthropic 默认路由
+ais admin settings get                          # 查看当前设置
+ais admin settings update --port 8080           # 更新设置
+ais admin status                                # 查看服务状态
+
+# 交互式 REPL 模式
+ais admin
+ais> provider list
+ais> route default list
+ais> help
+ais> exit
+```
+
+所有命令支持 `--url http://remote:12345` 管理远程服务器，`-o json` 输出 JSON 格式。
 
 ### 配置校验
 

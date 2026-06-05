@@ -356,6 +356,9 @@ ais update --apply          # Apply the downloaded update
 ais shortcut                # Create desktop shortcuts
 ais agent <key> claude      # Launch Claude Code via ais
 ais agent <key> codex       # Launch Codex CLI via ais
+ais admin                   # Interactive admin REPL
+ais admin provider list     # List providers
+ais admin route list        # List routes
 ```
 
 Running without a subcommand defaults to `serve`:
@@ -374,6 +377,34 @@ ais agent my-route-key codex --model o4-mini
 ```
 
 Auto-configures environment and overrides agent settings — no manual setup needed.
+
+### Admin CLI
+
+Manage providers, routes, settings, and system from the terminal (no browser needed):
+
+```bash
+# Single-command mode
+ais admin provider list                         # List all providers
+ais admin provider add --key openai --name OpenAI --base-url https://api.openai.com --api-key sk-xxx
+ais admin route list                            # List all routes
+ais admin route enable mykey                    # Enable a route
+ais admin route disable mykey                   # Disable a route
+ais admin route default list                    # Show default routes
+ais admin route default set --anthropic claude  # Set Anthropic default route
+ais admin route default remove --anthropic      # Clear Anthropic default route
+ais admin settings get                          # Show current settings
+ais admin settings update --port 8080           # Update settings
+ais admin status                                # Show server status
+
+# Interactive REPL mode
+ais admin
+ais> provider list
+ais> route default list
+ais> help
+ais> exit
+```
+
+All commands support `--url http://remote:12345` for remote server management and `-o json` for JSON output.
 
 ### Config Validation
 
