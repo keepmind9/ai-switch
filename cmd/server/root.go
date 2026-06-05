@@ -20,6 +20,7 @@ func newRootCmd() *cobra.Command {
 		newAgentCmd(configPath),
 		newShortcutCmd(configPath),
 		newUpdateCmd(),
+		newAdminCmd(configPath),
 	)
 	return rootCmd
 }
