@@ -213,6 +213,8 @@ providers:
       - "deepseek-chat"
       - "deepseek-reasoner"
     enable_proxy: true                 # optional: use global proxy_url
+    custom_headers:                    # optional: override forwarded client headers (e.g. User-Agent for UA-gated upstreams like Kimi Coding Plan)
+      User-Agent: "claude-code/1.0.0"
 ```
 
 ### Google Gemini

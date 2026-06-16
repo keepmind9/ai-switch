@@ -14,6 +14,7 @@ export interface Provider {
   think_tag: string
   models: string[]
   enable_proxy: boolean
+  custom_headers: Record<string, string>
 }
 
 export interface CreateProviderRequest {
@@ -29,6 +30,7 @@ export interface CreateProviderRequest {
   models?: string[]
   default_model?: string
   enable_proxy?: boolean
+  custom_headers?: Record<string, string>
 }
 
 export interface ModelInfo {
@@ -41,4 +43,4 @@ export const createProvider = (data: CreateProviderRequest) => client.post<{ key
 export const updateProvider = (key: string, data: Partial<Provider>) => client.put(`/admin/providers/${key}`, data)
 export const deleteProvider = (key: string) => client.delete(`/admin/providers/${key}`)
 export const revealAPIKey = (key: string) => client.get<{ api_key: string }>(`/admin/apikeys/provider/${key}?reveal=true`)
-export const fetchModels = (data: { base_url: string; api_key: string; format: string }) => client.post<ModelInfo[]>('/admin/providers/fetch-models', data)
+export const fetchModels = (data: { base_url: string; api_key: string; format: string; custom_headers?: Record<string, string> }) => client.post<ModelInfo[]>('/admin/providers/fetch-models', data)

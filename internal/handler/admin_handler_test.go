@@ -185,6 +185,52 @@ func TestUpdateProviderPreserveAPIKey(t *testing.T) {
 	}
 }
 
+func TestUpdateProviderCustomHeaders(t *testing.T) {
+	tests := []struct {
+		name    string
+		payload map[string]any
+		wantSet map[string]string // expected final custom_headers after the update
+	}{
+		{name: "set replaces", payload: map[string]any{"custom_headers": map[string]any{"User-Agent": "claude-code/1.0.0"}}, wantSet: map[string]string{"User-Agent": "claude-code/1.0.0"}},
+		{name: "empty map clears", payload: map[string]any{"custom_headers": map[string]any{}}, wantSet: map[string]string{}},
+		{name: "omit preserves existing", payload: map[string]any{"name": "Updated"}, wantSet: map[string]string{"X-Existing": "v"}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			r, _ := setupAdminTest(t)
+
+			// Seed a custom header first so the "omit" case proves preservation.
+			seed, _ := json.Marshal(map[string]any{"custom_headers": map[string]any{"X-Existing": "v"}})
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodPut, "/api/admin/providers/minimax", bytes.NewReader(seed))
+			req.Header.Set("Content-Type", "application/json")
+			r.ServeHTTP(w, req)
+			require.Equal(t, http.StatusOK, w.Code)
+
+			body, _ := json.Marshal(tc.payload)
+			w = httptest.NewRecorder()
+			req = httptest.NewRequest(http.MethodPut, "/api/admin/providers/minimax", bytes.NewReader(body))
+			req.Header.Set("Content-Type", "application/json")
+			r.ServeHTTP(w, req)
+			assert.Equal(t, http.StatusOK, w.Code)
+
+			// Verify via GET.
+			w = httptest.NewRecorder()
+			req = httptest.NewRequest(http.MethodGet, "/api/admin/providers", nil)
+			r.ServeHTTP(w, req)
+			var resp map[string]any
+			require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+			p := resp["data"].([]any)[0].(map[string]any)
+			got, _ := p["custom_headers"].(map[string]any)
+			assert.Equal(t, len(tc.wantSet), len(got))
+			for k, v := range tc.wantSet {
+				assert.Equal(t, v, got[k])
+			}
+		})
+	}
+}
+
 func TestGetSettings_IncludeProxyURL(t *testing.T) {
 	r, _ := setupAdminTest(t)
 

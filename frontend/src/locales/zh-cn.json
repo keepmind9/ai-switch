@@ -88,7 +88,9 @@
         "enableProxy": "启用代理",
         "enableProxyTip": "通过设置中配置的全局代理访问该 Provider。",
         "thinkTag": "思考标签",
-        "thinkTagTip": "从响应中移除 <tag>...</tag> 块。用于过滤模型的思考/推理输出（如设为 'think' 可过滤 <think reasoning_content>）。"
+        "thinkTagTip": "从响应中移除 <tag>...</tag> 块。用于过滤模型的思考/推理输出（如设为 'think' 可过滤 <think reasoning_content>）。",
+        "customHeaders": "自定义请求头",
+        "customHeadersTip": "发送到上游的额外请求头，会覆盖被转发的客户端请求头。用于绕过基于 User-Agent 的访问限制（如 Kimi Coding Plan 仅允许 claude-cli/claude-code 等白名单 UA）。"
       }
     }
   },

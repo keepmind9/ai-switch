@@ -429,6 +429,12 @@ func (h *Handler) sendUpstreamRequest(ctx *hook.Context, upstreamURL, apiKey str
 		req.Header.Set("Authorization", "Bearer "+apiKey)
 	}
 
+	// Apply provider-configured custom headers after auth so they override the
+	// forwarded client header (e.g. User-Agent for UA-gated upstreams like Kimi).
+	if ctx.RouteResult != nil {
+		applyCustomHeaders(req, ctx.RouteResult.CustomHeaders)
+	}
+
 	ctx.UpstreamReqHeader = req.Header
 	h.tracer().RecordUpstreamRequest(ctx)
 

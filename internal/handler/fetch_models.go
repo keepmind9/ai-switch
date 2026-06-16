@@ -24,10 +24,11 @@ type ModelInfo struct {
 }
 
 type fetchModelsRequest struct {
-	BaseURL string `json:"base_url" binding:"required"`
-	APIKey  string `json:"api_key"`
-	Key     string `json:"key"`
-	Format  string `json:"format" binding:"required"`
+	BaseURL       string            `json:"base_url" binding:"required"`
+	APIKey        string            `json:"api_key"`
+	Key           string            `json:"key"`
+	Format        string            `json:"format" binding:"required"`
+	CustomHeaders map[string]string `json:"custom_headers"`
 }
 
 const fetchModelsTimeout = 15 * time.Second
@@ -45,12 +46,20 @@ func (a *AdminHandler) fetchModels(c *gin.Context) {
 		return
 	}
 
-	// Resolve API key: use provided api_key first, fall back to existing provider config
+	// Resolve API key and custom headers: use provided values first, fall back
+	// to existing provider config. This lets a not-yet-saved provider form
+	// still fetch models with the right headers (e.g. UA-gated upstreams).
 	apiKey := strings.TrimSpace(req.APIKey)
-	if apiKey == "" && req.Key != "" {
+	customHeaders := req.CustomHeaders
+	if (apiKey == "" || len(customHeaders) == 0) && req.Key != "" {
 		cfg := a.provider.Get()
 		if p, ok := cfg.Providers[req.Key]; ok {
-			apiKey = p.APIKey
+			if apiKey == "" {
+				apiKey = p.APIKey
+			}
+			if len(customHeaders) == 0 {
+				customHeaders = p.CustomHeaders
+			}
 		}
 	}
 	if apiKey == "" {
@@ -69,7 +78,7 @@ func (a *AdminHandler) fetchModels(c *gin.Context) {
 	var models []ModelInfo
 	var err error
 
-	models, err = fetchOpenAIModels(c.Request.Context(), baseURL, apiKey)
+	models, err = fetchOpenAIModels(c.Request.Context(), baseURL, apiKey, customHeaders)
 
 	if err != nil {
 		slog.Warn("failed to fetch models", "base_url", req.BaseURL, "format", req.Format, "error", err)
@@ -104,7 +113,7 @@ func userFriendlyErr(err error) string {
 }
 
 // fetchOpenAIModels calls GET {baseURL}/models with Bearer auth.
-func fetchOpenAIModels(ctx context.Context, baseURL, apiKey string) ([]ModelInfo, error) {
+func fetchOpenAIModels(ctx context.Context, baseURL, apiKey string, headers map[string]string) ([]ModelInfo, error) {
 	url := strings.TrimRight(baseURL, "/") + "/models"
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -112,6 +121,7 @@ func fetchOpenAIModels(ctx context.Context, baseURL, apiKey string) ([]ModelInfo
 		return nil, fmt.Errorf("invalid URL: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+apiKey)
+	applyCustomHeaders(req, headers)
 
 	client := &http.Client{Timeout: fetchModelsTimeout}
 	resp, err := client.Do(req)

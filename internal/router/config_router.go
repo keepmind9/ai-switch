@@ -47,13 +47,14 @@ func (r *ConfigRouter) resolveRoute(cfg *config.Config, rule config.RouteRule, c
 	}
 
 	return &RouteResult{
-		ProviderKey: providerKey,
-		BaseURL:     prov.BaseURL,
-		APIKey:      prov.APIKey,
-		Format:      prov.Format,
-		Model:       modelName,
-		Path:        resolvePath(prov),
-		ThinkTag:    prov.ThinkTag,
+		ProviderKey:   providerKey,
+		BaseURL:       prov.BaseURL,
+		APIKey:        prov.APIKey,
+		Format:        prov.Format,
+		Model:         modelName,
+		Path:          resolvePath(prov),
+		ThinkTag:      prov.ThinkTag,
+		CustomHeaders: prov.CustomHeaders,
 	}, nil
 }
 

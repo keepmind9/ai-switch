@@ -21,7 +21,7 @@ const revealedKeys = ref<Record<string, string>>({})
 const searchQuery = ref("")
 const { confirmState, toggle: toggleDelete, reset: resetDelete } = useConfirm()
 
-const defaultForm = { key: "", name: "", base_url: "", path: "", api_key: "", fallback_keys: [] as string[], format: "chat", logo_url: "", default_model: "", models: [] as string[], enable_proxy: false, think_tag: "" }
+const defaultForm = { key: "", name: "", base_url: "", path: "", api_key: "", fallback_keys: [] as string[], format: "chat", logo_url: "", default_model: "", models: [] as string[], enable_proxy: false, think_tag: "", custom_headers: {} as Record<string, string> }
 const modelInput = ref("")
 
 async function load() {
@@ -55,7 +55,7 @@ function applyPreset(key: string) {
 }
 
 function openCreate() {
-  isEdit.value = false; form.value = { ...defaultForm }; selectedPreset.value = ""; fetchedModels.value = []; showDrawer.value = true
+  isEdit.value = false; form.value = { ...defaultForm, custom_headers: {} }; selectedPreset.value = ""; fetchedModels.value = []; showDrawer.value = true
 }
 
 function openEdit(row: Provider) {
@@ -71,7 +71,8 @@ function openEdit(row: Provider) {
     logo_url: row.logo_url,
     models: [...(row.models || [])],
     enable_proxy: row.enable_proxy || false,
-    think_tag: row.think_tag || ""
+    think_tag: row.think_tag || "",
+    custom_headers: { ...(row.custom_headers || {}) }
   }
   selectedPreset.value = ""; fetchedModels.value = []; showDrawer.value = true
 }
@@ -87,10 +88,11 @@ function openDuplicate(row: Provider) {
     fallback_keys: [...(row.fallback_keys || [])],
     format: row.format,
     logo_url: row.logo_url,
-    default_model: row.default_model || "",
+    default_model: "",
     models: [...(row.models || [])],
     enable_proxy: row.enable_proxy || false,
-    think_tag: row.think_tag || ""
+    think_tag: row.think_tag || "",
+    custom_headers: { ...(row.custom_headers || {}) }
   }
   selectedPreset.value = ""; fetchedModels.value = []; showDrawer.value = true
 }
@@ -102,7 +104,8 @@ async function handleFetchModels() {
     const payload: any = {
       base_url: form.value.base_url,
       api_key: form.value.api_key || "",
-      format: form.value.format
+      format: form.value.format,
+      custom_headers: { ...form.value.custom_headers }
     }
     if (isEdit.value && form.value.key) {
       payload.key = form.value.key
@@ -129,6 +132,17 @@ function addFallbackKey() {
   if (k && !form.value.fallback_keys.includes(k)) { form.value.fallback_keys.push(k); fallbackKeyInput.value = "" }
 }
 function removeFallbackKey(idx: number | string) { form.value.fallback_keys.splice(Number(idx), 1) }
+
+const headerKeyInput = ref("")
+const headerValueInput = ref("")
+function addCustomHeader() {
+  const k = headerKeyInput.value.trim()
+  if (k && !(k in form.value.custom_headers)) {
+    form.value.custom_headers[k] = headerValueInput.value.trim()
+    headerKeyInput.value = ""; headerValueInput.value = ""
+  }
+}
+function removeCustomHeader(k: string) { delete form.value.custom_headers[k] }
 
 async function handleDelete(key: string) {
   await deleteProvider(key)
@@ -431,6 +445,39 @@ onMounted(load)
               </div>
             </template>
             <el-input v-model="form.think_tag" placeholder="e.g. think" />
+          </el-form-item>
+
+          <el-form-item>
+            <template #label>
+              <div class="flex items-center gap-1">
+                <span>{{ $t('providers.drawer.form.customHeaders') }}</span>
+                <span class="text-[10px] text-slate-400 font-normal">(Optional)</span>
+                <el-tooltip :content="$t('providers.drawer.form.customHeadersTip')" placement="top">
+                  <el-icon :size="12" class="text-slate-400 cursor-help"><QuestionFilled /></el-icon>
+                </el-tooltip>
+              </div>
+            </template>
+            <div class="flex items-center gap-2 mb-2 w-full">
+              <el-input v-model="headerKeyInput" placeholder="Header name (e.g. User-Agent)" @keyup.enter="addCustomHeader" class="flex-1" />
+              <el-input v-model="headerValueInput" placeholder="Value (e.g. claude-code/1.0.0)" @keyup.enter="addCustomHeader" class="flex-1" />
+              <el-button @click="addCustomHeader" :disabled="!headerKeyInput.trim()">
+                <el-icon><Plus /></el-icon>
+              </el-button>
+            </div>
+            <div v-if="Object.keys(form.custom_headers).length" class="flex flex-wrap gap-2 w-full">
+              <el-tag
+                v-for="(v, k) in form.custom_headers"
+                :key="k"
+                closable
+                @close="() => removeCustomHeader(String(k))"
+                size="default"
+                type="info"
+                effect="plain"
+                class="rounded-md!"
+              >
+                {{ k }}: {{ String(v).slice(0, 16) }}{{ String(v).length > 16 ? '...' : '' }}
+              </el-tag>
+            </div>
           </el-form-item>
 
           <el-divider />

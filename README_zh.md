@@ -213,6 +213,8 @@ providers:
       - "deepseek-chat"
       - "deepseek-reasoner"
     enable_proxy: true                 # 可选：使用全局代理
+    custom_headers:                    # 可选：覆盖转发的客户端请求头（如 Kimi Coding Plan 仅允许白名单 UA，需伪装 User-Agent）
+      User-Agent: "claude-code/1.0.0"
 ```
 
 ### Google Gemini

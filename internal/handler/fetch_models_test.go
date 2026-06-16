@@ -36,7 +36,7 @@ func TestFetchOpenAIModels_Success(t *testing.T) {
 	}))
 	defer server.Close()
 
-	models, err := fetchOpenAIModels(context.Background(), server.URL, "test-key")
+	models, err := fetchOpenAIModels(context.Background(), server.URL, "test-key", nil)
 	require.NoError(t, err)
 	assert.Equal(t, []ModelInfo{
 		{ID: "gpt-4.1", Name: "gpt-4.1"},
@@ -57,7 +57,7 @@ func TestFetchOpenAIModels_DeduplicatesAndSorts(t *testing.T) {
 	}))
 	defer server.Close()
 
-	models, err := fetchOpenAIModels(context.Background(), server.URL, "key")
+	models, err := fetchOpenAIModels(context.Background(), server.URL, "key", nil)
 	require.NoError(t, err)
 	assert.Equal(t, []ModelInfo{
 		{ID: "gpt-4o", Name: "gpt-4o"},
@@ -66,7 +66,7 @@ func TestFetchOpenAIModels_DeduplicatesAndSorts(t *testing.T) {
 }
 
 func TestFetchOpenAIModels_Unreachable(t *testing.T) {
-	_, err := fetchOpenAIModels(context.Background(), "http://127.0.0.1:0", "key")
+	_, err := fetchOpenAIModels(context.Background(), "http://127.0.0.1:0", "key", nil)
 	assert.Error(t, err)
 }
 
@@ -76,7 +76,7 @@ func TestFetchOpenAIModels_EmptyData(t *testing.T) {
 	}))
 	defer server.Close()
 
-	models, err := fetchOpenAIModels(context.Background(), server.URL, "key")
+	models, err := fetchOpenAIModels(context.Background(), server.URL, "key", nil)
 	require.NoError(t, err)
 	assert.Empty(t, models)
 }
@@ -87,7 +87,7 @@ func TestFetchOpenAIModels_InvalidJSON(t *testing.T) {
 	}))
 	defer server.Close()
 
-	_, err := fetchOpenAIModels(context.Background(), server.URL, "key")
+	_, err := fetchOpenAIModels(context.Background(), server.URL, "key", nil)
 	assert.Error(t, err)
 }
 
@@ -98,8 +98,27 @@ func TestFetchOpenAIModels_HTTPError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	_, err := fetchOpenAIModels(context.Background(), server.URL, "bad-key")
+	_, err := fetchOpenAIModels(context.Background(), server.URL, "bad-key", nil)
 	assert.Error(t, err)
+}
+
+func TestFetchOpenAIModels_CustomHeaders(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "claude-code/1.0.0", r.Header.Get("User-Agent"))
+		assert.Equal(t, "ai-switch", r.Header.Get("X-Title"))
+		json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]any{{"id": "gpt-4o"}},
+		})
+	}))
+	defer server.Close()
+
+	headers := map[string]string{
+		"User-Agent": "claude-code/1.0.0",
+		"X-Title":    "ai-switch",
+	}
+	models, err := fetchOpenAIModels(context.Background(), server.URL, "key", headers)
+	require.NoError(t, err)
+	assert.Len(t, models, 1)
 }
 
 // --- HTTP handler tests ---
@@ -273,6 +292,58 @@ func TestFetchModelsHandler_AnthropicFormatUsesBearer(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	models := resp["data"].([]any)
 	assert.Len(t, models, 1)
+}
+
+func TestFetchModelsHandler_CustomHeadersFromBody(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "claude-code/1.0.0", r.Header.Get("User-Agent"))
+		json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]any{{"id": "gpt-4o"}},
+		})
+	}))
+	defer server.Close()
+
+	provider := config.NewProvider(&config.Config{}, "test.yaml")
+	admin := NewAdminHandler(provider, nil, nil)
+	r := newFetchModelsRouter(admin)
+
+	body := fmt.Sprintf(`{"base_url":"%s","api_key":"k","format":"chat","custom_headers":{"User-Agent":"claude-code/1.0.0"}}`, server.URL)
+	req := httptest.NewRequest("POST", "/api/admin/providers/fetch-models", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	r.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestFetchModelsHandler_CustomHeadersFromProvider(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "claude-code/1.0.0", r.Header.Get("User-Agent"))
+		json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]any{{"id": "gpt-4o"}},
+		})
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{
+		Providers: map[string]config.ProviderConfig{
+			"kimi": {
+				APIKey:        "stored-key",
+				CustomHeaders: map[string]string{"User-Agent": "claude-code/1.0.0"},
+			},
+		},
+	}
+	provider := config.NewProvider(cfg, "test.yaml")
+	admin := NewAdminHandler(provider, nil, nil)
+	r := newFetchModelsRouter(admin)
+
+	body := fmt.Sprintf(`{"base_url":"%s","api_key":"","key":"kimi","format":"chat"}`, server.URL)
+	req := httptest.NewRequest("POST", "/api/admin/providers/fetch-models", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	r.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
 }
 
 // --- userFriendlyErr ---

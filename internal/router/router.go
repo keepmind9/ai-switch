@@ -4,13 +4,14 @@ import "strings"
 
 // RouteResult holds the resolved routing decision.
 type RouteResult struct {
-	ProviderKey string // config provider key
-	BaseURL     string // upstream base_url
-	APIKey      string // upstream api_key
-	Format      string // upstream format (chat/anthropic/responses)
-	Model       string // resolved model name to send upstream
-	Path        string // upstream API path (resolved from format or overridden by config)
-	ThinkTag    string // optional: strip <tag>...</tag> from responses
+	ProviderKey   string            // config provider key
+	BaseURL       string            // upstream base_url
+	APIKey        string            // upstream api_key
+	Format        string            // upstream format (chat/anthropic/responses)
+	Model         string            // resolved model name to send upstream
+	Path          string            // upstream API path (resolved from format or overridden by config)
+	ThinkTag      string            // optional: strip <tag>...</tag> from responses
+	CustomHeaders map[string]string // optional: extra headers sent upstream, overriding forwarded client headers (e.g. User-Agent for UA-gated upstreams)
 }
 
 // FormatToPath returns the default upstream API path for a given protocol format.

@@ -209,3 +209,35 @@ func TestForwardRequest_NoProxy(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, upstreamCalled, "upstream should be called directly without proxy")
 }
+
+func TestForwardRequest_CustomHeaders(t *testing.T) {
+	var gotUA, gotAuth string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotUA = r.Header.Get("User-Agent")
+		gotAuth = r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"choices":[]}`))
+	}))
+	defer upstream.Close()
+
+	cfg := &config.Config{
+		Providers: map[string]config.ProviderConfig{
+			"test": {BaseURL: upstream.URL, APIKey: "test-key", Format: "chat"},
+		},
+	}
+	provider := config.NewProvider(cfg, "")
+	h := NewHandler(provider, nil, &staticRouter{}, nil)
+
+	_, _, err := h.forwardRequest(context.Background(), &router.RouteResult{
+		ProviderKey:   "test",
+		BaseURL:       upstream.URL,
+		Path:          "/v1/chat/completions",
+		APIKey:        "test-key",
+		Format:        "chat",
+		CustomHeaders: map[string]string{"User-Agent": "claude-code/1.0.0"},
+	}, []byte(`{"model":"gpt-4","messages":[]}`))
+
+	require.NoError(t, err)
+	assert.Equal(t, "claude-code/1.0.0", gotUA, "custom User-Agent should reach upstream via forwardRequest")
+	assert.Equal(t, "Bearer test-key", gotAuth, "auth should still be set after custom headers applied")
+}

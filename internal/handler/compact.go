@@ -71,6 +71,9 @@ func (h *Handler) forwardCompactPassthrough(c *gin.Context, body []byte, result 
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Authorization", "Bearer "+result.APIKey)
+	// Apply provider-configured custom headers (e.g. User-Agent for UA-gated
+	// upstreams) so the native-compact path matches the other compact paths.
+	applyCustomHeaders(httpReq, result.CustomHeaders)
 
 	resp, err := h.httpClientFor(result.ProviderKey).Do(httpReq)
 	if err != nil {

@@ -88,7 +88,9 @@
         "enableProxy": "Enable Proxy",
         "enableProxyTip": "Route requests to this provider through the global proxy configured in Settings.",
         "thinkTag": "Think Tag",
-        "thinkTagTip": "Strip <tag>...</tag> blocks from responses. Useful for removing model thinking/reasoning output (e.g. set to 'think' to strip <think reasoning_content>)."
+        "thinkTagTip": "Strip <tag>...</tag> blocks from responses. Useful for removing model thinking/reasoning output (e.g. set to 'think' to strip <think reasoning_content>).",
+        "customHeaders": "Custom Headers",
+        "customHeadersTip": "Extra headers sent to the upstream, overriding the forwarded client header. Used to bypass User-Agent-based gating (e.g. Kimi Coding Plan only allows whitelisted UAs like claude-cli/claude-code)."
       }
     }
   },

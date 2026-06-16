@@ -59,17 +59,18 @@ func (a *AdminHandler) RegisterRoutes(r *gin.RouterGroup) {
 func (a *AdminHandler) listProviders(c *gin.Context) {
 	cfg := a.provider.Get()
 	type providerItem struct {
-		Key          string   `json:"key"`
-		Name         string   `json:"name"`
-		BaseURL      string   `json:"base_url"`
-		Path         string   `json:"path"`
-		APIKey       string   `json:"api_key"`
-		FallbackKeys []string `json:"fallback_keys"`
-		Format       string   `json:"format"`
-		LogoURL      string   `json:"logo_url"`
-		ThinkTag     string   `json:"think_tag"`
-		Models       []string `json:"models"`
-		EnableProxy  bool     `json:"enable_proxy"`
+		Key           string            `json:"key"`
+		Name          string            `json:"name"`
+		BaseURL       string            `json:"base_url"`
+		Path          string            `json:"path"`
+		APIKey        string            `json:"api_key"`
+		FallbackKeys  []string          `json:"fallback_keys"`
+		Format        string            `json:"format"`
+		LogoURL       string            `json:"logo_url"`
+		ThinkTag      string            `json:"think_tag"`
+		Models        []string          `json:"models"`
+		EnableProxy   bool              `json:"enable_proxy"`
+		CustomHeaders map[string]string `json:"custom_headers"`
 	}
 
 	items := make([]providerItem, 0, len(cfg.Providers))
@@ -81,17 +82,18 @@ func (a *AdminHandler) listProviders(c *gin.Context) {
 	for _, k := range keys {
 		p := cfg.Providers[k]
 		items = append(items, providerItem{
-			Key:          k,
-			Name:         p.Name,
-			BaseURL:      p.BaseURL,
-			Path:         p.Path,
-			APIKey:       maskKey(p.APIKey),
-			FallbackKeys: maskFallbackKeys(p.FallbackKeys),
-			Format:       p.Format,
-			LogoURL:      p.LogoURL,
-			ThinkTag:     p.ThinkTag,
-			Models:       p.Models,
-			EnableProxy:  p.EnableProxy,
+			Key:           k,
+			Name:          p.Name,
+			BaseURL:       p.BaseURL,
+			Path:          p.Path,
+			APIKey:        maskKey(p.APIKey),
+			FallbackKeys:  maskFallbackKeys(p.FallbackKeys),
+			Format:        p.Format,
+			LogoURL:       p.LogoURL,
+			ThinkTag:      p.ThinkTag,
+			Models:        p.Models,
+			EnableProxy:   p.EnableProxy,
+			CustomHeaders: p.CustomHeaders,
 		})
 	}
 	sendOK(c, items)
@@ -99,18 +101,19 @@ func (a *AdminHandler) listProviders(c *gin.Context) {
 
 func (a *AdminHandler) createProvider(c *gin.Context) {
 	var req struct {
-		Key          string   `json:"key" binding:"required"`
-		Name         string   `json:"name" binding:"required"`
-		BaseURL      string   `json:"base_url" binding:"required"`
-		Path         string   `json:"path"`
-		APIKey       string   `json:"api_key" binding:"required"`
-		Format       string   `json:"format"`
-		LogoURL      string   `json:"logo_url"`
-		ThinkTag     string   `json:"think_tag"`
-		FallbackKeys []string `json:"fallback_keys"`
-		Models       []string `json:"models"`
-		DefaultModel string   `json:"default_model"`
-		EnableProxy  bool     `json:"enable_proxy"`
+		Key           string            `json:"key" binding:"required"`
+		Name          string            `json:"name" binding:"required"`
+		BaseURL       string            `json:"base_url" binding:"required"`
+		Path          string            `json:"path"`
+		APIKey        string            `json:"api_key" binding:"required"`
+		Format        string            `json:"format"`
+		LogoURL       string            `json:"logo_url"`
+		ThinkTag      string            `json:"think_tag"`
+		FallbackKeys  []string          `json:"fallback_keys"`
+		Models        []string          `json:"models"`
+		DefaultModel  string            `json:"default_model"`
+		EnableProxy   bool              `json:"enable_proxy"`
+		CustomHeaders map[string]string `json:"custom_headers"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		sendBindErr(c, err)
@@ -135,16 +138,17 @@ func (a *AdminHandler) createProvider(c *gin.Context) {
 	}
 
 	cfg.Providers[req.Key] = config.ProviderConfig{
-		Name:         req.Name,
-		BaseURL:      req.BaseURL,
-		Path:         req.Path,
-		APIKey:       req.APIKey,
-		Format:       req.Format,
-		LogoURL:      req.LogoURL,
-		ThinkTag:     req.ThinkTag,
-		FallbackKeys: req.FallbackKeys,
-		Models:       req.Models,
-		EnableProxy:  req.EnableProxy,
+		Name:          req.Name,
+		BaseURL:       req.BaseURL,
+		Path:          req.Path,
+		APIKey:        req.APIKey,
+		Format:        req.Format,
+		LogoURL:       req.LogoURL,
+		ThinkTag:      req.ThinkTag,
+		FallbackKeys:  req.FallbackKeys,
+		Models:        req.Models,
+		EnableProxy:   req.EnableProxy,
+		CustomHeaders: req.CustomHeaders,
 	}
 
 	// Auto-create a same-named Route so the new Provider is immediately
@@ -189,16 +193,17 @@ func (a *AdminHandler) updateProvider(c *gin.Context) {
 	key := c.Param("key")
 
 	var req struct {
-		Name         *string  `json:"name"`
-		BaseURL      *string  `json:"base_url"`
-		Path         *string  `json:"path"`
-		APIKey       *string  `json:"api_key"`
-		Format       *string  `json:"format"`
-		LogoURL      *string  `json:"logo_url"`
-		ThinkTag     *string  `json:"think_tag"`
-		FallbackKeys []string `json:"fallback_keys"`
-		Models       []string `json:"models"`
-		EnableProxy  *bool    `json:"enable_proxy"`
+		Name          *string           `json:"name"`
+		BaseURL       *string           `json:"base_url"`
+		Path          *string           `json:"path"`
+		APIKey        *string           `json:"api_key"`
+		Format        *string           `json:"format"`
+		LogoURL       *string           `json:"logo_url"`
+		ThinkTag      *string           `json:"think_tag"`
+		FallbackKeys  []string          `json:"fallback_keys"`
+		Models        []string          `json:"models"`
+		EnableProxy   *bool             `json:"enable_proxy"`
+		CustomHeaders map[string]string `json:"custom_headers"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		sendBindErr(c, err)
@@ -249,6 +254,9 @@ func (a *AdminHandler) updateProvider(c *gin.Context) {
 	}
 	if req.EnableProxy != nil {
 		p.EnableProxy = *req.EnableProxy
+	}
+	if req.CustomHeaders != nil {
+		p.CustomHeaders = req.CustomHeaders
 	}
 
 	cfg.Providers[key] = p

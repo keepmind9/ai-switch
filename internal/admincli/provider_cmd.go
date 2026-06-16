@@ -4,40 +4,58 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
+
+// parseHeaderFlags parses repeatable "Key: Value" flags (curl -H convention)
+// into a map. A header without a colon becomes an empty value. Returns nil when
+// the slice is empty so callers can omit the field from partial-update payloads.
+func parseHeaderFlags(headers []string) map[string]string {
+	if len(headers) == 0 {
+		return nil
+	}
+	m := make(map[string]string, len(headers))
+	for _, h := range headers {
+		k, v, _ := strings.Cut(h, ":")
+		m[strings.TrimSpace(k)] = strings.TrimSpace(v)
+	}
+	return m
+}
 
 // --- Provider types mirroring API JSON shapes ---
 
 // ProviderItem is a single provider in list output.
 type ProviderItem struct {
-	Key         string   `json:"key"`
-	Name        string   `json:"name"`
-	BaseURL     string   `json:"base_url"`
-	Format      string   `json:"format"`
-	Models      []string `json:"models"`
-	EnableProxy bool     `json:"enable_proxy"`
-	APIKey      string   `json:"api_key"`
-	Path        string   `json:"path"`
-	LogoURL     string   `json:"logo_url"`
-	ThinkTag    string   `json:"think_tag"`
+	Key           string            `json:"key"`
+	Name          string            `json:"name"`
+	BaseURL       string            `json:"base_url"`
+	Format        string            `json:"format"`
+	Models        []string          `json:"models"`
+	EnableProxy   bool              `json:"enable_proxy"`
+	APIKey        string            `json:"api_key"`
+	Path          string            `json:"path"`
+	LogoURL       string            `json:"logo_url"`
+	ThinkTag      string            `json:"think_tag"`
+	CustomHeaders map[string]string `json:"custom_headers"`
 }
 
 // CreateProviderReq is the request body for POST /admin/providers.
 type CreateProviderReq struct {
-	Key          string   `json:"key"`
-	Name         string   `json:"name"`
-	BaseURL      string   `json:"base_url"`
-	APIKey       string   `json:"api_key"`
-	Format       string   `json:"format"`
-	Path         string   `json:"path,omitempty"`
-	LogoURL      string   `json:"logo_url,omitempty"`
-	ThinkTag     string   `json:"think_tag,omitempty"`
-	FallbackKeys []string `json:"fallback_keys,omitempty"`
-	Models       []string `json:"models,omitempty"`
-	DefaultModel string   `json:"default_model,omitempty"`
-	EnableProxy  bool     `json:"enable_proxy"`
+	Key           string            `json:"key"`
+	Name          string            `json:"name"`
+	BaseURL       string            `json:"base_url"`
+	APIKey        string            `json:"api_key"`
+	Format        string            `json:"format"`
+	Path          string            `json:"path,omitempty"`
+	LogoURL       string            `json:"logo_url,omitempty"`
+	ThinkTag      string            `json:"think_tag,omitempty"`
+	FallbackKeys  []string          `json:"fallback_keys,omitempty"`
+	Models        []string          `json:"models,omitempty"`
+	DefaultModel  string            `json:"default_model,omitempty"`
+	EnableProxy   bool              `json:"enable_proxy"`
+	CustomHeaders map[string]string `json:"custom_headers,omitempty"`
 }
 
 func NewProviderCmd() *cobra.Command {
@@ -90,6 +108,7 @@ func newProviderListCmd() *cobra.Command {
 
 func newProviderAddCmd() *cobra.Command {
 	var req CreateProviderReq
+	var headers []string
 
 	cmd := &cobra.Command{
 		Use:     "add",
@@ -98,6 +117,9 @@ func newProviderAddCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if req.Format == "" {
 				req.Format = "chat"
+			}
+			if len(headers) > 0 {
+				req.CustomHeaders = parseHeaderFlags(headers)
 			}
 			client := ClientFromCmd(cmd)
 			data, err := client.Post(cmd.Context(), "/providers", req)
@@ -117,6 +139,7 @@ func newProviderAddCmd() *cobra.Command {
 	cmd.Flags().StringSliceVar(&req.Models, "model", nil, "Supported models (repeatable)")
 	cmd.Flags().StringVar(&req.DefaultModel, "default-model", "", "Default model for auto-created route")
 	cmd.Flags().BoolVar(&req.EnableProxy, "enable-proxy", false, "Route through global proxy")
+	cmd.Flags().StringArrayVar(&headers, "header", nil, "Custom upstream header 'Key: Value' (repeatable); overrides the forwarded client header")
 
 	for _, f := range []string{"key", "name", "base-url", "api-key"} {
 		_ = cmd.MarkFlagRequired(f)
@@ -130,6 +153,7 @@ func newProviderUpdateCmd() *cobra.Command {
 	var name, baseURL, apiKey, format string
 	var models []string
 	var enableProxy bool
+	var headers []string
 
 	cmd := &cobra.Command{
 		Use:   "update <key>",
@@ -158,6 +182,9 @@ func newProviderUpdateCmd() *cobra.Command {
 			if cmd.Flags().Changed("enable-proxy") {
 				req["enable_proxy"] = enableProxy
 			}
+			if cmd.Flags().Changed("header") {
+				req["custom_headers"] = parseHeaderFlags(headers)
+			}
 
 			client := ClientFromCmd(cmd)
 			data, err := client.Put(cmd.Context(), "/providers/"+key, req)
@@ -175,6 +202,7 @@ func newProviderUpdateCmd() *cobra.Command {
 	cmd.Flags().StringVar(&format, "format", "", "API format: chat, responses, anthropic")
 	cmd.Flags().StringSliceVar(&models, "model", nil, "Supported models (repeatable, replaces all)")
 	cmd.Flags().BoolVar(&enableProxy, "enable-proxy", false, "Route through global proxy")
+	cmd.Flags().StringArrayVar(&headers, "header", nil, "Custom upstream header 'Key: Value' (repeatable, replaces all); overrides the forwarded client header")
 	bindOutputFlag(cmd)
 	return cmd
 }

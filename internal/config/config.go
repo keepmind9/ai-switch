@@ -49,16 +49,17 @@ type ServerConfig struct {
 }
 
 type ProviderConfig struct {
-	Name         string   `mapstructure:"name" yaml:"name"`
-	BaseURL      string   `mapstructure:"base_url" yaml:"base_url"`
-	Path         string   `mapstructure:"path" yaml:"path"`
-	APIKey       string   `mapstructure:"api_key" yaml:"api_key"`
-	FallbackKeys []string `mapstructure:"fallback_keys" yaml:"fallback_keys,omitempty"`
-	Format       string   `mapstructure:"format" yaml:"format"`
-	LogoURL      string   `mapstructure:"logo_url" yaml:"logo_url"`
-	ThinkTag     string   `mapstructure:"think_tag" yaml:"think_tag,omitempty"`
-	Models       []string `mapstructure:"models" yaml:"models,omitempty"`
-	EnableProxy  bool     `mapstructure:"enable_proxy" yaml:"enable_proxy,omitempty"`
+	Name          string            `mapstructure:"name" yaml:"name"`
+	BaseURL       string            `mapstructure:"base_url" yaml:"base_url"`
+	Path          string            `mapstructure:"path" yaml:"path"`
+	APIKey        string            `mapstructure:"api_key" yaml:"api_key"`
+	FallbackKeys  []string          `mapstructure:"fallback_keys" yaml:"fallback_keys,omitempty"`
+	Format        string            `mapstructure:"format" yaml:"format"`
+	LogoURL       string            `mapstructure:"logo_url" yaml:"logo_url"`
+	ThinkTag      string            `mapstructure:"think_tag" yaml:"think_tag,omitempty"`
+	Models        []string          `mapstructure:"models" yaml:"models,omitempty"`
+	EnableProxy   bool              `mapstructure:"enable_proxy" yaml:"enable_proxy,omitempty"`
+	CustomHeaders map[string]string `mapstructure:"custom_headers" yaml:"custom_headers,omitempty"`
 }
 
 var validFormats = map[string]bool{
@@ -110,6 +111,11 @@ func Load(path string) (*Config, error) {
 		}
 		return nil, err
 	}
+
+	// viper lowercases map keys during Unmarshal, but HTTP header names are
+	// case-sensitive in config/UI. Re-read custom_headers from the raw YAML to
+	// restore the original casing (e.g. "User-Agent", not "user-agent").
+	preserveCustomHeaderCase(path, &cfg)
 
 	if cfg.LogRetentionDays <= 0 {
 		cfg.LogRetentionDays = DefaultLogRetentionDays
@@ -298,6 +304,42 @@ func loadFromFile(path string) (*Config, error) {
 		return nil, err
 	}
 	return &cfg, nil
+}
+
+// preserveCustomHeaderCase re-reads providers' custom_headers from the raw
+// YAML file with case-sensitive keys. viper lowercases map keys during
+// Unmarshal (turning "User-Agent" into "user-agent"), but HTTP header names
+// matter in config/UI, so the original casing is restored here. Best-effort:
+// on any read error it leaves the (lowercased) viper result in place, which
+// still works functionally — Go canonicalizes header names when sending.
+//
+// Scoped to custom_headers only: other map fields (RouteRule.SceneMap /
+// ModelMap) are case-insensitive route selectors, so their lowercasing is
+// harmless and intentionally not reversed here.
+func preserveCustomHeaderCase(path string, cfg *Config) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		slog.Warn("config: failed to re-read custom_headers for case preservation", "error", err)
+		return
+	}
+	var raw struct {
+		Providers map[string]struct {
+			CustomHeaders map[string]string `yaml:"custom_headers"`
+		} `yaml:"providers"`
+	}
+	if err := yaml.Unmarshal(data, &raw); err != nil {
+		slog.Warn("config: failed to parse custom_headers for case preservation", "error", err)
+		return
+	}
+	for k, p := range raw.Providers {
+		if p.CustomHeaders == nil {
+			continue
+		}
+		if cp, ok := cfg.Providers[k]; ok {
+			cp.CustomHeaders = p.CustomHeaders
+			cfg.Providers[k] = cp
+		}
+	}
 }
 
 // writeConfigDirect writes cfg to path atomically (temp file + rename) but

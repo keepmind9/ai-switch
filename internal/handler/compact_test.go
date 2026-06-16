@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/keepmind9/ai-switch/internal/config"
 	"github.com/keepmind9/ai-switch/internal/converter"
 	"github.com/keepmind9/ai-switch/internal/router"
 	"github.com/keepmind9/ai-switch/internal/types"
@@ -202,6 +203,45 @@ func TestHandleCompact_Passthrough(t *testing.T) {
 	var resp map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	assert.Equal(t, "resp-compact-test", resp["id"])
+}
+
+func TestHandleCompact_Passthrough_CustomHeaders(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	var gotUA string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotUA = r.Header.Get("User-Agent")
+		assert.True(t, strings.HasSuffix(r.URL.Path, "/compact"))
+		json.NewEncoder(w).Encode(map[string]any{
+			"id":     "resp-compact-ua",
+			"object": "response.compaction",
+			"output": []map[string]any{{"type": "compaction", "encrypted_content": "blob"}},
+		})
+	}))
+	t.Cleanup(ts.Close)
+
+	cfg := &config.Config{
+		DefaultRoute: "gw-default",
+		Providers: map[string]config.ProviderConfig{
+			"default": {
+				BaseURL:       ts.URL,
+				APIKey:        "test-key",
+				Format:        "responses",
+				CustomHeaders: map[string]string{"User-Agent": "claude-code/1.0.0"},
+			},
+		},
+		Routes: map[string]config.RouteRule{
+			"gw-default": {Provider: "default", DefaultModel: "test-model"},
+		},
+	}
+	provider := config.NewProvider(cfg, "")
+	rtr := router.NewConfigRouter(provider)
+	h := NewHandler(provider, nil, rtr, nil)
+	engine := gin.New()
+	h.RegisterRoutes(engine)
+
+	w := doRequest(engine, "POST", "/v1/responses/compact", `{"model":"gpt-4o","input":"Summarize"}`)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "claude-code/1.0.0", gotUA, "custom User-Agent should reach upstream on native-compact path")
 }
 
 func TestHandleCompact_SimulatedChat(t *testing.T) {

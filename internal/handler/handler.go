@@ -320,6 +320,10 @@ func (h *Handler) forwardRequest(ctx context.Context, result *router.RouteResult
 		req.Header.Set("Authorization", "Bearer "+result.APIKey)
 	}
 
+	// Apply provider-configured custom headers (e.g. User-Agent for UA-gated
+	// upstreams) so non-pipeline paths like compact behave like the main one.
+	applyCustomHeaders(req, result.CustomHeaders)
+
 	start := time.Now()
 	resp, err := h.httpClientFor(result.ProviderKey).Do(req)
 	if err != nil {
