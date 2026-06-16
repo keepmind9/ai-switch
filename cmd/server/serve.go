@@ -32,14 +32,15 @@ const (
 	restartInterval = 250 * time.Millisecond
 )
 
-func newServeCmd(configPath string) *cobra.Command {
+func newServeCmd() *cobra.Command {
 	var asDaemon bool
 
 	cmd := &cobra.Command{
 		Use:     "serve",
 		Aliases: []string{"start"},
 		Short:   fmt.Sprintf("Start the %s proxy server", binName),
-		RunE: func(_ *cobra.Command, _ []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			configPath, _ := cmd.Flags().GetString("config")
 			if asDaemon {
 				return startDaemon(configPath)
 			}

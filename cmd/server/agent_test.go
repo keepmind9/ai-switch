@@ -37,13 +37,13 @@ func TestSupportedAgents(t *testing.T) {
 }
 
 func TestNewAgentCmd(t *testing.T) {
-	cmd := newAgentCmd("")
+	cmd := newAgentCmd()
 	assert.Contains(t, cmd.Use, "agent")
 	assert.NotNil(t, cmd.RunE)
 }
 
 func TestAgentCmdValidation(t *testing.T) {
-	cmd := newAgentCmd("")
+	cmd := newAgentCmd()
 	cmd.SetArgs([]string{})
 	err := cmd.Execute()
 	assert.NoError(t, err)
@@ -564,6 +564,68 @@ func TestParseAgentURL_NoValue(t *testing.T) {
 	_, _, err := parseAgentURL([]string{"--url"})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "--url requires a value")
+}
+
+func TestExtractLeadingConfig(t *testing.T) {
+	tests := []struct {
+		name       string
+		args       []string
+		wantConfig string
+		wantRemain []string
+	}{
+		{
+			name:       "no config flag",
+			args:       []string{"my-key", "claude", "--continue"},
+			wantConfig: "",
+			wantRemain: []string{"my-key", "claude", "--continue"},
+		},
+		{
+			name:       "-c before positionals",
+			args:       []string{"-c", "/tmp/x.yaml", "my-key", "claude"},
+			wantConfig: "/tmp/x.yaml",
+			wantRemain: []string{"my-key", "claude"},
+		},
+		{
+			name:       "--config= form",
+			args:       []string{"--config=/tmp/x.yaml", "my-key", "codex"},
+			wantConfig: "/tmp/x.yaml",
+			wantRemain: []string{"my-key", "codex"},
+		},
+		{
+			name:       "codex -c after positionals is preserved",
+			args:       []string{"my-key", "codex", "-c", "model_provider=x"},
+			wantConfig: "",
+			wantRemain: []string{"my-key", "codex", "-c", "model_provider=x"},
+		},
+		{
+			name:       "-c and --url both before positionals",
+			args:       []string{"--url", "http://h:1", "-c", "/tmp/x.yaml", "my-key", "claude"},
+			wantConfig: "/tmp/x.yaml",
+			wantRemain: []string{"--url", "http://h:1", "my-key", "claude"},
+		},
+		{
+			name:       "-- separator stops option scanning",
+			args:       []string{"--", "-c", "/tmp/x.yaml", "my-key", "claude"},
+			wantConfig: "",
+			wantRemain: []string{"--", "-c", "/tmp/x.yaml", "my-key", "claude"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg, rem, err := extractLeadingConfig(tt.args)
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantConfig, cfg)
+			assert.Equal(t, tt.wantRemain, rem)
+		})
+	}
+}
+
+func TestExtractLeadingConfig_NoValue(t *testing.T) {
+	for _, a := range []string{"-c", "--config"} {
+		_, _, err := extractLeadingConfig([]string{a})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "requires a value")
+	}
 }
 
 func TestRunAgent_ServerURLOverride(t *testing.T) {

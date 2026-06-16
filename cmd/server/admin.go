@@ -5,7 +5,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newAdminCmd(configPath string) *cobra.Command {
+func newAdminCmd() *cobra.Command {
 	var urlFlag string
 
 	cmd := &cobra.Command{
@@ -21,6 +21,7 @@ Examples:
   ais admin route add --key mykey --provider openai --default-model gpt-4o
   ais admin --url http://remote:12345 status`,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			configPath, _ := cmd.Flags().GetString("config")
 			baseURL, err := admincli.ResolveAdminURL(configPath, urlFlag)
 			if err != nil {
 				return err

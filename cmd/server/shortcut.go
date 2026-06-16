@@ -10,11 +10,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newShortcutCmd(configPath string) *cobra.Command {
+func newShortcutCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "shortcut",
 		Short: fmt.Sprintf("Create desktop shortcuts to start/stop %s", binName),
-		RunE: func(_ *cobra.Command, _ []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			configPath, _ := cmd.Flags().GetString("config")
 			return createShortcuts(configPath)
 		},
 	}

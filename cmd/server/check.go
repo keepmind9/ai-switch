@@ -7,11 +7,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newCheckCmd(configPath string) *cobra.Command {
+func newCheckCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "check",
 		Short: "Validate config file without starting the server",
-		RunE: func(_ *cobra.Command, _ []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			configPath, _ := cmd.Flags().GetString("config")
 			return runCheck(configPath)
 		},
 	}

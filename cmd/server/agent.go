@@ -37,7 +37,7 @@ var agentEnvMap = map[string]agentEnvConfig{
 	},
 }
 
-func newAgentCmd(configPath string) *cobra.Command {
+func newAgentCmd() *cobra.Command {
 	var serverURL string
 
 	cmd := &cobra.Command{
@@ -64,8 +64,15 @@ Examples:
 					return cmd.Help()
 				}
 			}
-			// Manually extract --url from args before positionals
-			filtered, parsedURL, err := parseAgentURL(args)
+			// DisableFlagParsing means cobra never fills the inherited -c/--config
+			// flag, so extract it manually here — only before the first positional,
+			// so flags meant for the spawned agent (e.g. codex -c) are preserved.
+			configPath, rest, err := extractLeadingConfig(args)
+			if err != nil {
+				return err
+			}
+			// Manually extract --url from the remaining args.
+			filtered, parsedURL, err := parseAgentURL(rest)
 			if err != nil {
 				return err
 			}
@@ -102,6 +109,56 @@ func parseAgentURL(args []string) (remaining []string, url string, err error) {
 		remaining = append(remaining, args[i])
 	}
 	return remaining, url, nil
+}
+
+// extractLeadingConfig scans args for -c/--config appearing before the first
+// positional argument, removes them, and returns the resolved config path. It
+// also steps over --url's value so that value isn't mistaken for the first
+// positional (the value is kept in remaining for parseAgentURL to consume).
+// Everything from the first positional (or a "--" separator) onward is passed
+// through unchanged, so flags intended for the spawned agent survive — notably
+// codex's own -c flags. Returns an error if -c/--config is given without a
+// value, matching cobra/pflag's usual behavior.
+//
+// Manual extraction is required because the agent command sets
+// DisableFlagParsing (so it can forward unknown flags to the agent binary),
+// which prevents cobra from populating the inherited --config flag.
+func extractLeadingConfig(args []string) (configPath string, remaining []string, err error) {
+	remaining = make([]string, 0, len(args))
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		// "--" ends option parsing; pass it and everything after verbatim.
+		if a == "--" {
+			remaining = append(remaining, args[i:]...)
+			return configPath, remaining, nil
+		}
+		// First positional: copy the rest verbatim and stop scanning.
+		if !strings.HasPrefix(a, "-") || a == "-" {
+			remaining = append(remaining, args[i:]...)
+			return configPath, remaining, nil
+		}
+		switch {
+		case a == "-c" || a == "--config":
+			if i+1 >= len(args) {
+				return "", nil, fmt.Errorf("%s requires a value", a)
+			}
+			configPath = args[i+1]
+			i++ // consume the value; do not keep it in remaining
+		case strings.HasPrefix(a, "--config="):
+			configPath = strings.TrimPrefix(a, "--config=")
+		case a == "--url":
+			// Keep --url and its value for parseAgentURL, but consume the value
+			// here so it isn't treated as the first positional.
+			remaining = append(remaining, a)
+			if i+1 < len(args) {
+				remaining = append(remaining, args[i+1])
+				i++
+			}
+		default:
+			remaining = append(remaining, a)
+		}
+	}
+	return configPath, remaining, nil
 }
 
 // getCodexModelProvider reads model_provider from the codex config file.

@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -45,7 +47,7 @@ func TestNewRootCmdConfiguresCommands(t *testing.T) {
 }
 
 func TestNewServeCmdConfiguresDaemonFlag(t *testing.T) {
-	cmd := newServeCmd("")
+	cmd := newServeCmd()
 
 	assert.Equal(t, "serve", cmd.Use)
 	require.NotNil(t, cmd.Flags().Lookup("daemon"))
@@ -71,7 +73,7 @@ func TestRootConfigFlagIsInheritedBySubcommands(t *testing.T) {
 }
 
 func TestServeDaemonFlagDefaults(t *testing.T) {
-	cmd := newServeCmd("")
+	cmd := newServeCmd()
 	daemonFlag := cmd.Flags().Lookup("daemon")
 	require.NotNil(t, daemonFlag)
 	assert.Equal(t, "false", daemonFlag.DefValue)
@@ -79,7 +81,7 @@ func TestServeDaemonFlagDefaults(t *testing.T) {
 }
 
 func TestServeCommandHasStartAlias(t *testing.T) {
-	cmd := newServeCmd("")
+	cmd := newServeCmd()
 	assert.Equal(t, []string{"start"}, cmd.Aliases)
 }
 
@@ -106,7 +108,7 @@ func TestStopCommandReturnsRunEError(t *testing.T) {
 }
 
 func TestCheckCommandReturnsRunEError(t *testing.T) {
-	cmd := newCheckCmd("")
+	cmd := newCheckCmd()
 	require.NotNil(t, cmd.RunE)
 }
 
@@ -118,4 +120,24 @@ func TestErrExitCode(t *testing.T) {
 func TestIsAddrInUse(t *testing.T) {
 	assert.True(t, isAddrInUse(errors.New("bind: address already in use")))
 	assert.False(t, isAddrInUse(errors.New("connection refused")))
+}
+
+// TestConfigFlagReachesCommandRunE is a regression test for the -c/--config
+// flag. Previously newServeCmd(configPath) captured configPath's value at
+// command-registration time (always ""), so -c was silently ignored and the
+// default ~/.ai-switch/config.yaml was loaded instead.
+//
+// Exercised through `check`: cfgPath is intentionally NOT created first, so if
+// -c reaches RunE, config.Load creates it in the temp dir. If the bug were
+// present, the default ~/.ai-switch path would be used and cfgPath would never
+// be created.
+func TestConfigFlagReachesCommandRunE(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "custom.yaml")
+
+	_, _ = executeCommand(newRootCmd(), "check", "-c", cfgPath)
+
+	_, err := os.Stat(cfgPath)
+	assert.NoError(t, err, "config.Load should have created the -c path in the "+
+		"temp dir, proving the flag reached RunE (not the default path)")
 }

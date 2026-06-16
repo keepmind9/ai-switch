@@ -5,22 +5,24 @@ import (
 )
 
 func newRootCmd() *cobra.Command {
-	var configPath string
-
 	rootCmd := &cobra.Command{
 		Use:   binName,
 		Short: "AI provider switching proxy",
 	}
-	rootCmd.PersistentFlags().StringVarP(&configPath, "config", "c", "", "path to config file")
+	// Registered as a persistent flag so every subcommand inherits it; each
+	// command reads the value at RunE time via cmd.Flags().GetString("config").
+	// Binding a variable here would only snapshot its value at registration
+	// time (always ""), silently ignoring -c. See TestConfigFlagReachesCommandRunE.
+	rootCmd.PersistentFlags().StringP("config", "c", "", "path to config file")
 	rootCmd.AddCommand(
-		newServeCmd(configPath),
+		newServeCmd(),
 		newStopCmd(),
-		newCheckCmd(configPath),
+		newCheckCmd(),
 		newVersionCmd(),
-		newAgentCmd(configPath),
-		newShortcutCmd(configPath),
+		newAgentCmd(),
+		newShortcutCmd(),
 		newUpdateCmd(),
-		newAdminCmd(configPath),
+		newAdminCmd(),
 	)
 	return rootCmd
 }
