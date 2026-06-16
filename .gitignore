@@ -53,3 +53,4 @@ internal/handler/static/*
 .mcp.json
 
 .superpowers
+tmp/
