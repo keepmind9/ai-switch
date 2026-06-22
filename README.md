@@ -440,6 +440,8 @@ Adding a provider auto-creates a same-named route — one step setup.
 
 Full request/response tracing with raw viewer, diff comparison, and TTFB waterfall:
 
+Trace logging is on by default (`llm_log_enabled: true`). Set it to `false` to stop writing trace files and save disk space.
+
 <img src="docs/images/ai-switch-trace-list.png" width="600" alt="Trace list" />
 
 <img src="docs/images/ai-switch-trace-detail.png" width="600" alt="Trace detail with TTFB waterfall" />

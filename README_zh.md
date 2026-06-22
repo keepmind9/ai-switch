@@ -437,6 +437,8 @@ Checking config.yaml ...
 
 完整的请求/响应追踪，支持原始查看、Diff 对比和 TTFB 瀑布流：
 
+追踪日志默认开启（`llm_log_enabled: true`）。设为 `false` 可停止写入追踪文件以节省磁盘空间。
+
 <img src="docs/images/ai-switch-trace-list.png" width="600" alt="请求追踪列表" />
 
 <img src="docs/images/ai-switch-trace-detail.png" width="600" alt="追踪详情 TTFB 瀑布流" />
