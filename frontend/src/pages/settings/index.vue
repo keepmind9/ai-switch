@@ -30,12 +30,14 @@ const form = ref<Settings>({
   port: 12345,
   allowed_ips: [],
   log_retention_days: 30,
+  llm_log_enabled: true,
   proxy_url: '',
 })
 
 const originalPort = ref(12345)
 const originalHost = ref('127.0.0.1')
 const originalLogRetention = ref(30)
+const originalLLMLogEnabled = ref(true)
 const originalAllowedIps = ref<string[]>([])
 const originalProxyUrl = ref('')
 
@@ -50,6 +52,7 @@ const hasUnsavedChanges = computed(() =>
   form.value.host !== originalHost.value
   || form.value.port !== originalPort.value
   || form.value.log_retention_days !== originalLogRetention.value
+  || form.value.llm_log_enabled !== originalLLMLogEnabled.value
   || JSON.stringify(form.value.allowed_ips) !== JSON.stringify(originalAllowedIps.value)
   || form.value.proxy_url !== originalProxyUrl.value
 )
@@ -101,6 +104,7 @@ async function load() {
     originalHost.value = data.host
     originalPort.value = data.port
     originalLogRetention.value = data.log_retention_days
+    originalLLMLogEnabled.value = data.llm_log_enabled
     originalAllowedIps.value = data.allowed_ips || []
     originalProxyUrl.value = data.proxy_url
   } finally {
@@ -115,6 +119,7 @@ async function handleSave() {
       host: form.value.host,
       port: form.value.port,
       log_retention_days: form.value.log_retention_days,
+      llm_log_enabled: form.value.llm_log_enabled,
       allowed_ips: form.value.allowed_ips,
       proxy_url: form.value.proxy_url,
     })
@@ -123,6 +128,7 @@ async function handleSave() {
     originalHost.value = data.host
     originalPort.value = data.port
     originalLogRetention.value = data.log_retention_days
+    originalLLMLogEnabled.value = data.llm_log_enabled
     originalAllowedIps.value = data.allowed_ips || []
     originalProxyUrl.value = data.proxy_url
     ElMessage.success(t('settings.successSave'))
@@ -258,6 +264,16 @@ onMounted(() => {
           </template>
           <el-input-number v-model="form.log_retention_days" :min="1" :max="365" controls-position="right"
             style="width: 100%" />
+        </el-form-item>
+
+        <el-form-item>
+          <template #label>
+            {{ t('settings.form.llmLog') }}
+            <el-text type="info" size="small" style="margin-left: 8px">
+              {{ t('settings.form.llmLogTip') }}
+            </el-text>
+          </template>
+          <el-switch v-model="form.llm_log_enabled" />
         </el-form-item>
 
         <el-form-item>

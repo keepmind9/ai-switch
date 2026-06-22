@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -64,16 +65,6 @@ func runServe(configPath string) error {
 		slog.Warn("failed to setup file logger", "error", err)
 	}
 
-	llmWriter, err := log.NewLLMWriter(dataDir)
-	if err != nil {
-		slog.Warn("failed to setup LLM trace writer", "error", err)
-	}
-
-	idxWriter, err := log.NewDailyRotateWriter(dataDir, "llm-idx")
-	if err != nil {
-		slog.Warn("failed to setup LLM index writer", "error", err)
-	}
-
 	resolvedPath, err := config.DefaultConfigPath(configPath)
 	if err != nil {
 		return fmt.Errorf("failed to resolve config path: %w", err)
@@ -86,7 +77,25 @@ func runServe(configPath string) error {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
+	// Set retention BEFORE creating any DailyRotateWriter (see log.SetRetentionDays).
 	log.SetRetentionDays(cfg.LogRetentionDays)
+
+	// LLM trace logging feeds the Trace Viewer but can grow large. When
+	// disabled, skip writer creation entirely (no trace files are produced);
+	// the recorder below receives nil writers and becomes a no-op.
+	var llmWriter, idxWriter io.Writer
+	if cfg.LLMLogEnabled {
+		llmWriter, err = log.NewLLMWriter(dataDir)
+		if err != nil {
+			slog.Warn("failed to setup LLM trace writer", "error", err)
+		}
+		idxWriter, err = log.NewDailyRotateWriter(dataDir, "llm-idx")
+		if err != nil {
+			slog.Warn("failed to setup LLM index writer", "error", err)
+		}
+	} else {
+		slog.Info("LLM trace logging disabled (llm_log_enabled=false); Trace Viewer will show no new data")
+	}
 
 	provider := config.NewProvider(cfg, resolvedPath)
 

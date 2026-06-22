@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ArrowDown, ArrowUp, Document, View, Switch } from '@element-plus/icons-vue'
 import { getTraceDetail, type TraceDetail, type TraceDetailRecord } from '@/api/traces'
+import { getSettings } from '@/api/settings'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -12,6 +13,7 @@ const router = useRouter()
 const goBack = () => router.back()
 const detail = ref<TraceDetail | null>(null)
 const loading = ref(false)
+const llmLogEnabled = ref(true)
 const expanded = reactive<Record<string, { headers: boolean; body: boolean }>>({})
 
 const toggle = (index: number, key: 'headers' | 'body') => {
@@ -375,6 +377,9 @@ const viewSession = () => {
 }
 
 onMounted(async () => {
+  getSettings()
+    .then(({ data }) => { llmLogEnabled.value = data.llm_log_enabled })
+    .catch((e) => { console.warn('Failed to load llm_log_enabled setting', e) })
   loading.value = true
   try {
     detail.value = await getTraceDetail(route.params.ais_req_id as string)
@@ -386,6 +391,19 @@ onMounted(async () => {
 
 <template>
   <div class="app-container" v-loading="loading">
+    <el-alert
+      v-if="!llmLogEnabled"
+      class="mb-4"
+      type="warning"
+      :closable="false"
+      show-icon
+      :title="t('traces.disabledHint')"
+    >
+      <template #default>
+        <span>{{ t('traces.disabledHintDetail') }}</span>
+        <router-link to="/settings" class="text-blue-500 hover:underline ml-1">{{ t('traces.disabledHintAction') }}</router-link>
+      </template>
+    </el-alert>
     <div v-if="detail">
       <div class="page-header mb-4">
         <div>

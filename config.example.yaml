@@ -11,6 +11,11 @@ server:
 # Number of days to retain log files (default: 30)
 # log_retention_days: 30
 
+# Record LLM request/response traces for the Trace Viewer (default: true).
+# Trace logs can grow large; set to false to disable them. The Trace Viewer
+# will show no new data while this is off.
+# llm_log_enabled: true
+
 default_route: "gw-default"
 # Protocol-specific defaults (optional, override default_route per protocol)
 # default_anthropic_route: "gw-zhipu"    # /v1/messages (Claude Code)

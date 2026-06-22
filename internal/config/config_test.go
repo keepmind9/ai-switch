@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -603,6 +604,86 @@ providers:
 		require.NoError(t, err)
 		assert.Equal(t, DefaultLogRetentionDays, cfg.LogRetentionDays)
 	})
+}
+
+func TestLoad_LLMLogEnabled(t *testing.T) {
+	t.Run("defaults to true when not set", func(t *testing.T) {
+		dir := t.TempDir()
+		cfgPath := filepath.Join(dir, "config.yaml")
+		content := `
+server:
+  host: "0.0.0.0"
+  port: 12345
+providers:
+  test:
+    name: "Test"
+    base_url: "https://api.example.com/v1"
+    api_key: "key"
+`
+		require.NoError(t, os.WriteFile(cfgPath, []byte(content), 0644))
+		cfg, err := Load(cfgPath)
+		require.NoError(t, err)
+		assert.True(t, cfg.LLMLogEnabled, "LLM logging should default to enabled")
+	})
+
+	t.Run("explicitly disabled", func(t *testing.T) {
+		dir := t.TempDir()
+		cfgPath := filepath.Join(dir, "config.yaml")
+		content := `
+server:
+  host: "0.0.0.0"
+  port: 12345
+llm_log_enabled: false
+providers:
+  test:
+    name: "Test"
+    base_url: "https://api.example.com/v1"
+    api_key: "key"
+`
+		require.NoError(t, os.WriteFile(cfgPath, []byte(content), 0644))
+		cfg, err := Load(cfgPath)
+		require.NoError(t, err)
+		assert.False(t, cfg.LLMLogEnabled)
+	})
+
+	t.Run("false survives a write/read round-trip", func(t *testing.T) {
+		dir := t.TempDir()
+		cfgPath := filepath.Join(dir, "config.yaml")
+		require.NoError(t, WriteConfig(cfgPath, &Config{
+			Server:        ServerConfig{Host: "127.0.0.1", Port: 12345},
+			LLMLogEnabled: false,
+		}))
+		cfg, err := Load(cfgPath)
+		require.NoError(t, err)
+		assert.False(t, cfg.LLMLogEnabled, "disabled flag must persist across write/read")
+	})
+}
+
+func TestLoad_RecoveryAppliesLLMLogEnabledDefault(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+
+	// Simulate a backup from before llm_log_enabled existed: valid YAML,
+	// but the field is absent. Written directly because WriteConfig now
+	// always persists the field.
+	legacyBackup := `server:
+  host: "127.0.0.1"
+  port: 12345
+providers:
+  test:
+    name: "Test"
+    base_url: "https://api.example.com/v1"
+    api_key: "key"
+`
+	require.NoError(t, os.WriteFile(backupName(path, time.Now()), []byte(legacyBackup), 0644))
+
+	// Corrupt the main file so Load falls back to backup recovery.
+	require.NoError(t, os.WriteFile(path, []byte("garbage: [[["), 0644))
+
+	cfg, err := Load(path)
+	require.NoError(t, err)
+	assert.True(t, cfg.LLMLogEnabled,
+		"recovery from a pre-field backup must apply the default (true), not the bool zero value (false)")
 }
 
 func TestExpandEnv(t *testing.T) {

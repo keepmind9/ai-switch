@@ -220,6 +220,9 @@
   "traces": {
     "title": "Trace Viewer",
     "desc": "Debug LLM proxy requests.",
+    "disabledHint": "LLM trace logging is disabled",
+    "disabledHintDetail": "The Trace Viewer needs LLM trace logging enabled to show new requests.",
+    "disabledHintAction": "Enable it in Settings",
     "back": "Back to list",
     "viewSession": "View all in session",
     "filter": {
@@ -277,6 +280,8 @@
       "portPlaceholder": "1-65535",
       "logRetention": "Log Retention Days",
       "logRetentionTip": "Log files older than this will be auto-cleaned.",
+      "llmLog": "LLM Trace Logging",
+      "llmLogTip": "Record LLM request/response traces for the Trace Viewer. Disable to save disk space (requires restart).",
       "allowedIps": "IP Whitelist",
       "allowedIpsTip": "When binding to a non-localhost address, only IPs in this list can access the service. Supports CIDR notation.",
       "allowedIpsPlaceholder": "e.g. 192.168.1.0/24, 10.0.0.5, press Enter to add",

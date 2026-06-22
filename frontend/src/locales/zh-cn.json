@@ -220,6 +220,9 @@
   "traces": {
     "title": "Trace 查看器",
     "desc": "调试 LLM 代理请求。",
+    "disabledHint": "LLM 日志记录已关闭",
+    "disabledHintDetail": "Trace 查看器需要开启 LLM 日志记录才能显示新的请求数据。",
+    "disabledHintAction": "去设置中开启",
     "back": "返回列表",
     "viewSession": "查看同会话所有请求",
     "filter": {
@@ -277,6 +280,8 @@
       "portPlaceholder": "1-65535",
       "logRetention": "日志保留天数",
       "logRetentionTip": "超过保留天数的日志文件将被自动清理。",
+      "llmLog": "LLM 日志记录",
+      "llmLogTip": "为 Trace 查看器记录 LLM 请求/响应日志。关闭可节省磁盘空间（需重启生效）。",
       "allowedIps": "IP 白名单",
       "allowedIpsTip": "当监听地址为非 localhost 时，仅白名单中的 IP 可访问服务。支持 CIDR 格式。",
       "allowedIpsPlaceholder": "例如 192.168.1.0/24, 10.0.0.5，按回车添加",

@@ -19,11 +19,13 @@ const (
 	ConfigFile              = "config.yaml"
 	PidFileName             = "ai-switch.pid"
 	DefaultLogRetentionDays = 30
+	DefaultLLMLogEnabled    = true
 )
 
 type Config struct {
 	Server                ServerConfig              `mapstructure:"server" yaml:"server"`
 	LogRetentionDays      int                       `mapstructure:"log_retention_days" yaml:"log_retention_days,omitempty"`
+	LLMLogEnabled         bool                      `mapstructure:"llm_log_enabled" yaml:"llm_log_enabled"`
 	DefaultRoute          string                    `mapstructure:"default_route" yaml:"default_route,omitempty"`
 	DefaultAnthropicRoute string                    `mapstructure:"default_anthropic_route" yaml:"default_anthropic_route,omitempty"`
 	DefaultResponsesRoute string                    `mapstructure:"default_responses_route" yaml:"default_responses_route,omitempty"`
@@ -81,11 +83,13 @@ func Load(path string) (*Config, error) {
 	v.SetDefault("server.host", DefaultHost)
 	v.SetDefault("server.port", DefaultPort)
 	v.SetDefault("log_retention_days", DefaultLogRetentionDays)
+	v.SetDefault("llm_log_enabled", DefaultLLMLogEnabled)
 
 	if err := v.ReadInConfig(); err != nil {
 		if os.IsNotExist(err) {
 			if writeErr := WriteConfig(path, &Config{
-				Server: ServerConfig{Host: DefaultHost, Port: DefaultPort},
+				Server:        ServerConfig{Host: DefaultHost, Port: DefaultPort},
+				LLMLogEnabled: DefaultLLMLogEnabled,
 			}); writeErr != nil {
 				return nil, fmt.Errorf("failed to create default config: %w", writeErr)
 			}
@@ -267,6 +271,11 @@ func recoverFromBackup(path string) (*Config, error) {
 				"backup", bi.Name, "error", loadErr)
 			continue
 		}
+		// Apply defaults for fields that yaml.Unmarshal cannot distinguish
+		// between "absent" and "zero value". A backup predating
+		// llm_log_enabled must not silently disable trace logging. Done
+		// before normalizeConfig so recovery mirrors the main Load path.
+		applyLLMLogDefaultIfMissing(bi.Path, cfg)
 		// Normalize the recovered config: env expansion, format defaults,
 		// route validation. Mirrors the main Load path.
 		if normErr := normalizeConfig(cfg); normErr != nil {
@@ -304,6 +313,27 @@ func loadFromFile(path string) (*Config, error) {
 		return nil, err
 	}
 	return &cfg, nil
+}
+
+// applyLLMLogDefaultIfMissing sets LLMLogEnabled to its default when the file
+// does not contain the key. loadFromFile uses yaml.Unmarshal directly (no
+// viper defaults), and a bool's zero value ("false") is indistinguishable
+// from an absent key — so without this, recovering a backup that predates
+// llm_log_enabled would silently disable trace logging, contradicting the
+// documented default of true. The raw re-read is best-effort: on any
+// read/parse error it leaves the loaded value untouched.
+func applyLLMLogDefaultIfMissing(path string, cfg *Config) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	var raw map[string]any
+	if err := yaml.Unmarshal(data, &raw); err != nil {
+		return
+	}
+	if _, ok := raw["llm_log_enabled"]; !ok {
+		cfg.LLMLogEnabled = DefaultLLMLogEnabled
+	}
 }
 
 // preserveCustomHeaderCase re-reads providers' custom_headers from the raw

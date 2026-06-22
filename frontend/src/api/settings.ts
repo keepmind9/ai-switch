@@ -5,6 +5,7 @@ export interface Settings {
   port: number
   allowed_ips: string[]
   log_retention_days: number
+  llm_log_enabled: boolean
   proxy_url: string
 }
 

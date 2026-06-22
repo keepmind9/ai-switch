@@ -628,6 +628,7 @@ func (a *AdminHandler) getSettings(c *gin.Context) {
 		"port":               cfg.Server.Port,
 		"allowed_ips":        cfg.Server.AllowedIPs,
 		"log_retention_days": cfg.LogRetentionDays,
+		"llm_log_enabled":    cfg.LLMLogEnabled,
 		"proxy_url":          cfg.Server.ProxyURL,
 	})
 }
@@ -637,6 +638,7 @@ func (a *AdminHandler) updateSettings(c *gin.Context) {
 		Host             *string  `json:"host"`
 		Port             *int     `json:"port"`
 		LogRetentionDays *int     `json:"log_retention_days"`
+		LLMLogEnabled    *bool    `json:"llm_log_enabled"`
 		AllowedIPs       []string `json:"allowed_ips"`
 		ProxyURL         *string  `json:"proxy_url"`
 	}
@@ -679,6 +681,9 @@ func (a *AdminHandler) updateSettings(c *gin.Context) {
 	if req.LogRetentionDays != nil {
 		cfg.LogRetentionDays = *req.LogRetentionDays
 	}
+	if req.LLMLogEnabled != nil {
+		cfg.LLMLogEnabled = *req.LLMLogEnabled
+	}
 	if req.AllowedIPs != nil {
 		cfg.Server.AllowedIPs = req.AllowedIPs
 	}
@@ -707,6 +712,7 @@ func (a *AdminHandler) updateSettings(c *gin.Context) {
 		"port":               cfg.Server.Port,
 		"allowed_ips":        cfg.Server.AllowedIPs,
 		"log_retention_days": cfg.LogRetentionDays,
+		"llm_log_enabled":    cfg.LLMLogEnabled,
 		"proxy_url":          cfg.Server.ProxyURL,
 	})
 }
@@ -839,6 +845,7 @@ func copyConfig(cfg *config.Config) *config.Config {
 		DefaultResponsesRoute: cfg.DefaultResponsesRoute,
 		DefaultChatRoute:      cfg.DefaultChatRoute,
 		LogRetentionDays:      cfg.LogRetentionDays,
+		LLMLogEnabled:         cfg.LLMLogEnabled,
 		Providers:             make(map[string]config.ProviderConfig, len(cfg.Providers)),
 		Routes:                make(map[string]config.RouteRule, len(cfg.Routes)),
 	}

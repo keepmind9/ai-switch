@@ -23,6 +23,7 @@ func setupSettingsTest(t *testing.T) (*gin.Engine, string) {
 	cfg := &config.Config{
 		Server:           config.ServerConfig{Host: "127.0.0.1", Port: 18080},
 		LogRetentionDays: 30,
+		LLMLogEnabled:    true,
 		Providers: map[string]config.ProviderConfig{
 			"test-provider": {
 				Name:    "Test",
@@ -66,6 +67,7 @@ func TestGetSettings(t *testing.T) {
 	assert.Equal(t, "127.0.0.1", data["host"])
 	assert.Equal(t, float64(18080), data["port"])
 	assert.Equal(t, float64(30), data["log_retention_days"])
+	assert.Equal(t, true, data["llm_log_enabled"])
 }
 
 func TestUpdateSettingsHost(t *testing.T) {
@@ -277,6 +279,31 @@ func TestRestartServerWildcardHost(t *testing.T) {
 	data := resp["data"].(map[string]any)
 	url := data["url"].(string)
 	assert.Equal(t, "http://localhost:9090/ui", url)
+}
+
+func TestUpdateSettingsLLMLogEnabled(t *testing.T) {
+	r, cfgPath := setupSettingsTest(t)
+
+	body, _ := json.Marshal(map[string]any{
+		"llm_log_enabled": false,
+	})
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPut, "/api/admin/settings", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	data := resp["data"].(map[string]any)
+	assert.Equal(t, false, data["llm_log_enabled"])
+
+	// Must survive the write/read round-trip (disabled flag is not dropped).
+	loaded, err := config.Load(cfgPath)
+	require.NoError(t, err)
+	assert.False(t, loaded.LLMLogEnabled)
 }
 
 func TestUpdateSettingsEmptyBody(t *testing.T) {

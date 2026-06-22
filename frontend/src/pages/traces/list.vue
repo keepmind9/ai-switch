@@ -3,12 +3,14 @@ import { ref, onMounted, onActivated, onUnmounted, reactive, computed } from 'vu
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { getTraces, type TraceItem } from '@/api/traces'
+import { getSettings } from '@/api/settings'
 
 defineOptions({ name: 'Traces' })
 
 const { t } = useI18n()
 const route = useRoute()
 const items = ref<TraceItem[]>([])
+const llmLogEnabled = ref(true)
 const has_prev = ref(false)
 const has_next = ref(false)
 const prev_cursor = ref('')
@@ -73,6 +75,9 @@ const syncFromQuery = () => {
 }
 
 onMounted(() => {
+  getSettings()
+    .then(({ data }) => { llmLogEnabled.value = data.llm_log_enabled })
+    .catch((e) => { console.warn('Failed to load llm_log_enabled setting', e) })
   syncFromQuery()
   if (filter.start_time && filter.end_time) {
     fetchList()
@@ -108,6 +113,20 @@ onActivated(() => {
         <p class="text-sm text-slate-500 mt-1">{{ t('traces.desc') }}</p>
       </div>
     </div>
+
+    <el-alert
+      v-if="!llmLogEnabled"
+      class="mb-4"
+      type="warning"
+      :closable="false"
+      show-icon
+      :title="t('traces.disabledHint')"
+    >
+      <template #default>
+        <span>{{ t('traces.disabledHintDetail') }}</span>
+        <router-link to="/settings" class="text-blue-500 hover:underline ml-1">{{ t('traces.disabledHintAction') }}</router-link>
+      </template>
+    </el-alert>
 
     <el-card shadow="never" class="mb-4">
       <div class="flex flex-wrap gap-3">
