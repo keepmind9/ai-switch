@@ -89,8 +89,17 @@ func (h *Handler) forwardCompactPassthrough(c *gin.Context, body []byte, result 
 // summarizeForCompaction runs the shared summarization pipeline used by both v1
 // (/v1/responses/compact) and v2 (compaction_trigger on /v1/responses) compact
 // handlers. It returns the ai-switch fake-compaction encrypted_content and the
-// resolved model. On failure it writes the error response and returns ok=false.
-func (h *Handler) summarizeForCompaction(c *gin.Context, req *types.ResponsesRequest, result *router.RouteResult, upstreamFormat string) (encryptedContent, model string, ok bool) {
+// resolved model. onError is invoked (with HTTP status, error code, message) on
+// any failure instead of writing a response itself, so each caller renders the
+// error in its own wire format (v1: JSON; v2: response.failed SSE). It returns
+// ok=false immediately after invoking onError.
+func (h *Handler) summarizeForCompaction(
+	c *gin.Context,
+	req *types.ResponsesRequest,
+	result *router.RouteResult,
+	upstreamFormat string,
+	onError func(status int, code, message string),
+) (encryptedContent, model string, ok bool) {
 	model = result.Model
 	if model == "" {
 		model = req.Model
@@ -98,7 +107,7 @@ func (h *Handler) summarizeForCompaction(c *gin.Context, req *types.ResponsesReq
 
 	conversation := converter.ExtractConversationText(req.Input)
 	if conversation == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"code": "invalid_request", "message": "empty input"}})
+		onError(http.StatusBadRequest, "invalid_request", "empty input")
 		return "", "", false
 	}
 
@@ -112,7 +121,7 @@ func (h *Handler) summarizeForCompaction(c *gin.Context, req *types.ResponsesReq
 	case converter.FormatAnthropic:
 		anthReq, convErr := h.converter.ChatRequestToAnthropic(chatReq)
 		if convErr != nil {
-			writeConversionError(c, convErr.Error())
+			onError(http.StatusInternalServerError, "conversion_error", convErr.Error())
 			return "", "", false
 		}
 		anthReq.Stream = false
@@ -120,22 +129,22 @@ func (h *Handler) summarizeForCompaction(c *gin.Context, req *types.ResponsesReq
 	case converter.FormatGemini:
 		gemReq, convErr := h.converter.ChatToGeminiRequest(chatReq)
 		if convErr != nil {
-			writeConversionError(c, convErr.Error())
+			onError(http.StatusInternalServerError, "conversion_error", convErr.Error())
 			return "", "", false
 		}
 		upstreamBody, err = json.Marshal(gemReq)
 	default:
-		writeBadRequest(c, converter.FormatResponses, "unsupported upstream format: "+upstreamFormat)
+		onError(http.StatusBadRequest, "invalid_request", "unsupported upstream format: "+upstreamFormat)
 		return "", "", false
 	}
 	if err != nil {
-		writeConversionError(c, err.Error())
+		onError(http.StatusInternalServerError, "conversion_error", err.Error())
 		return "", "", false
 	}
 
 	resp, latency, fwdErr := h.forwardRequestWithKeyFallback(c.Request.Context(), result, upstreamBody)
 	if fwdErr != nil {
-		writeUpstreamError(c, "summarization request failed: "+fwdErr.Error())
+		onError(http.StatusBadGateway, "upstream_error", "summarization request failed: "+fwdErr.Error())
 		return "", "", false
 	}
 	defer resp.Body.Close()
@@ -143,14 +152,14 @@ func (h *Handler) summarizeForCompaction(c *gin.Context, req *types.ResponsesReq
 	respBody, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusOK {
 		slog.Error("compact summarization upstream error", "status", resp.StatusCode, "body", string(respBody))
-		writeUpstreamError(c, fmt.Sprintf("summarization upstream returned %d", resp.StatusCode))
+		onError(http.StatusBadGateway, "upstream_error", fmt.Sprintf("summarization upstream returned %d", resp.StatusCode))
 		return "", "", false
 	}
 
 	summary := extractSummaryFromResponse(respBody, upstreamFormat)
 	if summary == "" {
 		slog.Error("compact summarization returned empty summary", "model", model, "upstream_format", upstreamFormat, "status", resp.StatusCode)
-		writeUpstreamError(c, "summarization produced empty result")
+		onError(http.StatusBadGateway, "upstream_error", "summarization produced empty result")
 		return "", "", false
 	}
 
@@ -164,7 +173,7 @@ func (h *Handler) summarizeForCompaction(c *gin.Context, req *types.ResponsesReq
 	}
 	encrypted, encErr := converter.EncodeCompactionPayload(payload)
 	if encErr != nil {
-		writeConversionError(c, encErr.Error())
+		onError(http.StatusInternalServerError, "conversion_error", encErr.Error())
 		return "", "", false
 	}
 	return encrypted, model, true
@@ -172,14 +181,89 @@ func (h *Handler) summarizeForCompaction(c *gin.Context, req *types.ResponsesReq
 
 // handleSimulatedCompact performs LLM-based summarization for non-OpenAI upstreams (v1).
 func (h *Handler) handleSimulatedCompact(c *gin.Context, req *types.ResponsesRequest, result *router.RouteResult, upstreamFormat string) {
-	encryptedContent, model, ok := h.summarizeForCompaction(c, req, result, upstreamFormat)
+	encryptedContent, _, ok := h.summarizeForCompaction(c, req, result, upstreamFormat, func(status int, code, message string) {
+		c.JSON(status, gin.H{"error": gin.H{"code": code, "message": message}})
+	})
 	if !ok {
-		return // error already written
+		return // error already written via onError
 	}
 
 	compactionResp := buildCompactionResponse(encryptedContent, req.Input)
 	c.JSON(http.StatusOK, compactionResp)
-	_ = model
+}
+
+// handleV2Compaction routes and dispatches a Codex v2 compaction_trigger request
+// (an ordinary POST /v1/responses whose input contains a {"type":"compaction_trigger"} item).
+func (h *Handler) handleV2Compaction(c *gin.Context, body []byte) {
+	var req types.ResponsesRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		writeCompactionFailedSSE(c, "invalid request body: "+err.Error())
+		return
+	}
+
+	apiKey := extractClientAPIKey(c)
+	result, routeErr := h.router.Route(converter.FormatResponses, apiKey, body)
+	if routeErr != nil {
+		slog.Error("v2 compact route error", "error", routeErr)
+		writeCompactionFailedSSE(c, "route error: "+routeErr.Error())
+		return
+	}
+
+	upstreamFormat := result.Format
+	if upstreamFormat == "" {
+		upstreamFormat = converter.FormatChat
+	}
+
+	if upstreamFormat == converter.FormatResponses {
+		// Native-v2 upstream: forward as-is (future-proof; GLM does not apply).
+		h.forwardCompactPassthrough(c, body, result)
+		return
+	}
+
+	h.handleSimulatedCompactV2(c, &req, result, upstreamFormat)
+}
+
+// handleSimulatedCompactV2 handles Codex remote-compaction v2: it summarizes the
+// conversation (reusing the shared compaction pipeline) and emits a Codex
+// v2-compatible Responses SSE stream with exactly one compaction output item.
+func (h *Handler) handleSimulatedCompactV2(c *gin.Context, req *types.ResponsesRequest, result *router.RouteResult, upstreamFormat string) {
+	encryptedContent, model, ok := h.summarizeForCompaction(c, req, result, upstreamFormat, func(status int, code, message string) {
+		writeCompactionFailedSSE(c, message)
+	})
+	if !ok {
+		return // response.failed SSE already written via onError
+	}
+
+	sse := converter.BuildCompactionSSE(encryptedContent, model, time.Now().Unix())
+	writeCompactionSSEHeaders(c)
+	_, _ = c.Writer.WriteString(sse)
+	c.Writer.Flush()
+}
+
+// writeCompactionFailedSSE emits a Codex-parseable response.failed SSE stream so a
+// v2 compaction failure terminates the client stream cleanly instead of a bare
+// HTTP error Codex cannot parse.
+func writeCompactionFailedSSE(c *gin.Context, message string) {
+	writeCompactionSSEHeaders(c)
+	_, _ = c.Writer.WriteString(converter.BuildSSEEvent("response.failed", map[string]any{
+		"type":            "response.failed",
+		"sequence_number": 0,
+		"error": map[string]any{
+			"type":    "server_error",
+			"code":    "compaction_failed",
+			"message": message,
+		},
+	}))
+	_, _ = c.Writer.WriteString("data: [DONE]\n\n")
+	c.Writer.Flush()
+}
+
+// writeCompactionSSEHeaders sets the standard SSE response headers.
+func writeCompactionSSEHeaders(c *gin.Context) {
+	c.Header("Content-Type", "text/event-stream")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Connection", "keep-alive")
+	c.Status(http.StatusOK)
 }
 
 // extractSummaryFromResponse extracts text content from an upstream response.

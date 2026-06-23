@@ -477,3 +477,76 @@ func TestDecodeCompactionInBody_StringInput_Unchanged(t *testing.T) {
 	result := decodeCompactionInBody(input)
 	assert.Equal(t, string(input), string(result))
 }
+
+func TestHandleSimulatedCompactV2_Success(t *testing.T) {
+	r, _ := setupRouter(t, "chat", func(w http.ResponseWriter, r *http.Request) {
+		resp := map[string]any{
+			"id":     "chatcmpl-summary",
+			"object": "chat.completion",
+			"choices": []map[string]any{
+				{"index": 0, "message": map[string]any{"role": "assistant", "content": "V2 summary."}, "finish_reason": "stop"},
+			},
+		}
+		json.NewEncoder(w).Encode(resp)
+	})
+
+	w := doRequest(r, "POST", "/v1/responses", `{
+		"model": "gpt-5.4",
+		"input": [
+			{"role": "user", "content": "hello"},
+			{"type": "compaction_trigger"}
+		]
+	}`)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	body := w.Body.String()
+	assert.Contains(t, body, "event: response.created")
+	assert.Contains(t, body, "event: response.output_item.added")
+	assert.Contains(t, body, "event: response.output_item.done")
+	assert.Contains(t, body, "event: response.completed")
+	assert.Contains(t, body, "data: [DONE]")
+	// The compaction item type appears in added/done/completed events.
+	assert.Contains(t, body, `"type":"compaction"`)
+	// Model is resolved from the router result (test-model), not the client request.
+	assert.Contains(t, body, `"model":"test-model"`)
+	// Exactly one compaction output_item.done (terminal state for the item).
+	assert.Equal(t, 1, strings.Count(body, "event: response.output_item.done"))
+	// No message item — v2 emits only a compaction item.
+	assert.NotContains(t, body, `"type":"message"`)
+}
+
+func TestHandleSimulatedCompactV2_UpstreamError(t *testing.T) {
+	r, _ := setupRouter(t, "chat", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+		w.Write([]byte(`{"error":"upstream down"}`))
+	})
+
+	w := doRequest(r, "POST", "/v1/responses", `{
+		"model": "gpt-5.4",
+		"input": [{"role":"user","content":"hi"},{"type":"compaction_trigger"}]
+	}`)
+
+	// Codex must get a parseable terminal SSE, not a bare HTTP error.
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), "event: response.failed")
+	assert.Contains(t, w.Body.String(), "data: [DONE]")
+}
+
+func TestHandleResponses_NotCompactionPassesThrough(t *testing.T) {
+	r, _ := setupRouter(t, "chat", func(w http.ResponseWriter, r *http.Request) {
+		resp := map[string]any{
+			"object": "chat.completion",
+			"choices": []map[string]any{
+				{"index": 0, "message": map[string]any{"role": "assistant", "content": "normal reply"}, "finish_reason": "stop"},
+			},
+		}
+		json.NewEncoder(w).Encode(resp)
+	})
+
+	// Ordinary request with NO compaction_trigger must NOT be hijacked by v2.
+	w := doRequest(r, "POST", "/v1/responses", `{
+		"model": "gpt-5.4",
+		"input": [{"role":"user","content":"hi"}]
+	}`)
+	assert.NotContains(t, w.Body.String(), "compaction")
+}

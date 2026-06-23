@@ -98,3 +98,9 @@ func buildCompactionEventLine(eventType string, data map[string]any) string {
 	b, _ := json.Marshal(data)
 	return "event: " + eventType + "\ndata: " + string(b) + "\n\n"
 }
+
+// BuildSSEEvent renders one SSE event block ("event: <type>\ndata: <json>\n\n")
+// for callers outside the compaction synthesizer (e.g. a response.failed fallback).
+func BuildSSEEvent(eventType string, data map[string]any) string {
+	return buildCompactionEventLine(eventType, data)
+}

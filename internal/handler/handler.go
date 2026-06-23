@@ -974,6 +974,14 @@ func (h *Handler) handleResponses(c *gin.Context) {
 		c.JSON(status, gin.H{"error": gin.H{"code": "invalid_request", "message": err.Error()}})
 		return
 	}
+	// Codex remote-compaction v2: an ordinary /v1/responses whose input contains
+	// a {"type":"compaction_trigger"} marker. Handle before the normal pipeline so
+	// it is summarized and returned as a compaction SSE stream.
+	if converter.HasCompactionTrigger(body) {
+		h.handleV2Compaction(c, body)
+		return
+	}
+
 	// Decode fake compaction items before pipeline processing
 	body = decodeCompactionInBody(body)
 
