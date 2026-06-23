@@ -69,6 +69,8 @@ api_key = "ais-default"
 wire_api = "responses"
 ```
 
+Codex CLI's remote compaction (`/compact`) works on any upstream automatically — see [Codex Compaction](docs/codex-compaction.md).
+
 **Cursor / Any OpenAI-compatible tool:**
 
 ```bash

@@ -69,6 +69,8 @@ api_key = "ais-default"
 wire_api = "responses"
 ```
 
+Codex CLI 的远程压缩（`/compact`）在任意上游上自动可用 —— 见 [Codex 压缩文档](docs/codex-compaction.md)。
+
 **Cursor / 任何 OpenAI 兼容工具：**
 
 ```bash
