@@ -350,6 +350,7 @@ ais serve                   # 前台启动
 ais serve -d                # 后台守护进程启动
 ais serve -c config.yaml    # 指定配置文件启动
 ais stop                    # 停止后台守护进程
+ais status                  # 查看守护进程是否在运行
 ais check -c config.yaml    # 校验配置文件
 ais version                 # 查看版本信息
 ais update                  # 检查更新

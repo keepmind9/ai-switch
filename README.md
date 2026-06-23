@@ -353,6 +353,7 @@ ais serve                   # Start in foreground
 ais serve -d                # Start as background daemon
 ais serve -c config.yaml    # Start with custom config
 ais stop                    # Stop the background daemon
+ais status                  # Show whether the daemon is running
 ais check -c config.yaml    # Validate config without starting
 ais version                 # Print version info
 ais update                  # Check for updates
