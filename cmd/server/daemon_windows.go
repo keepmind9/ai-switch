@@ -3,6 +3,8 @@
 package main
 
 import (
+	"bytes"
+	"fmt"
 	"os"
 	"os/exec"
 )
@@ -18,6 +20,21 @@ func setupReloadSignal() chan os.Signal {
 
 func stopProcess(proc *os.Process) error {
 	return proc.Kill()
+}
+
+// processAlive reports whether the given process is currently running. Windows
+// has no POSIX signal-0 equivalent, so we shell out to tasklist (present on
+// desktop Windows; may be absent on Server Core / minimal images) filtered by
+// PID. If tasklist is unavailable or fails, this returns false.
+func processAlive(proc *os.Process) bool {
+	if proc == nil {
+		return false
+	}
+	out, err := exec.Command("tasklist", "/FI", fmt.Sprintf("PID eq %d", proc.Pid), "/NH").Output()
+	if err != nil {
+		return false
+	}
+	return bytes.Contains(out, []byte(fmt.Sprintf("%d", proc.Pid)))
 }
 
 func spawnRestartServer(configPath string) error {

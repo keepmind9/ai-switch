@@ -23,6 +23,15 @@ func stopProcess(proc *os.Process) error {
 	return proc.Signal(syscall.SIGTERM)
 }
 
+// processAlive reports whether the given process is currently running, using
+// signal 0 (no signal is delivered; this is a pure existence/permission check).
+func processAlive(proc *os.Process) bool {
+	if proc == nil {
+		return false
+	}
+	return proc.Signal(syscall.Signal(0)) == nil
+}
+
 func spawnRestartServer(configPath string) error {
 	execPath, err := os.Executable()
 	if err != nil {
