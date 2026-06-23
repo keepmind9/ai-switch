@@ -86,9 +86,12 @@ func (h *Handler) forwardCompactPassthrough(c *gin.Context, body []byte, result 
 	c.Data(resp.StatusCode, "application/json", respBody)
 }
 
-// handleSimulatedCompact performs LLM-based summarization for non-OpenAI upstreams.
-func (h *Handler) handleSimulatedCompact(c *gin.Context, req *types.ResponsesRequest, result *router.RouteResult, upstreamFormat string) {
-	model := result.Model
+// summarizeForCompaction runs the shared summarization pipeline used by both v1
+// (/v1/responses/compact) and v2 (compaction_trigger on /v1/responses) compact
+// handlers. It returns the ai-switch fake-compaction encrypted_content and the
+// resolved model. On failure it writes the error response and returns ok=false.
+func (h *Handler) summarizeForCompaction(c *gin.Context, req *types.ResponsesRequest, result *router.RouteResult, upstreamFormat string) (encryptedContent, model string, ok bool) {
+	model = result.Model
 	if model == "" {
 		model = req.Model
 	}
@@ -96,7 +99,7 @@ func (h *Handler) handleSimulatedCompact(c *gin.Context, req *types.ResponsesReq
 	conversation := converter.ExtractConversationText(req.Input)
 	if conversation == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"code": "invalid_request", "message": "empty input"}})
-		return
+		return "", "", false
 	}
 
 	chatReq := converter.BuildSummarizationRequest(conversation, model)
@@ -110,7 +113,7 @@ func (h *Handler) handleSimulatedCompact(c *gin.Context, req *types.ResponsesReq
 		anthReq, convErr := h.converter.ChatRequestToAnthropic(chatReq)
 		if convErr != nil {
 			writeConversionError(c, convErr.Error())
-			return
+			return "", "", false
 		}
 		anthReq.Stream = false
 		upstreamBody, err = json.Marshal(anthReq)
@@ -118,22 +121,22 @@ func (h *Handler) handleSimulatedCompact(c *gin.Context, req *types.ResponsesReq
 		gemReq, convErr := h.converter.ChatToGeminiRequest(chatReq)
 		if convErr != nil {
 			writeConversionError(c, convErr.Error())
-			return
+			return "", "", false
 		}
 		upstreamBody, err = json.Marshal(gemReq)
 	default:
 		writeBadRequest(c, converter.FormatResponses, "unsupported upstream format: "+upstreamFormat)
-		return
+		return "", "", false
 	}
 	if err != nil {
 		writeConversionError(c, err.Error())
-		return
+		return "", "", false
 	}
 
 	resp, latency, fwdErr := h.forwardRequestWithKeyFallback(c.Request.Context(), result, upstreamBody)
 	if fwdErr != nil {
 		writeUpstreamError(c, "summarization request failed: "+fwdErr.Error())
-		return
+		return "", "", false
 	}
 	defer resp.Body.Close()
 
@@ -141,14 +144,14 @@ func (h *Handler) handleSimulatedCompact(c *gin.Context, req *types.ResponsesReq
 	if resp.StatusCode != http.StatusOK {
 		slog.Error("compact summarization upstream error", "status", resp.StatusCode, "body", string(respBody))
 		writeUpstreamError(c, fmt.Sprintf("summarization upstream returned %d", resp.StatusCode))
-		return
+		return "", "", false
 	}
 
 	summary := extractSummaryFromResponse(respBody, upstreamFormat)
 	if summary == "" {
 		slog.Error("compact summarization returned empty summary", "model", model, "upstream_format", upstreamFormat, "status", resp.StatusCode)
 		writeUpstreamError(c, "summarization produced empty result")
-		return
+		return "", "", false
 	}
 
 	slog.Info("compact summarization complete",
@@ -162,11 +165,21 @@ func (h *Handler) handleSimulatedCompact(c *gin.Context, req *types.ResponsesReq
 	encrypted, encErr := converter.EncodeCompactionPayload(payload)
 	if encErr != nil {
 		writeConversionError(c, encErr.Error())
-		return
+		return "", "", false
+	}
+	return encrypted, model, true
+}
+
+// handleSimulatedCompact performs LLM-based summarization for non-OpenAI upstreams (v1).
+func (h *Handler) handleSimulatedCompact(c *gin.Context, req *types.ResponsesRequest, result *router.RouteResult, upstreamFormat string) {
+	encryptedContent, model, ok := h.summarizeForCompaction(c, req, result, upstreamFormat)
+	if !ok {
+		return // error already written
 	}
 
-	compactionResp := buildCompactionResponse(encrypted, req.Input)
+	compactionResp := buildCompactionResponse(encryptedContent, req.Input)
 	c.JSON(http.StatusOK, compactionResp)
+	_ = model
 }
 
 // extractSummaryFromResponse extracts text content from an upstream response.
