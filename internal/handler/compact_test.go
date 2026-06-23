@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/keepmind9/ai-switch/internal/config"
 	"github.com/keepmind9/ai-switch/internal/converter"
+	"github.com/keepmind9/ai-switch/internal/hook"
 	"github.com/keepmind9/ai-switch/internal/router"
 	"github.com/keepmind9/ai-switch/internal/types"
 	"github.com/stretchr/testify/assert"
@@ -549,4 +551,104 @@ func TestHandleResponses_NotCompactionPassesThrough(t *testing.T) {
 		"input": [{"role":"user","content":"hi"}]
 	}`)
 	assert.NotContains(t, w.Body.String(), "compaction")
+}
+
+// setupRouterWithTrace is like setupRouter but wires a real TraceRecorder writing
+// to an in-memory buffer, so v2 compaction trace records can be asserted.
+func setupRouterWithTrace(t *testing.T, upstreamFormat string, upstreamHandler http.HandlerFunc) (*gin.Engine, *bytes.Buffer) {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
+
+	ts := httptest.NewServer(upstreamHandler)
+	t.Cleanup(ts.Close)
+
+	provider := config.NewProvider(newTestConfig(ts.URL, upstreamFormat, "test-model"), "")
+	r := router.NewConfigRouter(provider)
+	buf := &bytes.Buffer{}
+	trace := hook.NewTraceRecorder(buf, nil)
+	h := NewHandler(provider, nil, r, trace)
+	engine := gin.New()
+	h.RegisterRoutes(engine)
+	return engine, buf
+}
+
+// parseTraceRecords splits the JSONL trace buffer into a slice of records.
+func parseTraceRecords(t *testing.T, buf *bytes.Buffer) []map[string]any {
+	t.Helper()
+	recs := make([]map[string]any, 0)
+	for _, l := range strings.Split(strings.TrimSpace(buf.String()), "\n") {
+		if l == "" {
+			continue
+		}
+		var rec map[string]any
+		require.NoError(t, json.Unmarshal([]byte(l), &rec))
+		recs = append(recs, rec)
+	}
+	return recs
+}
+
+func TestHandleSimulatedCompactV2_TraceRecords(t *testing.T) {
+	r, buf := setupRouterWithTrace(t, "chat", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{
+			"id":     "chatcmpl-summary",
+			"object": "chat.completion",
+			"choices": []map[string]any{
+				{"index": 0, "message": map[string]any{"role": "assistant", "content": "V2 summary."}, "finish_reason": "stop"},
+			},
+		})
+	})
+
+	w := doRequest(r, "POST", "/v1/responses", `{
+		"model": "gpt-5.4",
+		"input": [{"role":"user","content":"hi"},{"type":"compaction_trigger"}]
+	}`)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	recs := parseTraceRecords(t, buf)
+	require.Len(t, recs, 4, "expected request→upstream_req→upstream_resp→response")
+
+	typeSeq := []string{
+		recs[0]["type"].(string),
+		recs[1]["type"].(string),
+		recs[2]["type"].(string),
+		recs[3]["type"].(string),
+	}
+	assert.Equal(t, []string{"request", "upstream_req", "upstream_resp", "response"}, typeSeq)
+
+	// Request record carries the original compaction_trigger body + client protocol.
+	assert.Equal(t, "responses", recs[0]["client_protocol"])
+	assert.Contains(t, recs[0]["body"], "compaction_trigger")
+
+	// Upstream request is the synthesized summarization call to the routed format.
+	assert.Equal(t, "chat", recs[1]["upstream_protocol"])
+
+	// Response record carries the synthesized compaction SSE (the compaction item
+	// recurs across the added/done/completed events). The "exactly one output item"
+	// invariant is covered by converter.BuildCompactionSSE's own tests.
+	respBody := recs[3]["body"].(string)
+	assert.Contains(t, respBody, "response.completed")
+	assert.Contains(t, respBody, `"type":"compaction"`)
+}
+
+func TestHandleSimulatedCompactV2_TraceOnUpstreamError(t *testing.T) {
+	r, buf := setupRouterWithTrace(t, "chat", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		w.Write([]byte(`{"error":"overloaded"}`))
+	})
+
+	w := doRequest(r, "POST", "/v1/responses", `{
+		"model": "gpt-5.4",
+		"input": [{"role":"user","content":"hi"},{"type":"compaction_trigger"}]
+	}`)
+
+	// Codex must get a parseable terminal SSE; trace must still cover all 4 stages.
+	assert.Equal(t, http.StatusOK, w.Code)
+	recs := parseTraceRecords(t, buf)
+	require.Len(t, recs, 4)
+
+	assert.Equal(t, "upstream_resp", recs[2]["type"])
+	assert.EqualValues(t, http.StatusServiceUnavailable, recs[2]["status"])
+
+	assert.Equal(t, "response", recs[3]["type"])
+	assert.Contains(t, recs[3]["body"], "response.failed")
 }

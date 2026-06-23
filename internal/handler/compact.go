@@ -12,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/keepmind9/ai-switch/internal/converter"
+	"github.com/keepmind9/ai-switch/internal/hook"
 	"github.com/keepmind9/ai-switch/internal/router"
 	"github.com/keepmind9/ai-switch/internal/types"
 )
@@ -93,16 +94,25 @@ func (h *Handler) forwardCompactPassthrough(c *gin.Context, body []byte, result 
 // any failure instead of writing a response itself, so each caller renders the
 // error in its own wire format (v1: JSON; v2: response.failed SSE). It returns
 // ok=false immediately after invoking onError.
+//
+// trace is optional: when non-nil, the upstream request/response stages are
+// recorded on it via TraceRecorder so v2 compaction is observable in the trace
+// viewer. v1 passes nil to preserve its existing no-trace behavior.
 func (h *Handler) summarizeForCompaction(
 	c *gin.Context,
 	req *types.ResponsesRequest,
 	result *router.RouteResult,
 	upstreamFormat string,
+	trace *hook.Context,
 	onError func(status int, code, message string),
 ) (encryptedContent, model string, ok bool) {
 	model = result.Model
 	if model == "" {
 		model = req.Model
+	}
+	if trace != nil {
+		trace.RouteResult = result
+		trace.UpstreamProtocol = upstreamFormat
 	}
 
 	conversation := converter.ExtractConversationText(req.Input)
@@ -141,6 +151,10 @@ func (h *Handler) summarizeForCompaction(
 		onError(http.StatusInternalServerError, "conversion_error", err.Error())
 		return "", "", false
 	}
+	if trace != nil {
+		trace.UpstreamReqBody = upstreamBody
+		h.tracer().RecordUpstreamRequest(trace)
+	}
 
 	resp, latency, fwdErr := h.forwardRequestWithKeyFallback(c.Request.Context(), result, upstreamBody)
 	if fwdErr != nil {
@@ -150,6 +164,12 @@ func (h *Handler) summarizeForCompaction(
 	defer resp.Body.Close()
 
 	respBody, _ := io.ReadAll(resp.Body)
+	if trace != nil {
+		trace.UpstreamResp = resp
+		trace.UpstreamLatency = latency
+		trace.UpstreamRespBody = respBody
+		h.tracer().RecordUpstreamResponse(trace, resp.StatusCode)
+	}
 	if resp.StatusCode != http.StatusOK {
 		slog.Error("compact summarization upstream error", "status", resp.StatusCode, "body", string(respBody))
 		onError(http.StatusBadGateway, "upstream_error", fmt.Sprintf("summarization upstream returned %d", resp.StatusCode))
@@ -181,7 +201,7 @@ func (h *Handler) summarizeForCompaction(
 
 // handleSimulatedCompact performs LLM-based summarization for non-OpenAI upstreams (v1).
 func (h *Handler) handleSimulatedCompact(c *gin.Context, req *types.ResponsesRequest, result *router.RouteResult, upstreamFormat string) {
-	encryptedContent, _, ok := h.summarizeForCompaction(c, req, result, upstreamFormat, func(status int, code, message string) {
+	encryptedContent, _, ok := h.summarizeForCompaction(c, req, result, upstreamFormat, nil, func(status int, code, message string) {
 		c.JSON(status, gin.H{"error": gin.H{"code": code, "message": message}})
 	})
 	if !ok {
@@ -197,7 +217,7 @@ func (h *Handler) handleSimulatedCompact(c *gin.Context, req *types.ResponsesReq
 func (h *Handler) handleV2Compaction(c *gin.Context, body []byte) {
 	var req types.ResponsesRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		writeCompactionFailedSSE(c, "invalid request body: "+err.Error())
+		h.writeV2Failure(c, nil, "invalid request body: "+err.Error())
 		return
 	}
 
@@ -205,7 +225,7 @@ func (h *Handler) handleV2Compaction(c *gin.Context, body []byte) {
 	result, routeErr := h.router.Route(converter.FormatResponses, apiKey, body)
 	if routeErr != nil {
 		slog.Error("v2 compact route error", "error", routeErr)
-		writeCompactionFailedSSE(c, "route error: "+routeErr.Error())
+		h.writeV2Failure(c, nil, "route error: "+routeErr.Error())
 		return
 	}
 
@@ -216,36 +236,53 @@ func (h *Handler) handleV2Compaction(c *gin.Context, body []byte) {
 
 	if upstreamFormat == converter.FormatResponses {
 		// Native-v2 upstream: forward as-is (future-proof; GLM does not apply).
+		// Not traced: passthrough does not synthesize a compaction item, and tracing
+		// only the request would leave a misleading partial record.
 		h.forwardCompactPassthrough(c, body, result)
 		return
 	}
 
-	h.handleSimulatedCompactV2(c, &req, result, upstreamFormat)
+	h.handleSimulatedCompactV2(c, body, &req, result, upstreamFormat)
 }
 
-// handleSimulatedCompactV2 handles Codex remote-compaction v2: it summarizes the
-// conversation (reusing the shared compaction pipeline) and emits a Codex
-// v2-compatible Responses SSE stream with exactly one compaction output item.
-func (h *Handler) handleSimulatedCompactV2(c *gin.Context, req *types.ResponsesRequest, result *router.RouteResult, upstreamFormat string) {
-	encryptedContent, model, ok := h.summarizeForCompaction(c, req, result, upstreamFormat, func(status int, code, message string) {
-		writeCompactionFailedSSE(c, message)
+// handleSimulatedCompactV2 handles Codex remote-compaction v2 for non-native upstreams:
+// it summarizes the conversation (reusing the shared compaction pipeline) and emits a
+// Codex v2-compatible Responses SSE stream with exactly one compaction output item.
+// The full lifecycle is traced so v2 compaction is observable in the trace viewer.
+func (h *Handler) handleSimulatedCompactV2(c *gin.Context, body []byte, req *types.ResponsesRequest, result *router.RouteResult, upstreamFormat string) {
+	trace := hook.NewContext(c, converter.FormatResponses, body)
+	trace.ClientModel = req.Model
+	trace.IsStream = req.Stream
+	if req.PreviousResponseID != "" {
+		trace.SessionID = req.PreviousResponseID
+	} else {
+		trace.SessionID = extractSessionIDFromRequest(c, req.Metadata)
+	}
+	trace.RouteResult = result
+	trace.UpstreamProtocol = upstreamFormat
+	h.tracer().RecordRequest(trace)
+	defer h.tracer().RecordResponse(trace)
+
+	encryptedContent, model, ok := h.summarizeForCompaction(c, req, result, upstreamFormat, trace, func(status int, code, message string) {
+		h.writeV2Failure(c, trace, message)
 	})
 	if !ok {
-		return // response.failed SSE already written via onError
+		return // response.failed SSE already written + ClientRespBody recorded
 	}
 
 	sse := converter.BuildCompactionSSE(encryptedContent, model, time.Now().Unix())
+	trace.ClientRespBody = []byte(sse)
+	trace.ClientTTFB = time.Since(trace.StartTime)
 	writeCompactionSSEHeaders(c)
 	_, _ = c.Writer.WriteString(sse)
 	c.Writer.Flush()
 }
 
-// writeCompactionFailedSSE emits a Codex-parseable response.failed SSE stream so a
+// buildCompactionFailedSSE builds a Codex-parseable response.failed SSE payload so a
 // v2 compaction failure terminates the client stream cleanly instead of a bare
 // HTTP error Codex cannot parse.
-func writeCompactionFailedSSE(c *gin.Context, message string) {
-	writeCompactionSSEHeaders(c)
-	_, _ = c.Writer.WriteString(converter.BuildSSEEvent("response.failed", map[string]any{
+func buildCompactionFailedSSE(message string) string {
+	return converter.BuildSSEEvent("response.failed", map[string]any{
 		"type":            "response.failed",
 		"sequence_number": 0,
 		"error": map[string]any{
@@ -253,8 +290,19 @@ func writeCompactionFailedSSE(c *gin.Context, message string) {
 			"code":    "compaction_failed",
 			"message": message,
 		},
-	}))
-	_, _ = c.Writer.WriteString("data: [DONE]\n\n")
+	}) + "data: [DONE]\n\n"
+}
+
+// writeV2Failure writes a response.failed SSE to the client and records the payload
+// on the trace (when non-nil) so v2 failures are observable in the trace viewer.
+func (h *Handler) writeV2Failure(c *gin.Context, trace *hook.Context, message string) {
+	sse := buildCompactionFailedSSE(message)
+	if trace != nil {
+		trace.ClientRespBody = []byte(sse)
+		trace.ClientTTFB = time.Since(trace.StartTime)
+	}
+	writeCompactionSSEHeaders(c)
+	_, _ = c.Writer.WriteString(sse)
 	c.Writer.Flush()
 }
 
