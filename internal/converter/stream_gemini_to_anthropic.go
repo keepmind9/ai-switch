@@ -167,9 +167,11 @@ func closeGeminiToAnthropicStream(w SSEWriter, state *GeminiToAnthropicState) {
 		"delta": map[string]any{
 			"stop_reason": stopReason,
 		},
-		"usage": map[string]any{
-			"output_tokens": state.OutputTokens,
-		},
+		// Include input_tokens so Claude Code sees real context utilization.
+		"usage": buildAnthropicUsageMap(
+			state.InputTokens, state.OutputTokens,
+			state.CacheReadTokens, state.CacheCreateTokens,
+		),
 	})
 
 	w.WriteEvent("message_stop", map[string]any{

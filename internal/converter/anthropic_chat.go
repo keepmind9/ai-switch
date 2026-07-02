@@ -175,11 +175,34 @@ func (c *Converter) ChatToAnthropic(chatResp *types.ChatResponse, model, thinkTa
 		Content:    content,
 		Model:      model,
 		StopReason: stopReason,
-		Usage: AnthropicUsage{
-			InputTokens:  chatResp.Usage.PromptTokens,
-			OutputTokens: chatResp.Usage.CompletionTokens,
-		},
+		Usage:      chatUsageToAnthropic(chatResp.Usage),
 	}, nil
+}
+
+// chatUsageToAnthropic maps a non-streaming Chat Completions usage to an
+// Anthropic usage, enforcing the three-bucket invariant
+// input_tokens + cache_read_input_tokens + cache_creation_input_tokens == prompt_tokens.
+// OpenAI prompt_tokens is inclusive of cached entries while Anthropic's
+// input_tokens excludes them, so cache_read is subtracted (saturating). Mirrors
+// the streaming path's buildAnthropicUsageMap so stream=false responses keep
+// Claude Code's context utilization meter accurate too.
+func chatUsageToAnthropic(u types.ChatUsage) AnthropicUsage {
+	cacheRead := 0
+	if u.PromptTokensDetails != nil {
+		cacheRead = u.PromptTokensDetails.CachedTokens
+	}
+	if u.PromptCacheHitTokens > 0 {
+		cacheRead = u.PromptCacheHitTokens
+	}
+	input := u.PromptTokens - cacheRead
+	if input < 0 {
+		input = 0
+	}
+	return AnthropicUsage{
+		InputTokens:          input,
+		OutputTokens:         u.CompletionTokens,
+		CacheReadInputTokens: cacheRead,
+	}
 }
 
 // Chat request → Anthropic request (when upstream is Anthropic format)

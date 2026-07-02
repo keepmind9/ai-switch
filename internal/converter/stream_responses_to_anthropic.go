@@ -39,9 +39,10 @@ func ConvertResponsesEventToAnthropicSSE(w SSEWriter, state *ResponsesToAnthropi
 				"delta": map[string]any{
 					"stop_reason": "end_turn",
 				},
-				"usage": map[string]any{
-					"output_tokens": state.OutputTokens,
-				},
+				"usage": buildAnthropicUsageMap(
+					state.InputTokens, state.OutputTokens,
+					state.CacheReadTokens, state.CacheCreateTokens,
+				),
 			})
 			w.WriteEvent("message_stop", map[string]any{
 				"type": "message_stop",
@@ -181,6 +182,8 @@ func ConvertResponsesEventToAnthropicSSE(w SSEWriter, state *ResponsesToAnthropi
 			if usage, ok := resp["usage"].(map[string]any); ok {
 				state.InputTokens = int(toFloat64(usage["input_tokens"]))
 				state.OutputTokens = int(toFloat64(usage["output_tokens"]))
+				state.CacheReadTokens = extractResponsesCacheRead(usage)
+				state.CacheCreateTokens = int(toFloat64(usage["cache_creation_input_tokens"]))
 			}
 		}
 
@@ -203,9 +206,12 @@ func ConvertResponsesEventToAnthropicSSE(w SSEWriter, state *ResponsesToAnthropi
 				"delta": map[string]any{
 					"stop_reason": stopReason,
 				},
-				"usage": map[string]any{
-					"output_tokens": state.OutputTokens,
-				},
+				// Include cache buckets so Claude Code can compute real
+				// context-window utilization and trigger auto-compact.
+				"usage": buildAnthropicUsageMap(
+					state.InputTokens, state.OutputTokens,
+					state.CacheReadTokens, state.CacheCreateTokens,
+				),
 			})
 
 			w.WriteEvent("message_stop", map[string]any{

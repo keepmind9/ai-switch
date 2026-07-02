@@ -322,10 +322,13 @@ func emitAnthropicDeltaAndStop(w SSEWriter, state *AnthropicStreamState) {
 		"delta": map[string]any{
 			"stop_reason": stopReason,
 		},
-		"usage": map[string]any{
-			"input_tokens":  state.InputTokens,
-			"output_tokens": state.OutputTokens,
-		},
+		// Include cache buckets so Claude Code can compute real context-window
+		// utilization and trigger auto-compact. input_tokens excludes cached
+		// portion per the three-bucket invariant (see buildAnthropicUsageMap).
+		"usage": buildAnthropicUsageMap(
+			state.InputTokens, state.OutputTokens,
+			state.CacheReadTokens, state.CacheCreateTokens,
+		),
 	})
 
 	w.WriteEvent("message_stop", map[string]any{
