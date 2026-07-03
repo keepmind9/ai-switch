@@ -1031,7 +1031,6 @@ func (h *Handler) handleChat(c *gin.Context) {
 	h.executePipeline(c, converter.FormatChat, body)
 }
 
-// Upstream API paths. BuildUpstreamURL handles /v1 deduplication
 // ginSSEWriter adapts gin.Context to the SSEWriter interface.
 type ginSSEWriter struct {
 	c *gin.Context

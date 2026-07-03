@@ -15,6 +15,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/keepmind9/ai-switch/internal/config"
 	"github.com/keepmind9/ai-switch/internal/converter"
+	"github.com/keepmind9/ai-switch/internal/router"
 )
 
 // ModelInfo represents a single model returned by the fetch-models endpoint.
@@ -114,7 +115,7 @@ func userFriendlyErr(err error) string {
 
 // fetchOpenAIModels calls GET {baseURL}/models with Bearer auth.
 func fetchOpenAIModels(ctx context.Context, baseURL, apiKey string, headers map[string]string) ([]ModelInfo, error) {
-	url := strings.TrimRight(baseURL, "/") + "/models"
+	url := router.BuildUpstreamURL(baseURL, "/models")
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {

@@ -58,12 +58,15 @@ func (r *ConfigRouter) resolveRoute(cfg *config.Config, rule config.RouteRule, c
 	}, nil
 }
 
-// resolvePath returns the provider config path if set, otherwise derives from format.
+// resolvePath returns the upstream API path: the user-configured path verbatim
+// if set, otherwise the format-derived default with version-segment dedup
+// applied against the provider base_url (so a base_url ending in /v3 yields
+// /v3/chat/completions, not /v3/v1/chat/completions).
 func resolvePath(prov config.ProviderConfig) string {
 	if prov.Path != "" {
 		return prov.Path
 	}
-	return FormatToPath(prov.Format)
+	return CoordinatePath(prov.BaseURL, FormatToPath(prov.Format))
 }
 
 func resolveModel(rule config.RouteRule, clientProtocol string, body []byte) string {

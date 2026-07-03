@@ -455,15 +455,158 @@ func TestBuildUpstreamURL(t *testing.T) {
 		apiPath  string
 		expected string
 	}{
-		{"base without /v1", "https://api.example.com", "/v1/chat/completions", "https://api.example.com/v1/chat/completions"},
-		{"base with /v1", "https://api.example.com/v1", "/v1/chat/completions", "https://api.example.com/v1/chat/completions"},
-		{"base with trailing slash", "https://api.example.com/", "/v1/messages", "https://api.example.com/v1/messages"},
-		{"custom path", "https://api.example.com/v1", "/custom/path", "https://api.example.com/v1/custom/path"},
-		{"anthropic with /v1", "https://api.anthropic.com/v1", "/v1/messages", "https://api.anthropic.com/v1/messages"},
+		{"no trailing slash", "https://api.example.com", "/v1/chat/completions", "https://api.example.com/v1/chat/completions"},
+		{"trailing slash trimmed", "https://api.example.com/", "/v1/messages", "https://api.example.com/v1/messages"},
+		{"multiple trailing slashes trimmed", "https://api.example.com///", "/v1/x", "https://api.example.com/v1/x"},
+		{"base with version, coordinated path", "https://api.example.com/v1", "/chat/completions", "https://api.example.com/v1/chat/completions"},
+		{"base with v3, coordinated path", "https://api.example.com/v3", "/chat/completions", "https://api.example.com/v3/chat/completions"},
+		{"custom path preserved verbatim", "https://api.example.com/v1", "/custom/endpoint", "https://api.example.com/v1/custom/endpoint"},
+		{"empty apiPath", "https://api.example.com", "", "https://api.example.com"},
+		{"models endpoint", "https://api.example.com", "/models", "https://api.example.com/models"},
+		{"gemini path", "https://generativelanguage.googleapis.com", "/v1beta/models/gemini-pro:generateContent", "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			assert.Equal(t, tt.expected, BuildUpstreamURL(tt.baseURL, tt.apiPath))
+		})
+	}
+}
+
+func TestCoordinatePath(t *testing.T) {
+	tests := []struct {
+		name     string
+		baseURL  string
+		apiPath  string
+		expected string
+	}{
+		{"base no version keeps /v1", "https://api.x.com", "/v1/chat/completions", "/v1/chat/completions"},
+		{"base no version with trailing slash", "https://api.x.com/", "/v1/messages", "/v1/messages"},
+		{"base /v1 strips /v1", "https://api.x.com/v1", "/v1/chat/completions", "/chat/completions"},
+		{"base /v1 trailing slash strips /v1", "https://api.x.com/v1/", "/v1/chat/completions", "/chat/completions"},
+		{"base /v3 strips /v1 (non-standard upstream version)", "https://api.x.com/v3", "/v1/chat/completions", "/chat/completions"},
+		{"base /v2 strips /v1", "https://api.x.com/v2", "/v1/messages", "/messages"},
+		{"base /v10 strips /v1 (multi-digit)", "https://api.x.com/v10", "/v1/chat/completions", "/chat/completions"},
+		{"base /v1beta strips /v1beta (gemini non-stream)", "https://api.x.com/v1beta", "/v1beta/models/m:generateContent", "/models/m:generateContent"},
+		{"base /v1beta strips /v1beta (gemini stream with query)", "https://api.x.com/v1beta", "/v1beta/models/m:streamGenerateContent?alt=sse", "/models/m:streamGenerateContent?alt=sse"},
+		{"base versioned, custom path without version prefix", "https://api.x.com/v3", "/chat/completions", "/chat/completions"},
+		{"base versioned, custom endpoint", "https://api.x.com/v1", "/custom/endpoint", "/custom/endpoint"},
+		{"base /v1, path /v3 -> strip /v3 (base wins)", "https://api.x.com/v1", "/v3/chat/completions", "/chat/completions"},
+		{"base /v1alpha NOT a version (alpha suffix)", "https://api.x.com/v1alpha", "/v1/chat/completions", "/v1/chat/completions"},
+		{"path /v alone not a version", "https://api.x.com/v1", "/v/chat", "/v/chat"},
+		{"path /version not a version segment", "https://api.x.com/v1", "/version/x", "/version/x"},
+		{"path /v1alpha not a version prefix", "https://api.x.com/v1", "/v1alpha/x", "/v1alpha/x"},
+		{"version segment in middle of base path", "https://api.x.com/gateway/v1", "/v1/chat/completions", "/chat/completions"},
+		{"empty base keeps path", "", "/v1/chat", "/v1/chat"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, CoordinatePath(tt.baseURL, tt.apiPath))
+		})
+	}
+}
+
+func TestVersionPrefix(t *testing.T) {
+	tests := []struct {
+		s        string
+		expected string
+	}{
+		{"/v1/chat/completions", "/v1"},
+		{"/v1/messages", "/v1"},
+		{"/v3/x", "/v3"},
+		{"/v10/y", "/v10"},
+		{"/v1beta/models/m:gen", "/v1beta"},
+		{"/v1beta/models/m:s?alt=sse", "/v1beta"},
+		{"/chat/completions", ""},
+		{"/custom/endpoint", ""},
+		{"/v", ""},
+		{"/version/x", ""},
+		{"/v1alpha/x", ""},
+		{"v1/x", ""},
+		{"/", ""},
+		{"", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.s, func(t *testing.T) {
+			assert.Equal(t, tt.expected, versionPrefix(tt.s))
+		})
+	}
+}
+
+func TestHasVersionSuffix(t *testing.T) {
+	tests := []struct {
+		s        string
+		expected bool
+	}{
+		{"https://api.x.com/v1", true},
+		{"https://api.x.com/v3", true},
+		{"https://api.x.com/v1beta", true},
+		{"https://api.x.com/v2", true},
+		{"https://api.x.com/v10", true},
+		{"https://api.x.com", false},
+		{"https://api.x.com/", false},
+		{"https://api.x.com/v1alpha", false},
+		{"https://api.x.com/v1beta2", false},
+		{"https://api.x.com/path/v1", true},
+		{"https://api.x.com/v", false},
+		{"v1", false},
+		{"", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.s, func(t *testing.T) {
+			assert.Equal(t, tt.expected, hasVersionSuffix(tt.s))
+		})
+	}
+}
+
+func TestIsVersionSegment(t *testing.T) {
+	tests := []struct {
+		seg      string
+		expected bool
+	}{
+		{"v1", true},
+		{"v3", true},
+		{"v10", true},
+		{"v1beta", true},
+		{"v0", true},
+		{"v", false},
+		{"vA", false},
+		{"v1alpha", false},
+		{"v1beta2", false},
+		{"version", false},
+		{"", false},
+		{"chat", false},
+		{"1", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.seg, func(t *testing.T) {
+			assert.Equal(t, tt.expected, isVersionSegment(tt.seg))
+		})
+	}
+}
+
+func TestResolvePath(t *testing.T) {
+	tests := []struct {
+		name     string
+		prov     config.ProviderConfig
+		expected string
+	}{
+		{"user path takes priority over version logic", config.ProviderConfig{Path: "/custom/x", BaseURL: "https://api.x.com/v3", Format: "chat"}, "/custom/x"},
+		{"user path verbatim even when versioned", config.ProviderConfig{Path: "/v3/chat/completions", BaseURL: "https://api.x.com/v1", Format: "chat"}, "/v3/chat/completions"},
+		{"chat default, base no version", config.ProviderConfig{BaseURL: "https://api.x.com", Format: "chat"}, "/v1/chat/completions"},
+		{"chat default, base /v1", config.ProviderConfig{BaseURL: "https://api.x.com/v1", Format: "chat"}, "/chat/completions"},
+		{"chat default, base /v3", config.ProviderConfig{BaseURL: "https://api.x.com/v3", Format: "chat"}, "/chat/completions"},
+		{"anthropic default, base no version", config.ProviderConfig{BaseURL: "https://api.x.com", Format: "anthropic"}, "/v1/messages"},
+		{"anthropic default, base /v1", config.ProviderConfig{BaseURL: "https://api.x.com/v1", Format: "anthropic"}, "/messages"},
+		{"anthropic default, base /v3", config.ProviderConfig{BaseURL: "https://api.x.com/v3", Format: "anthropic"}, "/messages"},
+		{"responses default, base /v3", config.ProviderConfig{BaseURL: "https://api.x.com/v3", Format: "responses"}, "/responses"},
+		{"gemini default, base no version", config.ProviderConfig{BaseURL: "https://api.x.com", Format: "gemini"}, "/v1beta/models/{model}:streamGenerateContent"},
+		{"gemini default, base /v1beta", config.ProviderConfig{BaseURL: "https://api.x.com/v1beta", Format: "gemini"}, "/models/{model}:streamGenerateContent"},
+		{"empty format defaults to chat", config.ProviderConfig{BaseURL: "https://api.x.com", Format: ""}, "/v1/chat/completions"},
+		{"unknown format defaults to chat", config.ProviderConfig{BaseURL: "https://api.x.com/v3", Format: "unknown"}, "/chat/completions"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, resolvePath(tt.prov))
 		})
 	}
 }

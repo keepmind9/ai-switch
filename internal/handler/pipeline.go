@@ -316,8 +316,9 @@ func (h *Handler) stepForward(ctx *hook.Context) error {
 	upstreamURL := buildUpstreamURL(ctx.RouteResult)
 	// Gemini uses model-specific paths: /v1beta/models/{model}:{action}
 	if ctx.UpstreamProtocol == converter.FormatGemini {
-		upstreamURL = router.BuildUpstreamURL(ctx.RouteResult.BaseURL,
+		geminiPath := router.CoordinatePath(ctx.RouteResult.BaseURL,
 			router.GeminiGeneratePath(ctx.ClientModel, ctx.IsStream))
+		upstreamURL = router.BuildUpstreamURL(ctx.RouteResult.BaseURL, geminiPath)
 	}
 
 	providerKey := ctx.RouteResult.ProviderKey

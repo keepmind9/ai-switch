@@ -44,13 +44,69 @@ type Router interface {
 	Route(clientProtocol, apiKey string, body []byte) (*RouteResult, error)
 }
 
-// BuildUpstreamURL constructs the full upstream URL from base_url and api_path.
-// Handles both cases: base_url with or without /v1 suffix.
+// BuildUpstreamURL concatenates baseURL and apiPath into the full upstream URL.
+// It is a pure concatenation (only trims trailing slashes from baseURL) — any
+// version-segment dedup must already be applied to apiPath, either by resolvePath
+// at routing time or by CoordinatePath for dynamically built paths (e.g. Gemini).
 func BuildUpstreamURL(baseURL, apiPath string) string {
-	base := strings.TrimRight(baseURL, "/")
-	// If base_url already ends with /v1, strip it from apiPath to avoid /v1/v1.
-	if strings.HasSuffix(base, "/v1") {
-		apiPath = strings.TrimPrefix(apiPath, "/v1")
+	return strings.TrimRight(baseURL, "/") + apiPath
+}
+
+// CoordinatePath strips the leading version segment from apiPath when baseURL
+// already ends with a version segment, to avoid doubled version segments such as
+// "/v3/v1/chat/completions". A version segment matches /v<digits>[beta]
+// (e.g. /v1, /v2, /v3, /v1beta). apiPath without a leading version segment is
+// returned unchanged, so user-configured custom paths are passed through verbatim.
+func CoordinatePath(baseURL, apiPath string) string {
+	if !hasVersionSuffix(baseURL) {
+		return apiPath
 	}
-	return base + apiPath
+	if pref := versionPrefix(apiPath); pref != "" {
+		return apiPath[len(pref):]
+	}
+	return apiPath
+}
+
+// hasVersionSuffix reports whether the last path segment of s is a version
+// segment: v<digits> with an optional "beta" suffix (e.g. v1, v3, v1beta).
+func hasVersionSuffix(s string) bool {
+	s = strings.TrimRight(s, "/")
+	i := strings.LastIndexByte(s, '/')
+	if i < 0 {
+		return false
+	}
+	return isVersionSegment(s[i+1:])
+}
+
+// versionPrefix returns the leading version segment of s (e.g. "/v1", "/v3",
+// "/v1beta"), or "" if s does not start with one.
+func versionPrefix(s string) string {
+	if len(s) == 0 || s[0] != '/' {
+		return ""
+	}
+	end := 1
+	for end < len(s) && s[end] != '/' {
+		end++
+	}
+	if isVersionSegment(s[1:end]) {
+		return s[:end]
+	}
+	return ""
+}
+
+// isVersionSegment reports whether seg (a single path segment without '/')
+// matches the version pattern v<digits>[beta], e.g. "v1", "v3", "v1beta".
+func isVersionSegment(seg string) bool {
+	if len(seg) < 2 || seg[0] != 'v' {
+		return false
+	}
+	j := 1
+	for j < len(seg) && seg[j] >= '0' && seg[j] <= '9' {
+		j++
+	}
+	if j == 1 { // 'v' with no digits
+		return false
+	}
+	rest := seg[j:]
+	return rest == "" || rest == "beta"
 }
