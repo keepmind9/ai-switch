@@ -33,8 +33,26 @@ curl -sL https://raw.githubusercontent.com/keepmind9/ai-switch/main/scripts/inst
 
 # 2. 启动
 ais serve
+```
 
-# 3. 配置你的 AI 工具
+# 3. 让 Claude Code 走 ai-switch（二选一）：
+
+**`~/.claude/settings.json`**（跨会话持久化，推荐）：
+
+```json
+{
+  "env": {
+    "ANTHROPIC_BASE_URL": "http://localhost:12345",
+    "ANTHROPIC_API_KEY": "ais-default"
+  }
+}
+```
+
+把 `env` 块合并进你现有的 `~/.claude/settings.json`，不要整体覆盖该文件。
+
+**或 shell 环境变量**（仅当前会话）：
+
+```bash
 export ANTHROPIC_BASE_URL=http://localhost:12345
 export ANTHROPIC_API_KEY=ais-default
 ```

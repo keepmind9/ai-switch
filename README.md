@@ -33,8 +33,26 @@ curl -sL https://raw.githubusercontent.com/keepmind9/ai-switch/main/scripts/inst
 
 # 2. Start
 ais serve
+```
 
-# 3. Point your AI tool
+# 3. Point Claude Code at ai-switch — pick one:
+
+**`~/.claude/settings.json`** (persists across sessions, recommended):
+
+```json
+{
+  "env": {
+    "ANTHROPIC_BASE_URL": "http://localhost:12345",
+    "ANTHROPIC_API_KEY": "ais-default"
+  }
+}
+```
+
+Merge the `env` block into your existing `~/.claude/settings.json` — don't overwrite the whole file.
+
+**Or shell env vars** (current session only):
+
+```bash
 export ANTHROPIC_BASE_URL=http://localhost:12345
 export ANTHROPIC_API_KEY=ais-default
 ```
