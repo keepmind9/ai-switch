@@ -1,8 +1,8 @@
 package handler
 
 import (
+	"bytes"
 	"encoding/json"
-	"strings"
 
 	"github.com/keepmind9/ai-switch/internal/util"
 )
@@ -15,23 +15,21 @@ type streamUsageAccumulator struct {
 	CacheReadTokens   int64
 }
 
-func (a *streamUsageAccumulator) sniff(data string, format string) {
-	if data == "" || data == "[DONE]" {
+// sniff extracts token usage from one SSE data line. It operates on []byte so
+// the zero-copy scanner path (scanner.Bytes) never pays a per-line string copy.
+// A zero-allocation pre-filter (bytes.Contains "usage") skips the vast majority
+// of lines (content deltas carry no usage); the rest are parsed with json.Unmarshal.
+func (a *streamUsageAccumulator) sniff(data []byte, format string) {
+	if len(data) == 0 || bytes.Equal(data, []byte("[DONE]")) {
 		return
 	}
-
-	// Zero-allocation pre-filter: in every supported format the token counts live
-	// under a "usage" key. Lines without it (the vast majority — content deltas)
-	// cannot contribute tokens, so skip the json.Unmarshal entirely.
-	if !strings.Contains(data, "usage") {
+	if !bytes.Contains(data, []byte("usage")) {
 		return
 	}
-
 	var raw map[string]any
-	if json.Unmarshal([]byte(data), &raw) != nil {
+	if json.Unmarshal(data, &raw) != nil {
 		return
 	}
-
 	switch format {
 	case "anthropic":
 		a.sniffAnthropic(raw)
@@ -40,6 +38,19 @@ func (a *streamUsageAccumulator) sniff(data string, format string) {
 	default:
 		a.sniffChat(raw)
 	}
+}
+
+// parseSSEDataLineBytes is the []byte variant of converter.ParseSSEDataLine,
+// used on the zero-copy scanner path so no per-line string is produced.
+func parseSSEDataLineBytes(line []byte) []byte {
+	after, ok := bytes.CutPrefix(line, []byte("data:"))
+	if !ok {
+		return nil
+	}
+	if len(after) > 0 && after[0] == ' ' {
+		return after[1:]
+	}
+	return after
 }
 
 func (a *streamUsageAccumulator) sniffAnthropic(raw map[string]any) {

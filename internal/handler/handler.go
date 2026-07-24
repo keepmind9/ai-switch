@@ -771,15 +771,16 @@ func (h *Handler) streamBodyAsSSE(c *gin.Context, body io.Reader, format string)
 		event.Reset()
 	}
 	for scanner.Scan() {
-		line := scanner.Text()
+		line := scanner.Bytes()
 		if traceEnabled { // accumulate only when trace needs the full body
-			buf.WriteString(line + "\n")
+			buf.Write(line)
+			buf.WriteByte('\n')
 		}
-		acc.sniff(converter.ParseSSEDataLine(line), format)
+		acc.sniff(parseSSEDataLineBytes(line), format)
 
-		event.WriteString(line)
+		event.Write(line)
 		event.WriteByte('\n')
-		if len(strings.TrimSpace(line)) == 0 {
+		if len(bytes.TrimSpace(line)) == 0 {
 			flushEvent() // blank line terminates an SSE event
 		}
 	}
