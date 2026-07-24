@@ -162,6 +162,42 @@ func newUpstreamTransport(proxy func(*http.Request) (*url.URL, error)) *http.Tra
 	}
 }
 
+// scannerBufCap/Max size the pooled scanner buffer. The initial cap matches the
+// previous per-call make so typical SSE lines (<< 64KB) never trigger a grow;
+// the max preserves the original 1MB ceiling for oversized lines.
+const (
+	scannerBufCap = 64 * 1024
+	scannerBufMax = 1024 * 1024
+)
+
+// scannerBufPool reuses the 64KB scanner buffer across streaming requests. Each
+// streaming call previously allocated its own 64KB slice; under load that is
+// significant GC churn for a buffer that is idle most of the time.
+var scannerBufPool = sync.Pool{
+	New: func() any {
+		b := make([]byte, 0, scannerBufCap)
+		return &b
+	},
+}
+
+// acquireScanner returns a *bufio.Scanner whose buffer is drawn from the pool,
+// plus the pooled buffer pointer. Call releaseScanner(bufp) (typically deferred)
+// once scanning is done to return the buffer. If the scanner grows its buffer
+// past scannerBufCap (an oversized line), the grown buffer dies with the scanner
+// and the original 64KB slot is recycled.
+func acquireScanner(r io.Reader) (scanner *bufio.Scanner, bufp *[]byte) {
+	bufp = scannerBufPool.Get().(*[]byte)
+	scanner = bufio.NewScanner(r)
+	scanner.Buffer(*bufp, scannerBufMax)
+	return scanner, bufp
+}
+
+// releaseScanner returns a pooled scanner buffer for reuse.
+func releaseScanner(bufp *[]byte) {
+	*bufp = (*bufp)[:0]
+	scannerBufPool.Put(bufp)
+}
+
 // SyncKeys rebuilds the KeyManager from the current config.
 // Call on startup and after config reload.
 func (h *Handler) SyncKeys() {
@@ -437,8 +473,8 @@ func checkUpstreamStreamError(c *gin.Context, resp *http.Response, clientFormat 
 
 	var buf bytes.Buffer
 	tee := io.TeeReader(resp.Body, &buf)
-	scanner := bufio.NewScanner(tee)
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	scanner, scannerBuf := acquireScanner(tee)
+	defer releaseScanner(scannerBuf)
 
 	for scanner.Scan() {
 		data := converter.ParseSSEDataLine(scanner.Text())
@@ -493,8 +529,8 @@ func (h *Handler) streamChatToClient(c *gin.Context, resp *http.Response, conver
 	ginWriter := &ginSSEWriter{c: c}
 	flusher, canFlush := c.Writer.(http.Flusher)
 
-	scanner := bufio.NewScanner(resp.Body)
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	scanner, scannerBuf := acquireScanner(resp.Body)
+	defer releaseScanner(scannerBuf)
 
 	traceEnabled := h.tracer().Enabled()
 	var buf bytes.Buffer
@@ -546,8 +582,8 @@ func (h *Handler) streamGeminiToChatSSE(c *gin.Context, resp *http.Response, mod
 	writeSSEHeaders(c)
 
 	flusher, canFlush := c.Writer.(http.Flusher)
-	scanner := bufio.NewScanner(resp.Body)
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	scanner, scannerBuf := acquireScanner(resp.Body)
+	defer releaseScanner(scannerBuf)
 
 	state := &converter.GeminiToChatState{Model: model}
 	traceEnabled := h.tracer().Enabled()
@@ -642,8 +678,8 @@ func (h *Handler) streamGeminiToClient(c *gin.Context, resp *http.Response, conv
 	ginWriter := &ginSSEWriter{c: c}
 	flusher, canFlush := c.Writer.(http.Flusher)
 
-	scanner := bufio.NewScanner(resp.Body)
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	scanner, scannerBuf := acquireScanner(resp.Body)
+	defer releaseScanner(scannerBuf)
 
 	traceEnabled := h.tracer().Enabled()
 	var buf bytes.Buffer
@@ -714,8 +750,8 @@ func (h *Handler) streamBodyAsSSE(c *gin.Context, body io.Reader, format string)
 	writeSSEHeaders(c)
 
 	flusher, canFlush := c.Writer.(http.Flusher)
-	scanner := bufio.NewScanner(body)
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	scanner, scannerBuf := acquireScanner(body)
+	defer releaseScanner(scannerBuf)
 
 	traceEnabled := h.tracer().Enabled()
 	var buf bytes.Buffer
@@ -868,8 +904,8 @@ func (h *Handler) streamToChatSSE(c *gin.Context, resp *http.Response, convertFn
 	writeSSEHeaders(c)
 
 	flusher, canFlush := c.Writer.(http.Flusher)
-	scanner := bufio.NewScanner(resp.Body)
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	scanner, scannerBuf := acquireScanner(resp.Body)
+	defer releaseScanner(scannerBuf)
 
 	traceEnabled := h.tracer().Enabled()
 	var buf bytes.Buffer
@@ -959,8 +995,8 @@ func (h *Handler) streamAnthropicToResponsesSSE(c *gin.Context, resp *http.Respo
 	w := &ginSSEWriter{c: c}
 	flusher, canFlush := c.Writer.(http.Flusher)
 
-	scanner := bufio.NewScanner(resp.Body)
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	scanner, scannerBuf := acquireScanner(resp.Body)
+	defer releaseScanner(scannerBuf)
 
 	traceEnabled := h.tracer().Enabled()
 	var buf bytes.Buffer
