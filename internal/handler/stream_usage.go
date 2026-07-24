@@ -2,6 +2,8 @@ package handler
 
 import (
 	"encoding/json"
+	"strings"
+
 	"github.com/keepmind9/ai-switch/internal/util"
 )
 
@@ -15,6 +17,13 @@ type streamUsageAccumulator struct {
 
 func (a *streamUsageAccumulator) sniff(data string, format string) {
 	if data == "" || data == "[DONE]" {
+		return
+	}
+
+	// Zero-allocation pre-filter: in every supported format the token counts live
+	// under a "usage" key. Lines without it (the vast majority — content deltas)
+	// cannot contribute tokens, so skip the json.Unmarshal entirely.
+	if !strings.Contains(data, "usage") {
 		return
 	}
 
