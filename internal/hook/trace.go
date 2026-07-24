@@ -38,6 +38,14 @@ func NoopTraceRecorder() *TraceRecorder {
 	return &TraceRecorder{}
 }
 
+// Enabled reports whether trace recording is active (a writer is configured).
+// Streaming code uses this to skip trace-only work — notably full-body
+// accumulation — when tracing is disabled, avoiding per-line allocation/GC on
+// the hot streaming path.
+func (t *TraceRecorder) Enabled() bool {
+	return t.writer != nil
+}
+
 // traceRecord is a single JSONL trace line.
 type traceRecord struct {
 	Type      string `json:"type"`

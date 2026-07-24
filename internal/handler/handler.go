@@ -496,11 +496,14 @@ func (h *Handler) streamChatToClient(c *gin.Context, resp *http.Response, conver
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
+	traceEnabled := h.tracer().Enabled()
 	var buf bytes.Buffer
 	done := false
 	for scanner.Scan() {
 		line := scanner.Text()
-		buf.WriteString(line + "\n")
+		if traceEnabled { // accumulate only when trace needs the full upstream body
+			buf.WriteString(line + "\n")
+		}
 		data := converter.ParseSSEDataLine(line)
 		if data == "" {
 			continue
@@ -515,9 +518,8 @@ func (h *Handler) streamChatToClient(c *gin.Context, resp *http.Response, conver
 			done = true
 			break
 		}
-		if canFlush {
-			flusher.Flush()
-		}
+		// No flush here: convertFn writes via ginSSEWriter, whose WriteEvent
+		// already flushes per event. An outer flush would be a redundant no-op.
 	}
 	if err := scanner.Err(); err != nil {
 		slog.Warn("SSE scanner error", "error", err)
@@ -548,11 +550,14 @@ func (h *Handler) streamGeminiToChatSSE(c *gin.Context, resp *http.Response, mod
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
 	state := &converter.GeminiToChatState{Model: model}
+	traceEnabled := h.tracer().Enabled()
 	var buf bytes.Buffer
 
 	for scanner.Scan() {
 		line := scanner.Text()
-		buf.WriteString(line + "\n")
+		if traceEnabled {
+			buf.WriteString(line + "\n")
+		}
 
 		data := converter.ParseSSEDataLine(line)
 		if data == "" {
@@ -571,13 +576,11 @@ func (h *Handler) streamGeminiToChatSSE(c *gin.Context, resp *http.Response, mod
 		// ConvertGeminiLineToChat returns one buffered chunk per call.
 		// First call parses the line + returns first chunk; subsequent
 		// calls with "" drain remaining buffered chunks.
+		before := c.Writer.Size()
 		first := converter.ConvertGeminiLineToChat(state, line)
 		if chunk, ok := first.(*types.ChatStreamResponse); ok && chunk != nil {
 			chunkData, _ := json.Marshal(chunk)
 			c.Writer.WriteString("data: " + string(chunkData) + "\n\n")
-			if canFlush {
-				flusher.Flush()
-			}
 		}
 		for {
 			result := converter.ConvertGeminiLineToChat(state, "")
@@ -587,9 +590,12 @@ func (h *Handler) streamGeminiToChatSSE(c *gin.Context, resp *http.Response, mod
 			}
 			chunkData, _ := json.Marshal(chunk)
 			c.Writer.WriteString("data: " + string(chunkData) + "\n\n")
-			if canFlush {
-				flusher.Flush()
-			}
+		}
+		// Flush once per upstream line that produced output, instead of once
+		// per chunk. Chunks from one line are produced together, so batching
+		// them adds no latency while cutting flush calls.
+		if c.Writer.Size() > before && canFlush {
+			flusher.Flush()
 		}
 	}
 
@@ -639,11 +645,14 @@ func (h *Handler) streamGeminiToClient(c *gin.Context, resp *http.Response, conv
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
+	traceEnabled := h.tracer().Enabled()
 	var buf bytes.Buffer
 	done := false
 	for scanner.Scan() {
 		line := scanner.Text()
-		buf.WriteString(line + "\n")
+		if traceEnabled { // accumulate only when trace needs the full upstream body
+			buf.WriteString(line + "\n")
+		}
 		data := converter.ParseSSEDataLine(line)
 		if data == "" {
 			continue
@@ -658,9 +667,8 @@ func (h *Handler) streamGeminiToClient(c *gin.Context, resp *http.Response, conv
 			done = true
 			break
 		}
-		if canFlush {
-			flusher.Flush()
-		}
+		// No flush here: convertFn writes via ginSSEWriter, whose WriteEvent
+		// already flushes per event. An outer flush would be a redundant no-op.
 	}
 	if err := scanner.Err(); err != nil {
 		slog.Warn("SSE scanner error", "error", err)
@@ -709,19 +717,37 @@ func (h *Handler) streamBodyAsSSE(c *gin.Context, body io.Reader, format string)
 	scanner := bufio.NewScanner(body)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
+	traceEnabled := h.tracer().Enabled()
 	var buf bytes.Buffer
 	var acc streamUsageAccumulator
-	for scanner.Scan() {
-		line := scanner.Text()
-		buf.WriteString(line + "\n")
-		c.Writer.WriteString(line + "\n")
-
-		acc.sniff(converter.ParseSSEDataLine(line), format)
-
+	// Buffer one SSE event and flush it as a unit at the blank-line boundary,
+	// instead of flushing once per line. The byte stream written to the client
+	// is identical; only the flush granularity (and thus syscall count) changes.
+	var event bytes.Buffer
+	flushEvent := func() {
+		if event.Len() == 0 {
+			return
+		}
+		_, _ = c.Writer.Write(event.Bytes())
 		if canFlush {
 			flusher.Flush()
 		}
+		event.Reset()
 	}
+	for scanner.Scan() {
+		line := scanner.Text()
+		if traceEnabled { // accumulate only when trace needs the full body
+			buf.WriteString(line + "\n")
+		}
+		acc.sniff(converter.ParseSSEDataLine(line), format)
+
+		event.WriteString(line)
+		event.WriteByte('\n')
+		if len(strings.TrimSpace(line)) == 0 {
+			flushEvent() // blank line terminates an SSE event
+		}
+	}
+	flushEvent() // trailing event without a blank-line terminator
 
 	if err := scanner.Err(); err != nil {
 		slog.Warn("SSE scanner error", "error", err)
@@ -845,10 +871,13 @@ func (h *Handler) streamToChatSSE(c *gin.Context, resp *http.Response, convertFn
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
+	traceEnabled := h.tracer().Enabled()
 	var buf bytes.Buffer
 	for scanner.Scan() {
 		line := scanner.Text()
-		buf.WriteString(line + "\n")
+		if traceEnabled {
+			buf.WriteString(line + "\n")
+		}
 
 		data := converter.ParseSSEDataLine(line)
 		if data != "" && isSSEErrorData(data) {
@@ -864,6 +893,7 @@ func (h *Handler) streamToChatSSE(c *gin.Context, resp *http.Response, convertFn
 			break
 		}
 
+		before := c.Writer.Size()
 		result := convertFn(initialState, line)
 
 		switch v := result.(type) {
@@ -901,7 +931,9 @@ func (h *Handler) streamToChatSSE(c *gin.Context, resp *http.Response, convertFn
 			}
 		}
 
-		if canFlush {
+		// Flush only when this iteration wrote output, skipping no-op flushes
+		// for input lines that produce no event (e.g. state-only lines).
+		if c.Writer.Size() > before && canFlush {
 			flusher.Flush()
 		}
 	}
@@ -930,31 +962,27 @@ func (h *Handler) streamAnthropicToResponsesSSE(c *gin.Context, resp *http.Respo
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
+	traceEnabled := h.tracer().Enabled()
 	var buf bytes.Buffer
 	for scanner.Scan() {
 		line := scanner.Text()
-		buf.WriteString(line + "\n")
+		if traceEnabled {
+			buf.WriteString(line + "\n")
+		}
 
 		data := converter.ParseSSEDataLine(line)
 		if data != "" && isSSEErrorData(data) {
 			msg, errType := parseUpstreamError([]byte(data))
 			slog.Warn("SSE error event from upstream", "message", msg, "type", errType)
 			writeSSEErrorToClient(w, msg, errType, converter.FormatResponses)
-			if canFlush {
-				flusher.Flush()
-			}
-			return buf.String()
+			return buf.String() // writeSSEErrorToClient flushes via ginSSEWriter.WriteEvent
 		}
 
 		if converter.ConvertAnthropicLineToResponses(w, state, line) {
-			if canFlush {
-				flusher.Flush()
-			}
-			return buf.String()
+			return buf.String() // converter flushes via ginSSEWriter.WriteEvent
 		}
-		if canFlush {
-			flusher.Flush()
-		}
+		// No flush: when ConvertAnthropicLineToResponses produced no event,
+		// flushing here is a no-op; when it did, WriteEvent already flushed.
 	}
 	if err := scanner.Err(); err != nil {
 		slog.Warn("SSE scanner error", "error", err)
