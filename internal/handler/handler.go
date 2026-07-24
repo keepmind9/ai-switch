@@ -1117,9 +1117,22 @@ type ginSSEWriter struct {
 	c *gin.Context
 }
 
+// sseWire* are SSE wire-format fragments reused across WriteEvent calls to
+// avoid the fmt.Sprintf + intermediate string allocations of
+// converter.FormatSSEEvent on the streaming hot path.
+var (
+	sseEventPrefix = []byte("event: ")
+	sseDataPrefix  = []byte("\ndata: ")
+	sseEventSuffix = []byte("\n\n")
+)
+
 func (g *ginSSEWriter) WriteEvent(eventType string, data any) {
 	jsonData, _ := json.Marshal(data)
-	g.c.Writer.WriteString(converter.FormatSSEEvent(eventType, jsonData))
+	g.c.Writer.Write(sseEventPrefix)
+	g.c.Writer.WriteString(eventType)
+	g.c.Writer.Write(sseDataPrefix)
+	g.c.Writer.Write(jsonData)
+	g.c.Writer.Write(sseEventSuffix)
 	g.c.Writer.Flush()
 }
 
