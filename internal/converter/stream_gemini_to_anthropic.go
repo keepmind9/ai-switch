@@ -1,6 +1,7 @@
 package converter
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -20,20 +21,20 @@ type GeminiToAnthropicState struct {
 	ThinkTag          string
 	TagState          ThinkTagState
 	HasToolUse        bool
-	AccText           string
+	AccText           bytes.Buffer
 }
 
 // ConvertGeminiLineToAnthropicSSE processes a Gemini SSE line and emits Anthropic SSE.
 // Returns true when stream is done.
-func ConvertGeminiLineToAnthropicSSE(w SSEWriter, state *GeminiToAnthropicState, data string) bool {
-	if data == "[DONE]" {
+func ConvertGeminiLineToAnthropicSSE(w SSEWriter, state *GeminiToAnthropicState, data []byte) bool {
+	if bytes.Equal(data, SSEDone) {
 		// Gemini stream doesn't send [DONE], but we handle it for safety
 		closeGeminiToAnthropicStream(w, state)
 		return true
 	}
 
 	var gemResp GeminiResponse
-	if err := json.Unmarshal([]byte(data), &gemResp); err != nil {
+	if err := json.Unmarshal(data, &gemResp); err != nil {
 		return false
 	}
 
@@ -83,7 +84,7 @@ func ConvertGeminiLineToAnthropicSSE(w SSEWriter, state *GeminiToAnthropicState,
 			if text == "" {
 				continue
 			}
-			state.AccText += text
+			state.AccText.WriteString(text)
 
 			idx := state.BlockIndex
 			w.WriteEvent("content_block_start", map[string]any{

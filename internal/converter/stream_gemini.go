@@ -1,6 +1,9 @@
 package converter
 
-import "strings"
+import (
+	"bytes"
+	"strings"
+)
 
 // GeminiStreamState tracks state when converting between Gemini SSE and other SSE formats.
 type GeminiStreamState struct {
@@ -13,7 +16,7 @@ type GeminiStreamState struct {
 	ToolCallArgs map[int]*strings.Builder
 	ToolCallIDs  map[int]string
 	ToolCallSeq  int
-	AccText      string
+	AccText      bytes.Buffer
 }
 
 func newGeminiStreamState() *GeminiStreamState {

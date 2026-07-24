@@ -667,7 +667,7 @@ func (h *Handler) streamFromChat(ctx *hook.Context, model, thinkTag string) erro
 	switch ctx.ClientProtocol {
 	case converter.FormatAnthropic:
 		state := &converter.AnthropicStreamState{Model: model, ThinkTag: thinkTag}
-		content := h.streamChatToClient(ctx.GinCtx, ctx.UpstreamResp, func(w converter.SSEWriter, data string) bool {
+		content := h.streamChatToClient(ctx.GinCtx, ctx.UpstreamResp, func(w converter.SSEWriter, data []byte) bool {
 			return converter.ConvertChatChunkToAnthropicSSE(w, state, data)
 		}, converter.FormatAnthropic)
 		ctx.UpstreamRespBody = []byte(content)
@@ -678,7 +678,7 @@ func (h *Handler) streamFromChat(ctx *hook.Context, model, thinkTag string) erro
 
 	case converter.FormatResponses:
 		state := &converter.ResponsesStreamState{Created: time.Now().Unix(), Model: model, ThinkTag: thinkTag}
-		content := h.streamChatToClient(ctx.GinCtx, ctx.UpstreamResp, func(w converter.SSEWriter, data string) bool {
+		content := h.streamChatToClient(ctx.GinCtx, ctx.UpstreamResp, func(w converter.SSEWriter, data []byte) bool {
 			return converter.ConvertChatChunkToResponsesSSE(w, state, data)
 		}, converter.FormatResponses)
 		ctx.UpstreamRespBody = []byte(content)
@@ -696,7 +696,7 @@ func (h *Handler) streamFromAnthropic(ctx *hook.Context, model, thinkTag string)
 	switch ctx.ClientProtocol {
 	case converter.FormatChat:
 		state := &converter.AnthropicToChatState{}
-		content := h.streamToChatSSE(ctx.GinCtx, ctx.UpstreamResp, func(s any, line string) any {
+		content := h.streamToChatSSE(ctx.GinCtx, ctx.UpstreamResp, func(s any, line []byte) any {
 			return converter.ConvertAnthropicLineToChat(s.(*converter.AnthropicToChatState), line)
 		}, state)
 		ctx.UpstreamRespBody = []byte(content)
@@ -723,7 +723,7 @@ func (h *Handler) streamFromResponses(ctx *hook.Context, model, thinkTag string)
 	switch ctx.ClientProtocol {
 	case converter.FormatChat:
 		state := &converter.ResponsesToChatState{}
-		content := h.streamToChatSSE(ctx.GinCtx, ctx.UpstreamResp, func(s any, line string) any {
+		content := h.streamToChatSSE(ctx.GinCtx, ctx.UpstreamResp, func(s any, line []byte) any {
 			return converter.ConvertResponsesLineToChat(s.(*converter.ResponsesToChatState), line)
 		}, state)
 		ctx.UpstreamRespBody = []byte(content)
@@ -734,7 +734,7 @@ func (h *Handler) streamFromResponses(ctx *hook.Context, model, thinkTag string)
 
 	case converter.FormatAnthropic:
 		state := &converter.ResponsesToAnthropicState{}
-		content := h.streamChatToClient(ctx.GinCtx, ctx.UpstreamResp, func(w converter.SSEWriter, data string) bool {
+		content := h.streamChatToClient(ctx.GinCtx, ctx.UpstreamResp, func(w converter.SSEWriter, data []byte) bool {
 			return converter.ConvertResponsesEventToAnthropicSSE(w, state, data)
 		}, converter.FormatAnthropic)
 		ctx.UpstreamRespBody = []byte(content)
@@ -780,7 +780,7 @@ func (h *Handler) streamFromGemini(ctx *hook.Context, model, thinkTag string) er
 
 	case converter.FormatAnthropic:
 		state := &converter.GeminiToAnthropicState{Model: model, ThinkTag: thinkTag}
-		content := h.streamGeminiToClient(ctx.GinCtx, ctx.UpstreamResp, func(w converter.SSEWriter, data string) bool {
+		content := h.streamGeminiToClient(ctx.GinCtx, ctx.UpstreamResp, func(w converter.SSEWriter, data []byte) bool {
 			return converter.ConvertGeminiLineToAnthropicSSE(w, state, data)
 		}, converter.FormatAnthropic)
 		ctx.UpstreamRespBody = []byte(content)
@@ -789,7 +789,7 @@ func (h *Handler) streamFromGemini(ctx *hook.Context, model, thinkTag string) er
 
 	case converter.FormatResponses:
 		state := &converter.GeminiToResponsesState{Model: model, ThinkTag: thinkTag}
-		content := h.streamGeminiToClient(ctx.GinCtx, ctx.UpstreamResp, func(w converter.SSEWriter, data string) bool {
+		content := h.streamGeminiToClient(ctx.GinCtx, ctx.UpstreamResp, func(w converter.SSEWriter, data []byte) bool {
 			return converter.ConvertGeminiLineToResponsesSSE(w, state, data)
 		}, converter.FormatResponses)
 		ctx.UpstreamRespBody = []byte(content)

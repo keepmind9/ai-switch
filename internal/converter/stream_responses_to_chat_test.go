@@ -9,13 +9,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func responsesEventJSON(eventType string, extra map[string]any) string {
+func responsesEventJSON(eventType string, extra map[string]any) []byte {
 	raw := map[string]any{"type": eventType}
 	for k, v := range extra {
 		raw[k] = v
 	}
 	data, _ := json.Marshal(raw)
-	return "data: " + string(data)
+	return []byte("data: " + string(data))
 }
 
 func TestConvertResponsesLineToChat_ResponseCreated(t *testing.T) {
@@ -65,7 +65,7 @@ func TestConvertResponsesLineToChat_FullStream(t *testing.T) {
 		"delta": "world",
 	}))
 	assert.NotNil(t, result)
-	assert.Equal(t, "Hello world", state.AccText)
+	assert.Equal(t, "Hello world", state.AccText.String())
 
 	// response.completed
 	result = ConvertResponsesLineToChat(state, responsesEventJSON("response.completed", map[string]any{
@@ -81,17 +81,17 @@ func TestConvertResponsesLineToChat_FullStream(t *testing.T) {
 
 func TestConvertResponsesLineToChat_SkipsEmptyLine(t *testing.T) {
 	state := &ResponsesToChatState{}
-	assert.Nil(t, ConvertResponsesLineToChat(state, ""))
+	assert.Nil(t, ConvertResponsesLineToChat(state, []byte("")))
 }
 
 func TestConvertResponsesLineToChat_SkipsNonDataLine(t *testing.T) {
 	state := &ResponsesToChatState{}
-	assert.Nil(t, ConvertResponsesLineToChat(state, "event: response.created"))
+	assert.Nil(t, ConvertResponsesLineToChat(state, []byte("event: response.created")))
 }
 
 func TestConvertResponsesLineToChat_SkipsInvalidJSON(t *testing.T) {
 	state := &ResponsesToChatState{}
-	assert.Nil(t, ConvertResponsesLineToChat(state, "data: not-json"))
+	assert.Nil(t, ConvertResponsesLineToChat(state, []byte("data: not-json")))
 }
 
 func TestConvertResponsesLineToChat_SkipsEmptyDelta(t *testing.T) {

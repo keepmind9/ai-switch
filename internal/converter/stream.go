@@ -1,5 +1,7 @@
 package converter
 
+import "bytes"
+
 // SSEWriter abstracts SSE event output, decoupling converters from HTTP frameworks.
 type SSEWriter interface {
 	WriteEvent(eventType string, data any)
@@ -13,7 +15,7 @@ type ResponsesStreamState struct {
 	ContentIndex      int
 	ItemID            string
 	CreatedSent       bool
-	AccText           string
+	AccText           bytes.Buffer
 	SeqNum            int
 	Model             string
 	InputTokens       int
@@ -34,7 +36,7 @@ type ResponsesStreamState struct {
 	ReasoningItemID  string
 	ReasoningStarted bool
 	ReasoningDone    bool
-	AccReasoning     string
+	AccReasoning     bytes.Buffer
 	ReasoningOutIdx  int
 }
 
@@ -56,7 +58,7 @@ type AnthropicStreamState struct {
 	Model             string
 	BlockIndex        int
 	ContentSent       bool
-	AccText           string
+	AccText           bytes.Buffer
 	InputTokens       int
 	OutputTokens      int
 	CacheCreateTokens int

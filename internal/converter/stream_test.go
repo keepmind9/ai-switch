@@ -31,7 +31,7 @@ func (m *mockSSEWriter) eventTypes() []string {
 	return result
 }
 
-func chatChunkJSON(id string, role, content, finishReason string) string {
+func chatChunkJSON(id string, role, content, finishReason string) []byte {
 	chunk := types.ChatStreamResponse{
 		ID:      id,
 		Object:  "chat.completion.chunk",
@@ -46,10 +46,10 @@ func chatChunkJSON(id string, role, content, finishReason string) string {
 		},
 	}
 	data, _ := json.Marshal(chunk)
-	return string(data)
+	return data
 }
 
-func chatChunkWithUsage(id string, promptTokens, completionTokens int) string {
+func chatChunkWithUsage(id string, promptTokens, completionTokens int) []byte {
 	chunk := types.ChatStreamResponse{
 		ID:      id,
 		Object:  "chat.completion.chunk",
@@ -58,10 +58,10 @@ func chatChunkWithUsage(id string, promptTokens, completionTokens int) string {
 		Usage:   &types.ChatUsage{PromptTokens: promptTokens, CompletionTokens: completionTokens, TotalTokens: promptTokens + completionTokens},
 	}
 	data, _ := json.Marshal(chunk)
-	return string(data)
+	return data
 }
 
-func chatChunkWithToolCalls(id string, toolCalls []types.ToolCall, finishReason string) string {
+func chatChunkWithToolCalls(id string, toolCalls []types.ToolCall, finishReason string) []byte {
 	chunk := types.ChatStreamResponse{
 		ID:      id,
 		Object:  "chat.completion.chunk",
@@ -76,7 +76,7 @@ func chatChunkWithToolCalls(id string, toolCalls []types.ToolCall, finishReason 
 		},
 	}
 	data, _ := json.Marshal(chunk)
-	return string(data)
+	return data
 }
 
 // --- Chat → Responses SSE ---
@@ -109,18 +109,18 @@ func TestConvertChatChunkToResponsesSSE_FullStream(t *testing.T) {
 	assert.Contains(t, w.eventTypes(), "response.output_item.done")
 
 	// [DONE]
-	done = ConvertChatChunkToResponsesSSE(w, state, "[DONE]")
+	done = ConvertChatChunkToResponsesSSE(w, state, []byte("[DONE]"))
 	assert.True(t, done)
 	assert.Contains(t, w.eventTypes(), "response.completed")
 
-	assert.Equal(t, "Hello world", state.AccText)
+	assert.Equal(t, "Hello world", state.AccText.String())
 }
 
 func TestConvertChatChunkToResponsesSSE_ImmediateDone(t *testing.T) {
 	w := &mockSSEWriter{}
 	state := &ResponsesStreamState{Model: "model"}
 
-	done := ConvertChatChunkToResponsesSSE(w, state, "[DONE]")
+	done := ConvertChatChunkToResponsesSSE(w, state, []byte("[DONE]"))
 	assert.True(t, done)
 	assert.Empty(t, w.events) // no content was sent, so no completed event
 }
@@ -129,7 +129,7 @@ func TestConvertChatChunkToResponsesSSE_InvalidJSON(t *testing.T) {
 	w := &mockSSEWriter{}
 	state := &ResponsesStreamState{Model: "model"}
 
-	done := ConvertChatChunkToResponsesSSE(w, state, "not json")
+	done := ConvertChatChunkToResponsesSSE(w, state, []byte("not json"))
 	assert.False(t, done)
 	assert.Empty(t, w.events)
 }
@@ -141,7 +141,7 @@ func TestConvertChatChunkToResponsesSSE_SingleChunkWithFinish(t *testing.T) {
 	done := ConvertChatChunkToResponsesSSE(w, state, chatChunkJSON("id-1", "assistant", "Hi", "stop"))
 	assert.False(t, done)
 
-	done = ConvertChatChunkToResponsesSSE(w, state, "[DONE]")
+	done = ConvertChatChunkToResponsesSSE(w, state, []byte("[DONE]"))
 	assert.True(t, done)
 
 	types := w.eventTypes()
@@ -181,11 +181,11 @@ func TestConvertChatChunkToAnthropicSSE_FullStream(t *testing.T) {
 	assert.Contains(t, w.eventTypes(), "message_delta")
 
 	// [DONE]
-	done = ConvertChatChunkToAnthropicSSE(w, state, "[DONE]")
+	done = ConvertChatChunkToAnthropicSSE(w, state, []byte("[DONE]"))
 	assert.True(t, done)
 	assert.Contains(t, w.eventTypes(), "message_stop")
 
-	assert.Equal(t, "Hello world", state.AccText)
+	assert.Equal(t, "Hello world", state.AccText.String())
 }
 
 func TestConvertChatChunkToAnthropicSSE_ContentWithoutRole(t *testing.T) {
@@ -245,7 +245,7 @@ func TestConvertChatChunkToAnthropicSSE_ImmediateDone(t *testing.T) {
 	w := &mockSSEWriter{}
 	state := &AnthropicStreamState{}
 
-	done := ConvertChatChunkToAnthropicSSE(w, state, "[DONE]")
+	done := ConvertChatChunkToAnthropicSSE(w, state, []byte("[DONE]"))
 	assert.True(t, done)
 	assert.Empty(t, w.events)
 }
@@ -254,7 +254,7 @@ func TestConvertChatChunkToAnthropicSSE_InvalidJSON(t *testing.T) {
 	w := &mockSSEWriter{}
 	state := &AnthropicStreamState{}
 
-	done := ConvertChatChunkToAnthropicSSE(w, state, "garbage")
+	done := ConvertChatChunkToAnthropicSSE(w, state, []byte("garbage"))
 	assert.False(t, done)
 	assert.Empty(t, w.events)
 }
@@ -279,7 +279,7 @@ func TestParseSSEDataLine(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.expected, ParseSSEDataLine(tt.line))
+			assert.Equal(t, tt.expected, string(ParseSSEDataLine([]byte(tt.line))))
 		})
 	}
 }
@@ -375,7 +375,7 @@ func TestConvertChatChunkToAnthropicSSE_DeferredDeltaWithUsage(t *testing.T) {
 	assert.Equal(t, 42, usage["output_tokens"])
 
 	// [DONE] should not emit duplicate events
-	ConvertChatChunkToAnthropicSSE(w, state, "[DONE]")
+	ConvertChatChunkToAnthropicSSE(w, state, []byte("[DONE]"))
 	deltaCount := 0
 	for _, e := range w.events {
 		if e.eventType == "message_delta" {
@@ -395,7 +395,7 @@ func TestConvertChatChunkToAnthropicSSE_DeferredDeltaFallbackOnDone(t *testing.T
 
 	// No usage chunk — [DONE] triggers fallback
 	assert.NotContains(t, w.eventTypes(), "message_delta")
-	done := ConvertChatChunkToAnthropicSSE(w, state, "[DONE]")
+	done := ConvertChatChunkToAnthropicSSE(w, state, []byte("[DONE]"))
 	assert.True(t, done)
 	assert.Contains(t, w.eventTypes(), "message_delta")
 	assert.Contains(t, w.eventTypes(), "message_stop")
@@ -625,7 +625,7 @@ func TestConvertChatChunkToAnthropicSSE_FinishReasonWithToolCallsInSameChunk(t *
 	assert.True(t, state.FinishReason != "", "FinishReason should be captured even with tool_calls in same chunk")
 
 	// [DONE] triggers final events
-	done := ConvertChatChunkToAnthropicSSE(w, state, "[DONE]")
+	done := ConvertChatChunkToAnthropicSSE(w, state, []byte("[DONE]"))
 	assert.True(t, done)
 
 	// stop_reason must be "tool_use" (overridden by SawToolCall)
@@ -656,7 +656,7 @@ func TestConvertChatChunkToAnthropicSSE_StreamInterruptedWithToolCalls(t *testin
 	}, ""))
 
 	// Stream interrupted — [DONE] arrives without finish_reason
-	done := ConvertChatChunkToAnthropicSSE(w, state, "[DONE]")
+	done := ConvertChatChunkToAnthropicSSE(w, state, []byte("[DONE]"))
 	assert.True(t, done)
 
 	// stop_reason must be "tool_use" (from SawToolCall override), not empty
@@ -718,7 +718,7 @@ func TestConvertChatChunkToAnthropicSSE_EmptyFinishReasonFallback(t *testing.T) 
 	ConvertChatChunkToAnthropicSSE(w, state, chatChunkJSON("id", "", "text", ""))
 
 	assert.Empty(t, state.FinishReason)
-	done := ConvertChatChunkToAnthropicSSE(w, state, "[DONE]")
+	done := ConvertChatChunkToAnthropicSSE(w, state, []byte("[DONE]"))
 	assert.True(t, done)
 
 	var deltaEvent *sseEvent
@@ -802,7 +802,7 @@ func TestEmitFailedEvent(t *testing.T) {
 
 // --- Reasoning content streaming (DeepSeek reasoning_content) ---
 
-func chatChunkWithReasoning(id, reasoning, content string) string {
+func chatChunkWithReasoning(id, reasoning, content string) []byte {
 	chunk := types.ChatStreamResponse{
 		ID:     id,
 		Object: "chat.completion.chunk",
@@ -818,7 +818,7 @@ func chatChunkWithReasoning(id, reasoning, content string) string {
 		},
 	}
 	data, _ := json.Marshal(chunk)
-	return string(data)
+	return data
 }
 
 func TestConvertChatChunkToResponsesSSE_ReasoningThenText(t *testing.T) {
@@ -837,7 +837,7 @@ func TestConvertChatChunkToResponsesSSE_ReasoningThenText(t *testing.T) {
 	// Chunk 2: more reasoning
 	done = ConvertChatChunkToResponsesSSE(w, state, chatChunkWithReasoning("rs-1", " step 2", ""))
 	assert.False(t, done)
-	assert.Equal(t, "Let me think... step 2", state.AccReasoning)
+	assert.Equal(t, "Let me think... step 2", state.AccReasoning.String())
 
 	// Chunk 3: text content — reasoning block closes, text block starts
 	done = ConvertChatChunkToResponsesSSE(w, state, chatChunkJSON("rs-1", "", "Answer:", ""))
@@ -849,7 +849,7 @@ func TestConvertChatChunkToResponsesSSE_ReasoningThenText(t *testing.T) {
 	assert.Contains(t, events, "response.output_text.delta")
 
 	// Chunk 4: [DONE]
-	done = ConvertChatChunkToResponsesSSE(w, state, "[DONE]")
+	done = ConvertChatChunkToResponsesSSE(w, state, []byte("[DONE]"))
 	assert.True(t, done)
 	assert.Contains(t, w.eventTypes(), "response.completed")
 }
@@ -870,7 +870,7 @@ func TestConvertChatChunkToResponsesSSE_ToolCallsInCompletedOutput(t *testing.T)
 	}, ""))
 
 	// [DONE] — tool call should appear in response.completed output
-	done := ConvertChatChunkToResponsesSSE(w, state, "[DONE]")
+	done := ConvertChatChunkToResponsesSSE(w, state, []byte("[DONE]"))
 	assert.True(t, done)
 
 	var completedEvent *sseEvent
@@ -908,7 +908,7 @@ func TestConvertChatChunkToResponsesSSE_TextAndToolCallsInCompletedOutput(t *tes
 	ConvertChatChunkToResponsesSSE(w, state, chatChunkWithToolCalls("id-1", []types.ToolCall{
 		{Index: 0, Function: types.FunctionCall{Arguments: `{"q":"test"}`}},
 	}, "tool_calls"))
-	ConvertChatChunkToResponsesSSE(w, state, "[DONE]")
+	ConvertChatChunkToResponsesSSE(w, state, []byte("[DONE]"))
 
 	var completedEvent *sseEvent
 	for i := range w.events {

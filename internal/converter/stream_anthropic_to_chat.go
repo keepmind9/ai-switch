@@ -1,9 +1,9 @@
 package converter
 
 import (
+	"bytes"
 	"encoding/json"
 	"log/slog"
-	"strings"
 	"time"
 
 	"github.com/keepmind9/ai-switch/internal/types"
@@ -15,7 +15,7 @@ type AnthropicToChatState struct {
 	ID                string
 	Model             string
 	Created           int64
-	AccText           string
+	AccText           bytes.Buffer
 	StopReason        string
 	InputTokens       int
 	OutputTokens      int
@@ -42,19 +42,19 @@ func (s *AnthropicToChatState) ChatStreamUsage() (id, model string, input, outpu
 // ConvertAnthropicLineToChat processes a raw Anthropic SSE line and returns
 // a ChatStreamResponse chunk, or nil if the line should be skipped.
 // Returns the string "[DONE]" when the stream is complete.
-func ConvertAnthropicLineToChat(state *AnthropicToChatState, line string) any {
-	if strings.HasPrefix(line, "event: ") || line == "" {
+func ConvertAnthropicLineToChat(state *AnthropicToChatState, line []byte) any {
+	if bytes.HasPrefix(line, sseEventPrefix) || len(line) == 0 {
 		return nil
 	}
 
 	data := ParseSSEDataLine(line)
-	if data == "" {
+	if len(data) == 0 {
 		return nil
 	}
 
 	var raw map[string]any
-	if err := json.Unmarshal([]byte(data), &raw); err != nil {
-		slog.Warn("failed to parse anthropic SSE line", "error", err, "data", data)
+	if err := json.Unmarshal(data, &raw); err != nil {
+		slog.Warn("failed to parse anthropic SSE line", "error", err, "data", string(data))
 		return nil
 	}
 
@@ -175,7 +175,7 @@ func ConvertAnthropicLineToChat(state *AnthropicToChatState, line string) any {
 		if text == "" {
 			return nil
 		}
-		state.AccText += text
+		state.AccText.WriteString(text)
 		state.OutputTokens++
 
 		return &types.ChatStreamResponse{

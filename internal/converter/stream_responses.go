@@ -1,9 +1,9 @@
 package converter
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/keepmind9/ai-switch/internal/types"
@@ -11,8 +11,8 @@ import (
 
 // ConvertChatChunkToResponsesSSE processes a single Chat SSE data line and emits
 // corresponding Responses API SSE events. Returns true when stream is done.
-func ConvertChatChunkToResponsesSSE(w SSEWriter, state *ResponsesStreamState, data string) bool {
-	if data == "[DONE]" {
+func ConvertChatChunkToResponsesSSE(w SSEWriter, state *ResponsesStreamState, data []byte) bool {
+	if bytes.Equal(data, SSEDone) {
 		if state.CreatedSent {
 			emitToolCallsDone(w, state)
 			emitResponseCompleted(w, state)
@@ -21,7 +21,7 @@ func ConvertChatChunkToResponsesSSE(w SSEWriter, state *ResponsesStreamState, da
 	}
 
 	var chunk types.ChatStreamResponse
-	if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+	if err := json.Unmarshal(data, &chunk); err != nil {
 		return false
 	}
 
@@ -84,7 +84,7 @@ func ConvertChatChunkToResponsesSSE(w SSEWriter, state *ResponsesStreamState, da
 				})
 			}
 			reasoning := *choice.Delta.ReasoningContent
-			state.AccReasoning += reasoning
+			state.AccReasoning.WriteString(reasoning)
 			w.WriteEvent("response.reasoning_summary_text.delta", map[string]any{
 				"type":            "response.reasoning_summary_text.delta",
 				"sequence_number": state.nextSeq(),
@@ -103,7 +103,7 @@ func ConvertChatChunkToResponsesSSE(w SSEWriter, state *ResponsesStreamState, da
 				"sequence_number": state.nextSeq(),
 				"output_index":    state.ReasoningOutIdx,
 				"item_id":         state.ReasoningItemID,
-				"text":            state.AccReasoning,
+				"text":            state.AccReasoning.String(),
 			})
 			w.WriteEvent("response.output_item.done", map[string]any{
 				"type":            "response.output_item.done",
@@ -114,7 +114,7 @@ func ConvertChatChunkToResponsesSSE(w SSEWriter, state *ResponsesStreamState, da
 					"type":   "reasoning",
 					"status": "completed",
 					"summary": []map[string]any{
-						{"type": "summary_text", "text": state.AccReasoning},
+						{"type": "summary_text", "text": state.AccReasoning.String()},
 					},
 				},
 			})
@@ -156,7 +156,7 @@ func ConvertChatChunkToResponsesSSE(w SSEWriter, state *ResponsesStreamState, da
 
 			content := state.TagState.FilterChunk(*choice.Delta.Content, state.ThinkTag)
 			if content != "" {
-				state.AccText += content
+				state.AccText.WriteString(content)
 				w.WriteEvent("response.output_text.delta", map[string]any{
 					"type":            "response.output_text.delta",
 					"sequence_number": state.nextSeq(),
@@ -312,7 +312,7 @@ func emitTextDone(w SSEWriter, state *ResponsesStreamState) {
 		"output_index":    state.OutputIndex,
 		"content_index":   state.ContentIndex,
 		"item_id":         itemID,
-		"text":            state.AccText,
+		"text":            state.AccText.String(),
 	})
 
 	w.WriteEvent("response.content_part.done", map[string]any{
@@ -323,7 +323,7 @@ func emitTextDone(w SSEWriter, state *ResponsesStreamState) {
 		"item_id":         itemID,
 		"part": map[string]any{
 			"type": "output_text",
-			"text": state.AccText,
+			"text": state.AccText.String(),
 		},
 	})
 
@@ -337,7 +337,7 @@ func emitTextDone(w SSEWriter, state *ResponsesStreamState) {
 			"status": "completed",
 			"role":   "assistant",
 			"content": []map[string]any{
-				{"type": "output_text", "text": state.AccText},
+				{"type": "output_text", "text": state.AccText.String()},
 			},
 		},
 	})
@@ -347,7 +347,7 @@ func emitResponseCompleted(w SSEWriter, state *ResponsesStreamState) {
 	var output []map[string]any
 
 	// Message item with text
-	if state.AccText != "" || (state.ItemID != "" && len(state.CompletedToolCalls) == 0) {
+	if state.AccText.Len() > 0 || (state.ItemID != "" && len(state.CompletedToolCalls) == 0) {
 		itemID := state.ItemID
 		if state.TextItemID != "" {
 			itemID = state.TextItemID
@@ -361,7 +361,7 @@ func emitResponseCompleted(w SSEWriter, state *ResponsesStreamState) {
 			"status": "completed",
 			"role":   "assistant",
 			"content": []map[string]any{
-				{"type": "output_text", "text": state.AccText},
+				{"type": "output_text", "text": state.AccText.String()},
 			},
 		})
 	}
@@ -388,12 +388,25 @@ func emitResponseCompleted(w SSEWriter, state *ResponsesStreamState) {
 	})
 }
 
-// ParseSSEDataLine extracts the data portion from an SSE line.
-// Returns empty string if not a data line.
-func ParseSSEDataLine(line string) string {
-	after, ok := strings.CutPrefix(line, "data:")
+// SSE wire-format fragments reused across the streaming hot path. Pre-allocated
+// as []byte so per-line comparisons and prefix scans avoid allocating.
+var (
+	// SSEDone is the stream-termination sentinel, shared by converters and the
+	// streaming handler.
+	SSEDone = []byte("[DONE]")
+
+	sseDataPrefix  = []byte("data:")
+	sseEventPrefix = []byte("event: ")
+)
+
+// ParseSSEDataLine extracts the data portion of an SSE "data:" line and returns
+// nil when the line is not a data line (callers distinguish with len(result)==0).
+// The returned slice aliases the input, so callers must not retain it past the
+// next read of the underlying scanner buffer.
+func ParseSSEDataLine(line []byte) []byte {
+	after, ok := bytes.CutPrefix(line, sseDataPrefix)
 	if !ok {
-		return ""
+		return nil
 	}
 	// Trim single leading space per SSE spec, but also handle "data:value" without space
 	if len(after) > 0 && after[0] == ' ' {

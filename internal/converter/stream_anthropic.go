@@ -1,6 +1,7 @@
 package converter
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -33,8 +34,8 @@ func sanitizeToolID(id string) string {
 // and includes both input_tokens and output_tokens from real upstream data.
 //
 // Handles DeepSeek reasoning_content by emitting Anthropic thinking blocks.
-func ConvertChatChunkToAnthropicSSE(w SSEWriter, state *AnthropicStreamState, data string) bool {
-	if data == "[DONE]" {
+func ConvertChatChunkToAnthropicSSE(w SSEWriter, state *AnthropicStreamState, data []byte) bool {
+	if bytes.Equal(data, SSEDone) {
 		closeReasoningBlock(w, state)
 		closeOpenToolBlocks(w, state)
 		emitAnthropicFinalEvents(w, state)
@@ -42,8 +43,8 @@ func ConvertChatChunkToAnthropicSSE(w SSEWriter, state *AnthropicStreamState, da
 	}
 
 	var chunk types.ChatStreamResponse
-	if err := json.Unmarshal([]byte(data), &chunk); err != nil {
-		slog.Warn("failed to parse chat SSE chunk", "error", err, "data", data)
+	if err := json.Unmarshal(data, &chunk); err != nil {
+		slog.Warn("failed to parse chat SSE chunk", "error", err, "data", string(data))
 		return false
 	}
 
@@ -121,7 +122,7 @@ func ConvertChatChunkToAnthropicSSE(w SSEWriter, state *AnthropicStreamState, da
 					})
 				}
 
-				state.AccText += content
+				state.AccText.WriteString(content)
 				state.OutputTokens++
 
 				w.WriteEvent("content_block_delta", map[string]any{

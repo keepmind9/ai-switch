@@ -1,6 +1,7 @@
 package converter
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -17,7 +18,7 @@ type GeminiToResponsesState struct {
 	ItemSent      bool
 	InputTokens   int
 	OutputTokens  int
-	AccText       string
+	AccText       bytes.Buffer
 	ThinkTag      string
 	TagState      ThinkTagState
 	TextOutputIdx int
@@ -32,8 +33,8 @@ func (s *GeminiToResponsesState) nextSeq() int {
 
 // ConvertGeminiLineToResponsesSSE processes a Gemini SSE line and emits Responses SSE.
 // Returns true when stream is done.
-func ConvertGeminiLineToResponsesSSE(w SSEWriter, state *GeminiToResponsesState, data string) bool {
-	if data == "[DONE]" {
+func ConvertGeminiLineToResponsesSSE(w SSEWriter, state *GeminiToResponsesState, data []byte) bool {
+	if bytes.Equal(data, SSEDone) {
 		if state.CreatedSent {
 			emitResponseCompletedFromGemini(w, state)
 		}
@@ -41,7 +42,7 @@ func ConvertGeminiLineToResponsesSSE(w SSEWriter, state *GeminiToResponsesState,
 	}
 
 	var gemResp GeminiResponse
-	if err := json.Unmarshal([]byte(data), &gemResp); err != nil {
+	if err := json.Unmarshal(data, &gemResp); err != nil {
 		return false
 	}
 
@@ -97,7 +98,7 @@ func ConvertGeminiLineToResponsesSSE(w SSEWriter, state *GeminiToResponsesState,
 			if text == "" {
 				continue
 			}
-			state.AccText += text
+			state.AccText.WriteString(text)
 
 			if !state.ItemSent {
 				state.ItemSent = true
@@ -201,7 +202,7 @@ func ConvertGeminiLineToResponsesSSE(w SSEWriter, state *GeminiToResponsesState,
 				"output_index":    state.TextOutputIdx,
 				"content_index":   0,
 				"item_id":         state.ItemID,
-				"text":            state.AccText,
+				"text":            state.AccText.String(),
 			})
 			w.WriteEvent("response.content_part.done", map[string]any{
 				"type":            "response.content_part.done",
@@ -209,7 +210,7 @@ func ConvertGeminiLineToResponsesSSE(w SSEWriter, state *GeminiToResponsesState,
 				"output_index":    state.TextOutputIdx,
 				"content_index":   0,
 				"item_id":         state.ItemID,
-				"part":            map[string]any{"type": "output_text", "text": state.AccText},
+				"part":            map[string]any{"type": "output_text", "text": state.AccText.String()},
 			})
 			w.WriteEvent("response.output_item.done", map[string]any{
 				"type":            "response.output_item.done",
@@ -220,7 +221,7 @@ func ConvertGeminiLineToResponsesSSE(w SSEWriter, state *GeminiToResponsesState,
 					"type":    "message",
 					"status":  "completed",
 					"role":    "assistant",
-					"content": []map[string]any{{"type": "output_text", "text": state.AccText}},
+					"content": []map[string]any{{"type": "output_text", "text": state.AccText.String()}},
 				},
 			})
 		}
@@ -236,14 +237,14 @@ func emitResponseCompletedFromGemini(w SSEWriter, state *GeminiToResponsesState)
 	var output []map[string]any
 
 	// Text message item
-	if state.AccText != "" || (state.ItemSent && len(state.AccToolCalls) == 0) {
+	if state.AccText.Len() > 0 || (state.ItemSent && len(state.AccToolCalls) == 0) {
 		output = append(output, map[string]any{
 			"id":     state.ItemID,
 			"type":   "message",
 			"status": "completed",
 			"role":   "assistant",
 			"content": []map[string]any{
-				{"type": "output_text", "text": state.AccText},
+				{"type": "output_text", "text": state.AccText.String()},
 			},
 		})
 	}

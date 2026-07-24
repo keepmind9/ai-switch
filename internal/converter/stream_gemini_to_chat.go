@@ -1,6 +1,7 @@
 package converter
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -16,7 +17,7 @@ type GeminiToChatState struct {
 	Started      bool
 	InputTokens  int
 	OutputTokens int
-	AccText      string
+	AccText      bytes.Buffer
 	HasToolCalls bool
 	ToolCallSeq  int
 
@@ -33,7 +34,7 @@ func (s *GeminiToChatState) ChatStreamUsage() (id, model string, input, output i
 // Returns the next buffered chunk, or nil if none available.
 // Pass an empty string to drain the next buffered chunk without parsing new input.
 // The handler must call this in a loop after each upstream line to emit all chunks.
-func ConvertGeminiLineToChat(state *GeminiToChatState, line string) any {
+func ConvertGeminiLineToChat(state *GeminiToChatState, line []byte) any {
 	// Always drain buffered chunks first
 	if len(state.pending) > 0 {
 		chunk := state.pending[0]
@@ -47,17 +48,17 @@ func ConvertGeminiLineToChat(state *GeminiToChatState, line string) any {
 	}
 
 	// Skip event-type lines
-	if len(line) > 6 && line[:7] == "event: " {
+	if bytes.HasPrefix(line, sseEventPrefix) {
 		return nil
 	}
 
 	data := ParseSSEDataLine(line)
-	if data == "" {
+	if len(data) == 0 {
 		return nil
 	}
 
 	var gemResp GeminiResponse
-	if err := json.Unmarshal([]byte(data), &gemResp); err != nil {
+	if err := json.Unmarshal(data, &gemResp); err != nil {
 		return nil
 	}
 
@@ -84,7 +85,7 @@ func ConvertGeminiLineToChat(state *GeminiToChatState, line string) any {
 	// Buffer ALL parts as individual chunks — never return directly
 	for _, part := range candidate.Content.Parts {
 		if part.Text != "" {
-			state.AccText += part.Text
+			state.AccText.WriteString(part.Text)
 			state.pending = append(state.pending, &types.ChatStreamResponse{
 				ID:      state.ID,
 				Object:  "chat.completion.chunk",

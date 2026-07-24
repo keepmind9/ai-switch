@@ -1,6 +1,7 @@
 package converter
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -14,7 +15,7 @@ type AnthropicToResponsesState struct {
 	ItemID            string
 	Model             string
 	Created           int64
-	AccText           string
+	AccText           bytes.Buffer
 	CreatedSent       bool
 	ItemSent          bool
 	CompletedSent     bool
@@ -85,7 +86,7 @@ func EmitCompleted(w SSEWriter, state *AnthropicToResponsesState) {
 			"output_index":    0,
 			"content_index":   0,
 			"item_id":         state.TextItemID,
-			"text":            state.AccText,
+			"text":            state.AccText.String(),
 		})
 		w.WriteEvent("response.content_part.done", map[string]any{
 			"type":            "response.content_part.done",
@@ -95,7 +96,7 @@ func EmitCompleted(w SSEWriter, state *AnthropicToResponsesState) {
 			"item_id":         state.TextItemID,
 			"part": map[string]any{
 				"type": "output_text",
-				"text": state.AccText,
+				"text": state.AccText.String(),
 			},
 		})
 		w.WriteEvent("response.output_item.done", map[string]any{
@@ -108,7 +109,7 @@ func EmitCompleted(w SSEWriter, state *AnthropicToResponsesState) {
 				"status": "completed",
 				"role":   "assistant",
 				"content": []map[string]any{
-					{"type": "output_text", "text": state.AccText},
+					{"type": "output_text", "text": state.AccText.String()},
 				},
 			},
 		})
@@ -118,7 +119,7 @@ func EmitCompleted(w SSEWriter, state *AnthropicToResponsesState) {
 	var output []map[string]any
 
 	// Message item with text
-	if state.AccText != "" || !state.ItemSent {
+	if state.AccText.Len() > 0 || !state.ItemSent {
 		itemID := state.TextItemID
 		if itemID == "" {
 			itemID = state.ItemID
@@ -157,7 +158,7 @@ func EmitCompleted(w SSEWriter, state *AnthropicToResponsesState) {
 			"status": "completed",
 			"role":   "assistant",
 			"content": []map[string]any{
-				{"type": "output_text", "text": state.AccText},
+				{"type": "output_text", "text": state.AccText.String()},
 			},
 		})
 	}
@@ -204,18 +205,18 @@ func EmitCompleted(w SSEWriter, state *AnthropicToResponsesState) {
 
 // ConvertAnthropicLineToResponses processes a raw Anthropic SSE line and writes
 // corresponding Responses API SSE events via the writer. Returns true when done.
-func ConvertAnthropicLineToResponses(w SSEWriter, state *AnthropicToResponsesState, line string) bool {
-	if strings.HasPrefix(line, "event: ") || line == "" {
+func ConvertAnthropicLineToResponses(w SSEWriter, state *AnthropicToResponsesState, line []byte) bool {
+	if bytes.HasPrefix(line, sseEventPrefix) || len(line) == 0 {
 		return false
 	}
 
 	data := ParseSSEDataLine(line)
-	if data == "" {
+	if len(data) == 0 {
 		return false
 	}
 
 	var raw map[string]any
-	if err := json.Unmarshal([]byte(data), &raw); err != nil {
+	if err := json.Unmarshal(data, &raw); err != nil {
 		return false
 	}
 
@@ -345,7 +346,7 @@ func ConvertAnthropicLineToResponses(w SSEWriter, state *AnthropicToResponsesSta
 			if content == "" {
 				return false
 			}
-			state.AccText += content
+			state.AccText.WriteString(content)
 			state.OutputTokens++
 
 			w.WriteEvent("response.output_text.delta", map[string]any{
@@ -385,7 +386,7 @@ func ConvertAnthropicLineToResponses(w SSEWriter, state *AnthropicToResponsesSta
 				"output_index":    0,
 				"content_index":   0,
 				"item_id":         state.TextItemID,
-				"text":            state.AccText,
+				"text":            state.AccText.String(),
 			})
 			w.WriteEvent("response.content_part.done", map[string]any{
 				"type":            "response.content_part.done",
@@ -395,7 +396,7 @@ func ConvertAnthropicLineToResponses(w SSEWriter, state *AnthropicToResponsesSta
 				"item_id":         state.TextItemID,
 				"part": map[string]any{
 					"type": "output_text",
-					"text": state.AccText,
+					"text": state.AccText.String(),
 				},
 			})
 			w.WriteEvent("response.output_item.done", map[string]any{
@@ -408,7 +409,7 @@ func ConvertAnthropicLineToResponses(w SSEWriter, state *AnthropicToResponsesSta
 					"status": "completed",
 					"role":   "assistant",
 					"content": []map[string]any{
-						{"type": "output_text", "text": state.AccText},
+						{"type": "output_text", "text": state.AccText.String()},
 					},
 				},
 			})

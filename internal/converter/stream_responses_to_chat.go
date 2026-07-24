@@ -1,6 +1,7 @@
 package converter
 
 import (
+	"bytes"
 	"encoding/json"
 	"time"
 
@@ -12,7 +13,7 @@ type ResponsesToChatState struct {
 	ID                string
 	Model             string
 	Created           int64
-	AccText           string
+	AccText           bytes.Buffer
 	Started           bool
 	InputTokens       int
 	OutputTokens      int
@@ -40,18 +41,18 @@ func (s *ResponsesToChatState) ChatStreamUsage() (id, model string, input, outpu
 // ConvertResponsesLineToChat processes a raw Responses SSE line and returns
 // a ChatStreamResponse chunk, or nil if the line should be skipped.
 // Returns the string "[DONE]" when the stream is complete.
-func ConvertResponsesLineToChat(state *ResponsesToChatState, line string) any {
-	if line == "" {
+func ConvertResponsesLineToChat(state *ResponsesToChatState, line []byte) any {
+	if len(line) == 0 {
 		return nil
 	}
 
 	data := ParseSSEDataLine(line)
-	if data == "" {
+	if len(data) == 0 {
 		return nil
 	}
 
 	var raw map[string]any
-	if err := json.Unmarshal([]byte(data), &raw); err != nil {
+	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil
 	}
 
@@ -82,7 +83,7 @@ func ConvertResponsesLineToChat(state *ResponsesToChatState, line string) any {
 		if delta == "" {
 			return nil
 		}
-		state.AccText += delta
+		state.AccText.WriteString(delta)
 
 		return &types.ChatStreamResponse{
 			ID:      state.ID,

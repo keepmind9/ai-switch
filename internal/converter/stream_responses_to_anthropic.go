@@ -1,6 +1,7 @@
 package converter
 
 import (
+	"bytes"
 	"encoding/json"
 )
 
@@ -12,7 +13,7 @@ type ResponsesToAnthropicState struct {
 	OutputTokens      int
 	CacheCreateTokens int
 	CacheReadTokens   int
-	AccText           string
+	AccText           bytes.Buffer
 	ContentSent       bool
 	MessageStarted    bool
 	CurrentBlockIdx   int
@@ -24,8 +25,8 @@ type ResponsesToAnthropicState struct {
 
 // ConvertResponsesEventToAnthropicSSE processes a raw Responses SSE data line and emits
 // corresponding Anthropic Messages SSE events via the writer. Returns true when done.
-func ConvertResponsesEventToAnthropicSSE(w SSEWriter, state *ResponsesToAnthropicState, data string) bool {
-	if data == "[DONE]" {
+func ConvertResponsesEventToAnthropicSSE(w SSEWriter, state *ResponsesToAnthropicState, data []byte) bool {
+	if bytes.Equal(data, SSEDone) {
 		if state.MessageStarted {
 			// Close text block if it was opened but not yet closed
 			if state.TextBlockOpened {
@@ -52,7 +53,7 @@ func ConvertResponsesEventToAnthropicSSE(w SSEWriter, state *ResponsesToAnthropi
 	}
 
 	var raw map[string]any
-	if err := json.Unmarshal([]byte(data), &raw); err != nil {
+	if err := json.Unmarshal(data, &raw); err != nil {
 		return false
 	}
 
@@ -165,7 +166,7 @@ func ConvertResponsesEventToAnthropicSSE(w SSEWriter, state *ResponsesToAnthropi
 			state.TextBlockOpened = true
 		}
 
-		state.AccText += delta
+		state.AccText.WriteString(delta)
 		state.OutputTokens++
 
 		w.WriteEvent("content_block_delta", map[string]any{

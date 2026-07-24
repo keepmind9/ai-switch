@@ -161,7 +161,7 @@ func TestIsSSEErrorData(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, isSSEErrorData(tt.data))
+			assert.Equal(t, tt.want, isSSEErrorData([]byte(tt.data)))
 		})
 	}
 }
@@ -174,7 +174,7 @@ func TestIsSSEErrorData(t *testing.T) {
 func TestIsSSEErrorData_UnicodeEscapedKeyLimitation(t *testing.T) {
 	// Built via rune(0x5c) (backslash) so the source holds no literal escape.
 	data := `{"` + string(rune(0x5c)) + `u0065rror":{"message":"x"}}`
-	assert.False(t, isSSEErrorData(data))
+	assert.False(t, isSSEErrorData([]byte(data)))
 }
 func TestErrorTypeToStatus(t *testing.T) {
 	tests := []struct {

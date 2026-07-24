@@ -8,12 +8,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// buildResponsesJSON creates a raw JSON string for Responses SSE events
+// buildResponsesJSON creates a raw JSON byte slice for Responses SSE events
 // (without the "data: " prefix that buildResponsesJSON adds).
-func buildResponsesJSON(eventType string, payload map[string]any) string {
+func buildResponsesJSON(eventType string, payload map[string]any) []byte {
 	payload["type"] = eventType
 	data, _ := json.Marshal(payload)
-	return string(data)
+	return data
 }
 
 // --- Responses SSE → Anthropic SSE ---
@@ -41,7 +41,7 @@ func TestConvertResponsesEventToAnthropicSSE_TextStream(t *testing.T) {
 		"item_id": "item_1",
 	}))
 	assert.False(t, done)
-	assert.Equal(t, "Hello world", state.AccText)
+	assert.Equal(t, "Hello world", state.AccText.String())
 
 	// response.completed — closes text block, emits message_delta + message_stop
 	done = ConvertResponsesEventToAnthropicSSE(w, state, buildResponsesJSON("response.completed", map[string]any{
@@ -76,7 +76,7 @@ func TestConvertResponsesEventToAnthropicSSE_EmptyResponseThenDone(t *testing.T)
 	w := &mockSSEWriter{}
 	state := &ResponsesToAnthropicState{}
 
-	done := ConvertResponsesEventToAnthropicSSE(w, state, "[DONE]")
+	done := ConvertResponsesEventToAnthropicSSE(w, state, []byte("[DONE]"))
 	assert.True(t, done)
 	// No message was started, so no events
 	assert.Empty(t, w.events)
@@ -131,7 +131,7 @@ func TestConvertResponsesEventToAnthropicSSE_DoneClosesTextBlock(t *testing.T) {
 	assert.True(t, state.TextBlockOpened)
 
 	// [DONE] without response.completed — must close text block
-	done := ConvertResponsesEventToAnthropicSSE(w, state, "[DONE]")
+	done := ConvertResponsesEventToAnthropicSSE(w, state, []byte("[DONE]"))
 	assert.True(t, done)
 	events := w.eventTypes()
 	assert.Contains(t, events, "content_block_stop", "[DONE] must close text block")
@@ -339,7 +339,7 @@ func TestConvertResponsesEventToAnthropicSSE_InvalidJSON(t *testing.T) {
 	w := &mockSSEWriter{}
 	state := &ResponsesToAnthropicState{}
 
-	done := ConvertResponsesEventToAnthropicSSE(w, state, "not json")
+	done := ConvertResponsesEventToAnthropicSSE(w, state, []byte("not json"))
 	assert.False(t, done)
 	assert.Empty(t, w.events)
 }

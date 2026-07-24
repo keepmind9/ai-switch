@@ -46,7 +46,7 @@ func TestStreamChatToClient_NoAccumulationWhenTraceDisabled(t *testing.T) {
 	c, _ := newSSETestContext()
 
 	resp := newSSEResponse("data: hello\n\ndata: [DONE]\n\n")
-	convertFn := func(w converter.SSEWriter, data string) bool { return data == "[DONE]" }
+	convertFn := func(w converter.SSEWriter, data []byte) bool { return bytes.Equal(data, converter.SSEDone) }
 
 	content := h.streamChatToClient(c, resp, convertFn, converter.FormatAnthropic)
 	assert.Equal(t, "", content, "trace disabled: upstream accumulation must be skipped")
@@ -57,8 +57,8 @@ func TestStreamToChatSSE_NoAccumulationWhenTraceDisabled(t *testing.T) {
 	c, _ := newSSETestContext()
 
 	resp := newSSEResponse("data: hello\n\ndata: [DONE]\n\n")
-	convertFn := func(s any, line string) any {
-		if converter.ParseSSEDataLine(line) == "[DONE]" {
+	convertFn := func(s any, line []byte) any {
+		if bytes.Equal(converter.ParseSSEDataLine(line), converter.SSEDone) {
 			return "[DONE]"
 		}
 		return nil
@@ -80,11 +80,11 @@ func TestStreamChatToClient_OmitsRedundantFlushes(t *testing.T) {
 
 	// 2 chunks each emit one event; [DONE] ends the stream without writing.
 	resp := newSSEResponse("data: c1\n\ndata: c2\n\ndata: [DONE]\n\n")
-	convertFn := func(w converter.SSEWriter, data string) bool {
-		if data == "[DONE]" {
+	convertFn := func(w converter.SSEWriter, data []byte) bool {
+		if bytes.Equal(data, converter.SSEDone) {
 			return true
 		}
-		w.WriteEvent("content_block_delta", map[string]any{"text": data})
+		w.WriteEvent("content_block_delta", map[string]any{"text": string(data)})
 		return false
 	}
 
@@ -108,8 +108,8 @@ func TestStreamToChatSSE_OmitsNoOpFlushesWhenNoOutput(t *testing.T) {
 
 	// c1 produces a chunk; "skip" yields nil (no output); [DONE] ends.
 	resp := newSSEResponse("data: c1\n\ndata: skip\n\ndata: [DONE]\n\n")
-	convertFn := func(s any, line string) any {
-		switch d := converter.ParseSSEDataLine(line); d {
+	convertFn := func(s any, line []byte) any {
+		switch d := string(converter.ParseSSEDataLine(line)); d {
 		case "[DONE]":
 			return "[DONE]"
 		case "skip", "":

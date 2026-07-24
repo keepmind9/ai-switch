@@ -477,12 +477,12 @@ func checkUpstreamStreamError(c *gin.Context, resp *http.Response, clientFormat 
 	defer releaseScanner(scannerBuf)
 
 	for scanner.Scan() {
-		data := converter.ParseSSEDataLine(scanner.Text())
-		if data == "" {
+		data := converter.ParseSSEDataLine(scanner.Bytes())
+		if len(data) == 0 {
 			continue
 		}
 		if isSSEErrorData(data) {
-			msg, errType := parseUpstreamError([]byte(data))
+			msg, errType := parseUpstreamError(data)
 			slog.Warn("SSE error in first upstream event", "message", msg, "type", errType, "client_format", clientFormat)
 			status := resp.StatusCode
 			if status < 400 {
@@ -517,7 +517,7 @@ func writeSSEHeaders(c *gin.Context) {
 // streamChatToClient reads Chat SSE from upstream and converts to the target
 // client format using the provided converter function. Returns accumulated upstream content.
 // clientFormat is used to format error events in the client's expected format.
-func (h *Handler) streamChatToClient(c *gin.Context, resp *http.Response, convertFn func(w converter.SSEWriter, data string) bool, clientFormat string) string {
+func (h *Handler) streamChatToClient(c *gin.Context, resp *http.Response, convertFn func(w converter.SSEWriter, data []byte) bool, clientFormat string) string {
 	copyUpstreamHeaders(c, resp)
 
 	if body, handled := checkUpstreamStreamError(c, resp, clientFormat); handled {
@@ -536,16 +536,17 @@ func (h *Handler) streamChatToClient(c *gin.Context, resp *http.Response, conver
 	var buf bytes.Buffer
 	done := false
 	for scanner.Scan() {
-		line := scanner.Text()
+		line := scanner.Bytes()
 		if traceEnabled { // accumulate only when trace needs the full upstream body
-			buf.WriteString(line + "\n")
+			buf.Write(line)
+			buf.WriteByte('\n')
 		}
 		data := converter.ParseSSEDataLine(line)
-		if data == "" {
+		if len(data) == 0 {
 			continue
 		}
 		if isSSEErrorData(data) {
-			msg, errType := parseUpstreamError([]byte(data))
+			msg, errType := parseUpstreamError(data)
 			slog.Warn("SSE error event from upstream", "message", msg, "type", errType)
 			writeSSEErrorToClient(ginWriter, msg, errType, clientFormat)
 			break
@@ -561,7 +562,7 @@ func (h *Handler) streamChatToClient(c *gin.Context, resp *http.Response, conver
 		slog.Warn("SSE scanner error", "error", err)
 	}
 	if !done {
-		convertFn(ginWriter, "[DONE]")
+		convertFn(ginWriter, converter.SSEDone)
 	}
 	if canFlush {
 		flusher.Flush()
@@ -590,17 +591,18 @@ func (h *Handler) streamGeminiToChatSSE(c *gin.Context, resp *http.Response, mod
 	var buf bytes.Buffer
 
 	for scanner.Scan() {
-		line := scanner.Text()
+		line := scanner.Bytes()
 		if traceEnabled {
-			buf.WriteString(line + "\n")
+			buf.Write(line)
+			buf.WriteByte('\n')
 		}
 
 		data := converter.ParseSSEDataLine(line)
-		if data == "" {
+		if len(data) == 0 {
 			continue
 		}
 		if isSSEErrorData(data) {
-			msg, errType := parseUpstreamError([]byte(data))
+			msg, errType := parseUpstreamError(data)
 			slog.Warn("SSE error event from upstream", "message", msg, "type", errType)
 			errData, _ := json.Marshal(map[string]any{
 				"error": map[string]any{"message": msg, "type": errType},
@@ -611,7 +613,7 @@ func (h *Handler) streamGeminiToChatSSE(c *gin.Context, resp *http.Response, mod
 
 		// ConvertGeminiLineToChat returns one buffered chunk per call.
 		// First call parses the line + returns first chunk; subsequent
-		// calls with "" drain remaining buffered chunks.
+		// calls with nil drain remaining buffered chunks.
 		before := c.Writer.Size()
 		first := converter.ConvertGeminiLineToChat(state, line)
 		if chunk, ok := first.(*types.ChatStreamResponse); ok && chunk != nil {
@@ -619,7 +621,7 @@ func (h *Handler) streamGeminiToChatSSE(c *gin.Context, resp *http.Response, mod
 			c.Writer.WriteString("data: " + string(chunkData) + "\n\n")
 		}
 		for {
-			result := converter.ConvertGeminiLineToChat(state, "")
+			result := converter.ConvertGeminiLineToChat(state, nil)
 			chunk, ok := result.(*types.ChatStreamResponse)
 			if !ok || chunk == nil {
 				break
@@ -666,7 +668,7 @@ func (h *Handler) streamGeminiToChatSSE(c *gin.Context, resp *http.Response, mod
 // streamGeminiToClient reads Gemini SSE from upstream and converts to client format.
 // Unlike streamChatToClient, Gemini SSE has no [DONE] sentinel; the convertFn
 // returns true when finishReason is received to signal stream end.
-func (h *Handler) streamGeminiToClient(c *gin.Context, resp *http.Response, convertFn func(w converter.SSEWriter, data string) bool, clientFormat string) string {
+func (h *Handler) streamGeminiToClient(c *gin.Context, resp *http.Response, convertFn func(w converter.SSEWriter, data []byte) bool, clientFormat string) string {
 	copyUpstreamHeaders(c, resp)
 
 	if body, handled := checkUpstreamStreamError(c, resp, clientFormat); handled {
@@ -685,16 +687,17 @@ func (h *Handler) streamGeminiToClient(c *gin.Context, resp *http.Response, conv
 	var buf bytes.Buffer
 	done := false
 	for scanner.Scan() {
-		line := scanner.Text()
+		line := scanner.Bytes()
 		if traceEnabled { // accumulate only when trace needs the full upstream body
-			buf.WriteString(line + "\n")
+			buf.Write(line)
+			buf.WriteByte('\n')
 		}
 		data := converter.ParseSSEDataLine(line)
-		if data == "" {
+		if len(data) == 0 {
 			continue
 		}
 		if isSSEErrorData(data) {
-			msg, errType := parseUpstreamError([]byte(data))
+			msg, errType := parseUpstreamError(data)
 			slog.Warn("SSE error event from upstream", "message", msg, "type", errType)
 			writeSSEErrorToClient(ginWriter, msg, errType, clientFormat)
 			break
@@ -711,7 +714,7 @@ func (h *Handler) streamGeminiToClient(c *gin.Context, resp *http.Response, conv
 	}
 	// If stream ended without finishReason, call convertFn with [DONE] to finalize
 	if !done {
-		convertFn(ginWriter, "[DONE]")
+		convertFn(ginWriter, converter.SSEDone)
 	}
 	if canFlush {
 		flusher.Flush()
@@ -729,7 +732,7 @@ func (h *Handler) streamPassthrough(c *gin.Context, resp *http.Response, format 
 		if looksLikeSSE(respBody) {
 			slog.Info("upstream SSE without Content-Type, streaming directly", "body_len", len(respBody))
 			return h.streamBodyAsSSE(c, bytes.NewReader(respBody), format)
-		} else if !isSSEErrorData(string(respBody)) && format == converter.FormatResponses {
+		} else if !isSSEErrorData(respBody) && format == converter.FormatResponses {
 			slog.Info("converting non-SSE Responses JSON to SSE events", "body_len", len(respBody))
 			body := h.convertResponsesJSONToSSE(c, respBody)
 			return body, 0, 0, 0, 0
@@ -776,7 +779,7 @@ func (h *Handler) streamBodyAsSSE(c *gin.Context, body io.Reader, format string)
 			buf.Write(line)
 			buf.WriteByte('\n')
 		}
-		acc.sniff(parseSSEDataLineBytes(line), format)
+		acc.sniff(converter.ParseSSEDataLine(line), format)
 
 		event.Write(line)
 		event.WriteByte('\n')
@@ -895,7 +898,7 @@ func (h *Handler) convertResponsesJSONToSSE(c *gin.Context, body []byte) string 
 // streamToChatSSE reads upstream SSE (any format) and converts to Chat SSE output.
 // convertFn returns a *types.ChatStreamResponse, "[DONE]" string, or nil.
 // Returns accumulated upstream content.
-func (h *Handler) streamToChatSSE(c *gin.Context, resp *http.Response, convertFn func(state any, line string) any, initialState any) string {
+func (h *Handler) streamToChatSSE(c *gin.Context, resp *http.Response, convertFn func(state any, line []byte) any, initialState any) string {
 	copyUpstreamHeaders(c, resp)
 
 	if body, handled := checkUpstreamStreamError(c, resp, converter.FormatChat); handled {
@@ -911,14 +914,15 @@ func (h *Handler) streamToChatSSE(c *gin.Context, resp *http.Response, convertFn
 	traceEnabled := h.tracer().Enabled()
 	var buf bytes.Buffer
 	for scanner.Scan() {
-		line := scanner.Text()
+		line := scanner.Bytes()
 		if traceEnabled {
-			buf.WriteString(line + "\n")
+			buf.Write(line)
+			buf.WriteByte('\n')
 		}
 
 		data := converter.ParseSSEDataLine(line)
-		if data != "" && isSSEErrorData(data) {
-			msg, errType := parseUpstreamError([]byte(data))
+		if len(data) > 0 && isSSEErrorData(data) {
+			msg, errType := parseUpstreamError(data)
 			slog.Warn("SSE error event from upstream", "message", msg, "type", errType)
 			errData, _ := json.Marshal(map[string]any{
 				"error": map[string]any{"message": msg, "type": errType},
@@ -1002,14 +1006,15 @@ func (h *Handler) streamAnthropicToResponsesSSE(c *gin.Context, resp *http.Respo
 	traceEnabled := h.tracer().Enabled()
 	var buf bytes.Buffer
 	for scanner.Scan() {
-		line := scanner.Text()
+		line := scanner.Bytes()
 		if traceEnabled {
-			buf.WriteString(line + "\n")
+			buf.Write(line)
+			buf.WriteByte('\n')
 		}
 
 		data := converter.ParseSSEDataLine(line)
-		if data != "" && isSSEErrorData(data) {
-			msg, errType := parseUpstreamError([]byte(data))
+		if len(data) > 0 && isSSEErrorData(data) {
+			msg, errType := parseUpstreamError(data)
 			slog.Warn("SSE error event from upstream", "message", msg, "type", errType)
 			writeSSEErrorToClient(w, msg, errType, converter.FormatResponses)
 			return buf.String() // writeSSEErrorToClient flushes via ginSSEWriter.WriteEvent

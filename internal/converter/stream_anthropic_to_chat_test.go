@@ -9,13 +9,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func anthropicEventJSON(eventType string, extra map[string]any) string {
+func anthropicEventJSON(eventType string, extra map[string]any) []byte {
 	raw := map[string]any{"type": eventType}
 	for k, v := range extra {
 		raw[k] = v
 	}
 	data, _ := json.Marshal(raw)
-	return "data: " + string(data)
+	return []byte("data: " + string(data))
 }
 
 func assertChatChunk(t *testing.T, result any) *types.ChatStreamResponse {
@@ -71,7 +71,7 @@ func TestConvertAnthropicLineToChat_FullStream(t *testing.T) {
 		"delta": map[string]any{"text": "world"},
 	}))
 	assert.NotNil(t, result)
-	assert.Equal(t, "Hello world", state.AccText)
+	assert.Equal(t, "Hello world", state.AccText.String())
 
 	// message_delta with stop
 	result = ConvertAnthropicLineToChat(state, anthropicEventJSON("message_delta", map[string]any{
@@ -90,13 +90,13 @@ func TestConvertAnthropicLineToChat_FullStream(t *testing.T) {
 func TestConvertAnthropicLineToChat_SkipsEventLines(t *testing.T) {
 	state := &AnthropicToChatState{}
 
-	assert.Nil(t, ConvertAnthropicLineToChat(state, "event: message_start"))
-	assert.Nil(t, ConvertAnthropicLineToChat(state, ""))
+	assert.Nil(t, ConvertAnthropicLineToChat(state, []byte("event: message_start")))
+	assert.Nil(t, ConvertAnthropicLineToChat(state, []byte("")))
 }
 
 func TestConvertAnthropicLineToChat_SkipsInvalidJSON(t *testing.T) {
 	state := &AnthropicToChatState{}
-	assert.Nil(t, ConvertAnthropicLineToChat(state, "data: not-json"))
+	assert.Nil(t, ConvertAnthropicLineToChat(state, []byte("data: not-json")))
 }
 
 func TestConvertAnthropicLineToChat_SkipsEmptyDelta(t *testing.T) {

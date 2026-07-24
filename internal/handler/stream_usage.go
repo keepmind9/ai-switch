@@ -40,19 +40,6 @@ func (a *streamUsageAccumulator) sniff(data []byte, format string) {
 	}
 }
 
-// parseSSEDataLineBytes is the []byte variant of converter.ParseSSEDataLine,
-// used on the zero-copy scanner path so no per-line string is produced.
-func parseSSEDataLineBytes(line []byte) []byte {
-	after, ok := bytes.CutPrefix(line, []byte("data:"))
-	if !ok {
-		return nil
-	}
-	if len(after) > 0 && after[0] == ' ' {
-		return after[1:]
-	}
-	return after
-}
-
 func (a *streamUsageAccumulator) sniffAnthropic(raw map[string]any) {
 	eventType, _ := raw["type"].(string)
 	switch eventType {

@@ -25,7 +25,7 @@ func TestConvertAnthropicLineToResponses(t *testing.T) {
 	state := &AnthropicToResponsesState{Model: "test-model"}
 
 	// message_start
-	done := ConvertAnthropicLineToResponses(w, state, `data: {"type":"message_start","message":{"id":"msg_123","model":"test-model","usage":{"input_tokens":10}}}`)
+	done := ConvertAnthropicLineToResponses(w, state, []byte(`data: {"type":"message_start","message":{"id":"msg_123","model":"test-model","usage":{"input_tokens":10}}}`))
 	assert.False(t, done)
 	assert.True(t, state.CreatedSent)
 	assert.Equal(t, "msg_123", state.ResponseID)
@@ -36,7 +36,7 @@ func TestConvertAnthropicLineToResponses(t *testing.T) {
 	w.buf.Reset()
 
 	// content_block_start
-	done = ConvertAnthropicLineToResponses(w, state, `data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`)
+	done = ConvertAnthropicLineToResponses(w, state, []byte(`data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`))
 	assert.False(t, done)
 	assert.True(t, state.ItemSent)
 	output = w.buf.String()
@@ -46,9 +46,9 @@ func TestConvertAnthropicLineToResponses(t *testing.T) {
 	w.buf.Reset()
 
 	// content_block_delta
-	done = ConvertAnthropicLineToResponses(w, state, `data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello"}}`)
+	done = ConvertAnthropicLineToResponses(w, state, []byte(`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello"}}`))
 	assert.False(t, done)
-	assert.Equal(t, "Hello", state.AccText)
+	assert.Equal(t, "Hello", state.AccText.String())
 	output = w.buf.String()
 	assert.Contains(t, output, "response.output_text.delta")
 	assert.Contains(t, output, "Hello")
@@ -56,7 +56,7 @@ func TestConvertAnthropicLineToResponses(t *testing.T) {
 	w.buf.Reset()
 
 	// message_delta (stop)
-	done = ConvertAnthropicLineToResponses(w, state, `data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":5}}`)
+	done = ConvertAnthropicLineToResponses(w, state, []byte(`data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":5}}`))
 	assert.True(t, done)
 	output = w.buf.String()
 	assert.Contains(t, output, "response.output_text.done")
@@ -70,16 +70,16 @@ func TestConvertAnthropicLineToResponses_SkipEvents(t *testing.T) {
 	state := &AnthropicToResponsesState{Model: "test"}
 
 	// event lines should be skipped
-	done := ConvertAnthropicLineToResponses(w, state, "event: message_start")
+	done := ConvertAnthropicLineToResponses(w, state, []byte("event: message_start"))
 	assert.False(t, done)
 	assert.Empty(t, w.buf.String())
 
 	// empty lines should be skipped
-	done = ConvertAnthropicLineToResponses(w, state, "")
+	done = ConvertAnthropicLineToResponses(w, state, []byte(""))
 	assert.False(t, done)
 
 	// invalid JSON should be skipped
-	done = ConvertAnthropicLineToResponses(w, state, "data: not json")
+	done = ConvertAnthropicLineToResponses(w, state, []byte("data: not json"))
 	assert.False(t, done)
 }
 
@@ -88,24 +88,24 @@ func TestConvertAnthropicLineToResponses_ThinkTag(t *testing.T) {
 	state := &AnthropicToResponsesState{Model: "test", ThinkTag: "think"}
 
 	// Initialize with message_start and content_block_start
-	ConvertAnthropicLineToResponses(w, state, `data: {"type":"message_start","message":{"id":"msg_1","model":"test","usage":{"input_tokens":0}}}`)
+	ConvertAnthropicLineToResponses(w, state, []byte(`data: {"type":"message_start","message":{"id":"msg_1","model":"test","usage":{"input_tokens":0}}}`))
 	w.buf.Reset()
-	ConvertAnthropicLineToResponses(w, state, `data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`)
+	ConvertAnthropicLineToResponses(w, state, []byte(`data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`))
 	w.buf.Reset()
 
 	// Content with think tag should be filtered
-	done := ConvertAnthropicLineToResponses(w, state, `data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"<think">}}`)
+	done := ConvertAnthropicLineToResponses(w, state, []byte(`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"<think">}}`))
 	assert.False(t, done)
 	// The tag state should start filtering
 	w.buf.Reset()
 
-	done = ConvertAnthropicLineToResponses(w, state, `data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"reasoning here</think">}}`)
+	done = ConvertAnthropicLineToResponses(w, state, []byte(`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"reasoning here</think">}}`))
 	assert.False(t, done)
 
 	w.buf.Reset()
 
 	// After think tag closes, normal text should pass through
-	done = ConvertAnthropicLineToResponses(w, state, `data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello world"}}`)
+	done = ConvertAnthropicLineToResponses(w, state, []byte(`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello world"}}`))
 	assert.False(t, done)
 	output := w.buf.String()
 	require.Contains(t, output, "response.output_text.delta")
@@ -116,21 +116,21 @@ func TestConvertAnthropicLineToResponses_MultipleDeltas(t *testing.T) {
 	w := &testSSEWriter{}
 	state := &AnthropicToResponsesState{Model: "test"}
 
-	ConvertAnthropicLineToResponses(w, state, `data: {"type":"message_start","message":{"id":"msg_1","model":"test","usage":{"input_tokens":5}}}`)
+	ConvertAnthropicLineToResponses(w, state, []byte(`data: {"type":"message_start","message":{"id":"msg_1","model":"test","usage":{"input_tokens":5}}}`))
 	w.buf.Reset()
-	ConvertAnthropicLineToResponses(w, state, `data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`)
+	ConvertAnthropicLineToResponses(w, state, []byte(`data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`))
 	w.buf.Reset()
 
 	// Multiple content deltas
-	ConvertAnthropicLineToResponses(w, state, `data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hi "}}`)
+	ConvertAnthropicLineToResponses(w, state, []byte(`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hi "}}`))
 	w.buf.Reset()
-	ConvertAnthropicLineToResponses(w, state, `data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"there"}}`)
+	ConvertAnthropicLineToResponses(w, state, []byte(`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"there"}}`))
 	w.buf.Reset()
 
-	assert.Equal(t, "Hi there", state.AccText)
+	assert.Equal(t, "Hi there", state.AccText.String())
 
 	// Stop with message_delta
-	done := ConvertAnthropicLineToResponses(w, state, `data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}`)
+	done := ConvertAnthropicLineToResponses(w, state, []byte(`data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}`))
 	assert.True(t, done)
 	output := w.buf.String()
 	assert.Contains(t, output, `"text":"Hi there"`)
@@ -143,7 +143,7 @@ func TestConvertAnthropicLineToResponses_MessageStopFallback(t *testing.T) {
 	state := &AnthropicToResponsesState{Model: "test"}
 
 	// message_stop without prior content should still emit response.completed
-	done := ConvertAnthropicLineToResponses(w, state, `data: {"type":"message_stop"}`)
+	done := ConvertAnthropicLineToResponses(w, state, []byte(`data: {"type":"message_stop"}`))
 	assert.True(t, done)
 	assert.True(t, state.CompletedSent)
 	output := w.buf.String()
@@ -172,17 +172,17 @@ func TestConvertAnthropicLineToResponses_MessageStopAfterMessageDelta(t *testing
 	state := &AnthropicToResponsesState{Model: "test"}
 
 	// message_delta emits response.completed
-	ConvertAnthropicLineToResponses(w, state, `data: {"type":"message_start","message":{"id":"msg_1","model":"test","usage":{"input_tokens":5}}}`)
+	ConvertAnthropicLineToResponses(w, state, []byte(`data: {"type":"message_start","message":{"id":"msg_1","model":"test","usage":{"input_tokens":5}}}`))
 	w.buf.Reset()
 
-	done := ConvertAnthropicLineToResponses(w, state, `data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}`)
+	done := ConvertAnthropicLineToResponses(w, state, []byte(`data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}`))
 	assert.True(t, done)
 	assert.True(t, state.CompletedSent)
 
 	w.buf.Reset()
 
 	// message_stop after completion should not emit again
-	done = ConvertAnthropicLineToResponses(w, state, `data: {"type":"message_stop"}`)
+	done = ConvertAnthropicLineToResponses(w, state, []byte(`data: {"type":"message_stop"}`))
 	assert.True(t, done)
 	assert.Empty(t, w.buf.String())
 }

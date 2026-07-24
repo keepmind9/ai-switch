@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"bytes"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -102,10 +103,14 @@ func looksLikeSSE(body []byte) bool {
 	return false
 }
 
+// errKeyBytes is the pre-allocated "error" JSON key substring used by the
+// isSSEErrorData pre-filter, so the hot path does not allocate it per line.
+var errKeyBytes = []byte(`"error"`)
+
 // isSSEErrorData checks if an SSE data payload contains an error object.
-func isSSEErrorData(data string) bool {
-	trimmed := strings.TrimSpace(data)
-	if trimmed == "[DONE]" {
+func isSSEErrorData(data []byte) bool {
+	trimmed := bytes.TrimSpace(data)
+	if bytes.Equal(trimmed, converter.SSEDone) {
 		return false
 	}
 	// Pre-filter: an error object carries an "error" JSON key. The vast majority
@@ -119,11 +124,11 @@ func isSSEErrorData(data string) bool {
 	// such a payload is treated as a non-error line. Upstream providers emit
 	// literal keys, so this divergence is accepted in exchange for skipping the
 	// per-line parse on the hot path.
-	if !strings.Contains(trimmed, `"error"`) {
+	if !bytes.Contains(trimmed, errKeyBytes) {
 		return false
 	}
 	var raw map[string]any
-	if json.Unmarshal([]byte(trimmed), &raw) != nil {
+	if json.Unmarshal(trimmed, &raw) != nil {
 		return false
 	}
 	_, hasError := raw["error"]

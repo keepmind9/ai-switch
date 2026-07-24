@@ -25,9 +25,9 @@ func TestChatToAnthropic_MessageDeltaUsageIncludesCacheTokens(t *testing.T) {
 	w := &mockSSEWriter{}
 	state := &AnthropicStreamState{}
 
-	ConvertChatChunkToAnthropicSSE(w, state, `{"id":"1","model":"m","choices":[{"index":0,"delta":{"role":"assistant","content":""}}]}`)
-	ConvertChatChunkToAnthropicSSE(w, state, `{"id":"1","model":"m","choices":[{"index":0,"delta":{"content":"hi"},"finish_reason":"stop"}]}`)
-	ConvertChatChunkToAnthropicSSE(w, state, `{"id":"1","model":"m","choices":[],"usage":{"prompt_tokens":1000,"completion_tokens":50,"prompt_tokens_details":{"cached_tokens":800}}}`)
+	ConvertChatChunkToAnthropicSSE(w, state, []byte(`{"id":"1","model":"m","choices":[{"index":0,"delta":{"role":"assistant","content":""}}]}`))
+	ConvertChatChunkToAnthropicSSE(w, state, []byte(`{"id":"1","model":"m","choices":[{"index":0,"delta":{"content":"hi"},"finish_reason":"stop"}]}`))
+	ConvertChatChunkToAnthropicSSE(w, state, []byte(`{"id":"1","model":"m","choices":[],"usage":{"prompt_tokens":1000,"completion_tokens":50,"prompt_tokens_details":{"cached_tokens":800}}}`))
 
 	delta := findMessageDelta(w)
 	require.NotNil(t, delta)
@@ -44,9 +44,9 @@ func TestChatToAnthropic_MessageDeltaUsageWithoutCache(t *testing.T) {
 	w := &mockSSEWriter{}
 	state := &AnthropicStreamState{}
 
-	ConvertChatChunkToAnthropicSSE(w, state, `{"id":"1","model":"m","choices":[{"index":0,"delta":{"role":"assistant","content":""}}]}`)
-	ConvertChatChunkToAnthropicSSE(w, state, `{"id":"1","model":"m","choices":[{"index":0,"delta":{"content":"hi"},"finish_reason":"stop"}]}`)
-	ConvertChatChunkToAnthropicSSE(w, state, `{"id":"1","model":"m","choices":[],"usage":{"prompt_tokens":300,"completion_tokens":20}}`)
+	ConvertChatChunkToAnthropicSSE(w, state, []byte(`{"id":"1","model":"m","choices":[{"index":0,"delta":{"role":"assistant","content":""}}]}`))
+	ConvertChatChunkToAnthropicSSE(w, state, []byte(`{"id":"1","model":"m","choices":[{"index":0,"delta":{"content":"hi"},"finish_reason":"stop"}]}`))
+	ConvertChatChunkToAnthropicSSE(w, state, []byte(`{"id":"1","model":"m","choices":[],"usage":{"prompt_tokens":300,"completion_tokens":20}}`))
 
 	delta := findMessageDelta(w)
 	require.NotNil(t, delta)
@@ -95,7 +95,7 @@ func TestGeminiToAnthropic_MessageDeltaUsageIncludesInputTokens(t *testing.T) {
 	w := &mockSSEWriter{}
 	state := &GeminiToAnthropicState{Model: "gemini-1.5-pro"}
 
-	ConvertGeminiLineToAnthropicSSE(w, state, `{"candidates":[{"content":{"parts":[{"text":"hi"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":1500,"candidatesTokenCount":40}}`)
+	ConvertGeminiLineToAnthropicSSE(w, state, []byte(`{"candidates":[{"content":{"parts":[{"text":"hi"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":1500,"candidatesTokenCount":40}}`))
 
 	delta := findMessageDelta(w)
 	require.NotNil(t, delta)

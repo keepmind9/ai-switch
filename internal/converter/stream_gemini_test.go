@@ -33,7 +33,7 @@ func TestConvertGeminiLineToChat_Text(t *testing.T) {
 
 	// First response with text — emits text delta directly (no separate role chunk)
 	gemData := `{"candidates":[{"content":{"role":"model","parts":[{"text":"Hello"}]}}]}`
-	result := ConvertGeminiLineToChat(state, "data: "+gemData)
+	result := ConvertGeminiLineToChat(state, []byte("data: "+gemData))
 	require.NotNil(t, result)
 	chunk, ok := result.(*types.ChatStreamResponse)
 	require.True(t, ok)
@@ -41,7 +41,7 @@ func TestConvertGeminiLineToChat_Text(t *testing.T) {
 	assert.True(t, state.Started)
 
 	// Second response — more text
-	result = ConvertGeminiLineToChat(state, "data: "+gemData)
+	result = ConvertGeminiLineToChat(state, []byte("data: "+gemData))
 	chunk = result.(*types.ChatStreamResponse)
 	assert.Equal(t, "Hello", derefStr(chunk.Choices[0].Delta.Content))
 }
@@ -51,11 +51,11 @@ func TestConvertGeminiLineToChat_FunctionCall(t *testing.T) {
 
 	// Init
 	initData := `{"candidates":[{"content":{"role":"model","parts":[{"text":"Hi"}]}}]}`
-	ConvertGeminiLineToChat(state, "data: "+initData)
+	ConvertGeminiLineToChat(state, []byte("data: "+initData))
 
 	// Function call
 	fcData := `{"candidates":[{"content":{"role":"model","parts":[{"functionCall":{"name":"get_weather","args":{"city":"SF"}}}]},"finishReason":"STOP"}]}`
-	result := ConvertGeminiLineToChat(state, "data: "+fcData)
+	result := ConvertGeminiLineToChat(state, []byte("data: "+fcData))
 	chunk := result.(*types.ChatStreamResponse)
 	assert.Equal(t, "get_weather", chunk.Choices[0].Delta.ToolCalls[0].Function.Name)
 }
@@ -64,11 +64,11 @@ func TestConvertGeminiLineToChat_Usage(t *testing.T) {
 	state := &GeminiToChatState{Model: "gemini-2.5-pro"}
 
 	// Init
-	ConvertGeminiLineToChat(state, "data: "+`{"candidates":[{"content":{"role":"model","parts":[{"text":"x"}]}}]}`)
+	ConvertGeminiLineToChat(state, []byte("data: "+`{"candidates":[{"content":{"role":"model","parts":[{"text":"x"}]}}]}`))
 
 	// Final with usage
 	usageData := `{"candidates":[{"content":{"role":"model","parts":[]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":5,"totalTokenCount":15}}`
-	ConvertGeminiLineToChat(state, "data: "+usageData)
+	ConvertGeminiLineToChat(state, []byte("data: "+usageData))
 	assert.Equal(t, 10, state.InputTokens)
 	assert.Equal(t, 5, state.OutputTokens)
 }
@@ -80,7 +80,7 @@ func TestConvertGeminiLineToAnthropicSSE_Text(t *testing.T) {
 	state := &GeminiToAnthropicState{Model: "gemini-2.5-pro"}
 
 	gemData := `{"candidates":[{"content":{"role":"model","parts":[{"text":"Hello"}]},"finishReason":"STOP"}]}`
-	done := ConvertGeminiLineToAnthropicSSE(w, state, gemData)
+	done := ConvertGeminiLineToAnthropicSSE(w, state, []byte(gemData))
 	assert.True(t, done)
 
 	// Should have message_start, content_block_start, content_block_delta, content_block_stop, message_delta, message_stop
@@ -98,7 +98,7 @@ func TestConvertGeminiLineToAnthropicSSE_FunctionCall(t *testing.T) {
 	state := &GeminiToAnthropicState{Model: "gemini-2.5-pro"}
 
 	gemData := `{"candidates":[{"content":{"role":"model","parts":[{"functionCall":{"name":"get_weather","args":{"city":"SF"}}}]},"finishReason":"STOP"}]}`
-	done := ConvertGeminiLineToAnthropicSSE(w, state, gemData)
+	done := ConvertGeminiLineToAnthropicSSE(w, state, []byte(gemData))
 	assert.True(t, done)
 	assert.True(t, state.HasToolUse)
 }
@@ -110,7 +110,7 @@ func TestConvertGeminiLineToResponsesSSE_Text(t *testing.T) {
 	state := &GeminiToResponsesState{Model: "gemini-2.5-pro"}
 
 	gemData := `{"candidates":[{"content":{"role":"model","parts":[{"text":"Hello"}]},"finishReason":"STOP"}]}`
-	done := ConvertGeminiLineToResponsesSSE(w, state, gemData)
+	done := ConvertGeminiLineToResponsesSSE(w, state, []byte(gemData))
 	assert.True(t, done)
 
 	// Should end with response.completed
@@ -123,7 +123,7 @@ func TestConvertGeminiLineToResponsesSSE_FunctionCall(t *testing.T) {
 	state := &GeminiToResponsesState{Model: "gemini-2.5-pro"}
 
 	gemData := `{"candidates":[{"content":{"role":"model","parts":[{"functionCall":{"name":"search","args":{"q":"test"}}}]},"finishReason":"STOP"}]}`
-	done := ConvertGeminiLineToResponsesSSE(w, state, gemData)
+	done := ConvertGeminiLineToResponsesSSE(w, state, []byte(gemData))
 	assert.True(t, done)
 }
 
