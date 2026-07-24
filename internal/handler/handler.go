@@ -53,13 +53,9 @@ type Handler struct {
 
 func NewHandler(provider *config.Provider, usageStore *store.UsageStore, r router.Router, trace *hook.TraceRecorder) *Handler {
 	return &Handler{
-		provider:  provider,
-		converter: converter.NewConverter(),
-		client: &http.Client{
-			Transport: &http.Transport{
-				ResponseHeaderTimeout: upstreamTimeout,
-			},
-		},
+		provider:   provider,
+		converter:  converter.NewConverter(),
+		client:     &http.Client{Transport: newUpstreamTransport(nil)},
 		usageStore: usageStore,
 		router:     r,
 		keyMgr:     router.NewKeyManager(),
@@ -137,13 +133,33 @@ func (h *Handler) getProxyClient(proxyURL string) *http.Client {
 		}
 	}
 	h.proxyClient = &http.Client{
-		Transport: &http.Transport{
-			ResponseHeaderTimeout: upstreamTimeout,
-			Proxy:                 http.ProxyURL(proxyParsed),
-		},
+		Transport: newUpstreamTransport(http.ProxyURL(proxyParsed)),
 	}
 	h.cachedProxy = proxyURL
 	return h.proxyClient
+}
+
+// newUpstreamTransport builds a tuned *http.Transport for upstream calls.
+// Pass nil to connect directly — the default client intentionally does NOT
+// inherit net/http's ProxyFromEnvironment, because ai-switch manages proxy
+// selection itself (getProxyClient). Pass http.ProxyURL(...) to route via proxy.
+// HTTP/2 is enabled via ALPN and the idle-connection pool is enlarged so that
+// concurrent requests reuse connections instead of paying TCP/TLS handshakes.
+func newUpstreamTransport(proxy func(*http.Request) (*url.URL, error)) *http.Transport {
+	return &http.Transport{
+		Proxy:             proxy,
+		ForceAttemptHTTP2: true,
+		DialContext: (&net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		MaxIdleConns:          100,
+		MaxIdleConnsPerHost:   32,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+		ResponseHeaderTimeout: upstreamTimeout,
+	}
 }
 
 // SyncKeys rebuilds the KeyManager from the current config.
