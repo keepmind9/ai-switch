@@ -108,6 +108,20 @@ func isSSEErrorData(data string) bool {
 	if trimmed == "[DONE]" {
 		return false
 	}
+	// Pre-filter: an error object carries an "error" JSON key. The vast majority
+	// of data lines (content deltas) cannot be errors, so skip the json.Unmarshal
+	// entirely when the key substring is absent. Lines that happen to contain the
+	// substring (e.g. content quoting "error") still fall through to the parse,
+	// so behavior is unchanged for all realistic upstream payloads.
+	//
+	// Known limitation: a key whose bytes use a JSON unicode escape sequence
+	// (decoded to "error" by json.Unmarshal) lacks the literal substring, so
+	// such a payload is treated as a non-error line. Upstream providers emit
+	// literal keys, so this divergence is accepted in exchange for skipping the
+	// per-line parse on the hot path.
+	if !strings.Contains(trimmed, `"error"`) {
+		return false
+	}
 	var raw map[string]any
 	if json.Unmarshal([]byte(trimmed), &raw) != nil {
 		return false

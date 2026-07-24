@@ -135,15 +135,47 @@ func TestIsSSEResponse(t *testing.T) {
 }
 
 func TestIsSSEErrorData(t *testing.T) {
-	assert.True(t, isSSEErrorData(`{"error":{"message":"rate limited"}}`))
-	assert.True(t, isSSEErrorData(`{"type":"error","error":{"message":"model not found"}}`))
-	assert.False(t, isSSEErrorData(`{"type":"message_start","message":{}}`))
-	assert.False(t, isSSEErrorData("[DONE]"))
-	assert.False(t, isSSEErrorData(""))
-	assert.False(t, isSSEErrorData(`{"type":"content_block_delta","delta":{"text":"error handling is important"}}`))
-	assert.False(t, isSSEErrorData(`not json at all "error"`))
+	tests := []struct {
+		name string
+		data string
+		want bool
+	}{
+		{"error object", `{"error":{"message":"rate limited"}}`, true},
+		{"error object with type", `{"type":"error","error":{"message":"model not found"}}`, true},
+		{"message_start", `{"type":"message_start","message":{}}`, false},
+		{"done sentinel", "[DONE]", false},
+		{"empty", "", false},
+		{"content mentions error word", `{"type":"content_block_delta","delta":{"text":"error handling is important"}}`, false},
+		{"non-json with quoted error", `not json at all "error"`, false},
+		// Pre-filter edge cases: the "error" substring pre-filter must not produce
+		// a false positive. Valid JSON whose content value quotes "error" still
+		// has no "error" key -> false. A plural "errors" key does not match the
+		// quoted "error" substring -> false (skips the parse entirely).
+		{"valid json content quotes error word", `{"choices":[{"delta":{"content":"the word \"error\""}}]}`, false},
+		{"plural errors key", `{"errors":[{"message":"x"}]}`, false},
+		// Non-object error values: the key exists, so it is still an error line.
+		{"error null value", `{"error":null}`, true},
+		{"error string value", `{"error":"something"}`, true},
+		// Nested-only error key: isSSEErrorData checks only the top level.
+		{"nested error key only", `{"foo":{"error":{"message":"x"}}}`, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, isSSEErrorData(tt.data))
+		})
+	}
 }
 
+// TestIsSSEErrorData_UnicodeEscapedKeyLimitation documents the accepted
+// divergence: a JSON key whose bytes use a unicode escape sequence decodes to
+// "error" under json.Unmarshal, but the substring pre-filter only sees the raw
+// bytes (backslash-u-0-0-6-5) and misses it. Upstream providers emit literal
+// keys, so this is accepted to skip the per-line parse on the hot path.
+func TestIsSSEErrorData_UnicodeEscapedKeyLimitation(t *testing.T) {
+	// Built via rune(0x5c) (backslash) so the source holds no literal escape.
+	data := `{"` + string(rune(0x5c)) + `u0065rror":{"message":"x"}}`
+	assert.False(t, isSSEErrorData(data))
+}
 func TestErrorTypeToStatus(t *testing.T) {
 	tests := []struct {
 		errType string

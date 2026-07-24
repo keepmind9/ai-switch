@@ -17,6 +17,7 @@ import (
 var (
 	benchSinkString string
 	benchSinkBytes  []byte
+	benchSinkBool   bool
 )
 
 // buildBenchmarkSSE constructs a representative Anthropic SSE stream with the
@@ -94,6 +95,123 @@ func BenchmarkScannerTextVsBytes(b *testing.B) {
 			for s.Scan() {
 				benchSinkBytes = s.Bytes()
 			}
+		}
+	})
+}
+
+// BenchmarkConversionPathTextVsBytes answers whether the conversion streaming
+// path (streamChatToClient / streamToChatSSE / etc.) can benefit from the
+// zero-copy scanner. Unlike the passthrough path, here the parsed data line
+// MUST reach the converter as a string (convertFn signature is
+// func(w, data string)), so a Bytes path pays string(data) at that boundary.
+//
+// The question is whether that is a net loss. Only "data:" lines enter the
+// converter; event:/blank lines are rejected by the parser and never
+// stringified. Path A (Text) pays a string alloc for EVERY scanned line;
+// Path B (Bytes) pays it only for data lines. The gap is the saving available.
+func BenchmarkConversionPathTextVsBytes(b *testing.B) {
+	body := buildBenchmarkSSE(500)
+	consume := func(s string) { benchSinkString = s } // stand-in for convertFn(w, data string)
+
+	b.Run("Text", func(b *testing.B) {
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			s, bufp := acquireScanner(bytes.NewReader(body))
+			for s.Scan() {
+				line := s.Text()
+				data := converter.ParseSSEDataLine(line)
+				if data == "" {
+					continue
+				}
+				consume(data)
+			}
+			releaseScanner(bufp)
+		}
+	})
+
+	b.Run("Bytes_then_string", func(b *testing.B) {
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			s, bufp := acquireScanner(bytes.NewReader(body))
+			for s.Scan() {
+				line := s.Bytes()
+				data := parseSSEDataLineBytes(line)
+				if len(data) == 0 {
+					continue
+				}
+				consume(string(data)) // converter requires a string
+			}
+			releaseScanner(bufp)
+		}
+	})
+}
+
+// buildChatSSE constructs a representative OpenAI Chat-format SSE stream with
+// the given number of content delta chunks plus a final [DONE]. The first
+// chunk carries role:"assistant" so ConvertChatChunkToAnthropicSSE emits the
+// message_start lifecycle event, mirroring real upstream traffic.
+func buildChatSSE(numDeltas int) []byte {
+	var b bytes.Buffer
+	b.WriteString("data: {\"id\":\"chatcmpl-1\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"\"},\"finish_reason\":null}]}\n\n")
+	for i := 0; i < numDeltas; i++ {
+		b.WriteString("data: {\"id\":\"chatcmpl-1\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"chunk\"},\"finish_reason\":null}]}\n\n")
+	}
+	b.WriteString("data: [DONE]\n\n")
+	return b.Bytes()
+}
+
+// BenchmarkStreamChatToClient measures the Chat->Anthropic conversion hot path
+// with a REAL convertFn (ConvertChatChunkToAnthropicSSE), so the alloc share of
+// the scanner/string boundary can be judged against the converter's own json
+// parse + event-formatting cost. Compare allocs/op before vs after the
+// zero-copy Bytes switch.
+func BenchmarkStreamChatToClient(b *testing.B) {
+	gin.SetMode(gin.TestMode)
+	h := NewHandler(nil, nil, nil, nil) // trace disabled
+	body := buildChatSSE(500)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		b.StopTimer()
+		c, _ := newSSETestContext()
+		resp := newSSEResponse(string(body))
+		state := &converter.AnthropicStreamState{Model: "m"}
+		convertFn := func(w converter.SSEWriter, data string) bool {
+			return converter.ConvertChatChunkToAnthropicSSE(w, state, data)
+		}
+		b.StartTimer()
+		h.streamChatToClient(c, resp, convertFn, converter.FormatAnthropic)
+	}
+}
+
+// BenchmarkPerLineCost isolates the per-data-line allocation cost of the two
+// json.Unmarshal sites on the conversion path: isSSEErrorData (error detection)
+// and the converter itself (ConvertChatChunkToAnthropicSSE, steady-state content
+// delta after message_start is initialized). The split shows whether the
+// redundant error-detection parse is a real share of the 34205 allocs/op baseline.
+func BenchmarkPerLineCost(b *testing.B) {
+	delta := []byte(`{"id":"chatcmpl-1","model":"m","choices":[{"index":0,"delta":{"content":"chunk"},"finish_reason":null}]}`)
+	roleChunk := `{"id":"chatcmpl-1","model":"m","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}]}`
+
+	b.Run("isSSEErrorData", func(b *testing.B) {
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			benchSinkBool = isSSEErrorData(string(delta))
+		}
+	})
+
+	b.Run("convertFn_delta", func(b *testing.B) {
+		gin.SetMode(gin.TestMode)
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			b.StopTimer()
+			c, _ := newSSETestContext()
+			w := &ginSSEWriter{c: c}
+			state := &converter.AnthropicStreamState{Model: "m"}
+			converter.ConvertChatChunkToAnthropicSSE(w, state, roleChunk) // init message_start
+			b.StartTimer()
+			benchSinkBool = converter.ConvertChatChunkToAnthropicSSE(w, state, string(delta))
 		}
 	})
 }
