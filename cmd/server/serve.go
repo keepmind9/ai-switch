@@ -42,17 +42,19 @@ func newServeCmd() *cobra.Command {
 		Short:   fmt.Sprintf("Start the %s proxy server", binName),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			configPath, _ := cmd.Flags().GetString("config")
+			pprofAddr, _ := cmd.Flags().GetString("pprof")
 			if asDaemon {
-				return startDaemon(configPath)
+				return startDaemon(configPath, pprofAddr)
 			}
-			return runServe(configPath)
+			return runServe(configPath, pprofAddr)
 		},
 	}
 	cmd.Flags().BoolVarP(&asDaemon, "daemon", "d", false, "run as background daemon")
+	cmd.Flags().String("pprof", "", "enable pprof HTTP server on this addr (e.g. 127.0.0.1:6060) for live profiling; off by default")
 	return cmd
 }
 
-func runServe(configPath string) error {
+func runServe(configPath, pprofAddr string) error {
 	isRestart := os.Getenv(restartEnvKey) == "1"
 	os.Unsetenv(restartEnvKey)
 
@@ -158,6 +160,14 @@ func runServe(configPath string) error {
 		errCh <- nil
 	}()
 
+	// Optional pprof server: separate port + mux, fully isolated from the main
+	// gin engine, off by default. The --pprof flag is forwarded to daemon and
+	// restart children (see serverArgs) so profiling survives process changes.
+	pprofSrv, pprofErr := startPprofServer(pprofAddr)
+	if pprofErr != nil {
+		slog.Error("failed to start pprof server, profiling disabled", "addr", pprofAddr, "error", pprofErr)
+	}
+
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
@@ -174,6 +184,9 @@ func runServe(configPath string) error {
 			defer cancel()
 			if err := srv.Shutdown(ctx); err != nil {
 				slog.Error("forced shutdown", "error", err)
+			}
+			if pprofSrv != nil {
+				_ = pprofSrv.Shutdown(ctx)
 			}
 			slog.Info("server exited")
 			return nil
@@ -192,8 +205,14 @@ func runServe(configPath string) error {
 			if usageStore != nil {
 				usageStore.Close()
 			}
+			// Release the pprof port before spawning the child: unlike the main
+			// port (listenWithRetry), startPprofServer does not retry, so the old
+			// listener must be gone before the child tries to bind it.
+			if pprofSrv != nil {
+				_ = pprofSrv.Close()
+			}
 			// Spawn new process with retry flag so it retries port binding.
-			if err := spawnRestartServer(configPath); err != nil {
+			if err := spawnRestartServer(configPath, pprofAddr); err != nil {
 				slog.Error("failed to spawn new server", "error", err)
 				return err
 			}
@@ -211,6 +230,9 @@ func runServe(configPath string) error {
 			defer cancel()
 			if err := srv.Shutdown(ctx); err != nil {
 				slog.Error("forced shutdown", "error", err)
+			}
+			if pprofSrv != nil {
+				_ = pprofSrv.Shutdown(ctx)
 			}
 			slog.Info("server stopped")
 			return nil
@@ -243,7 +265,7 @@ func listenWithRetry(addr string, isRestart bool) (net.Listener, error) {
 	return nil, lastErr
 }
 
-func startDaemon(configPath string) error {
+func startDaemon(configPath, pprofAddr string) error {
 	dataDir, err := config.EnsureDataDir()
 	if err != nil {
 		return fmt.Errorf("failed to create data directory: %w", err)
@@ -275,10 +297,7 @@ func startDaemon(configPath string) error {
 		return fmt.Errorf("failed to get executable path: %w", err)
 	}
 
-	args := []string{"serve"}
-	if configPath != "" {
-		args = append(args, "-c", configPath)
-	}
+	args := serverArgs(configPath, pprofAddr)
 	cmd := exec.Command(execPath, args...)
 	cmd.Stdout = nil
 	cmd.Stderr = nil
@@ -317,4 +336,19 @@ func removePIDFile(dataDir string) {
 
 func isAddrInUse(err error) bool {
 	return strings.Contains(err.Error(), "address already in use")
+}
+
+// serverArgs builds the argv for a spawned `ais serve` process (background
+// daemon start or config-driven restart), preserving the config and pprof
+// flags so the child carries the same diagnostic surface as the process that
+// launched it.
+func serverArgs(configPath, pprofAddr string) []string {
+	args := []string{"serve"}
+	if configPath != "" {
+		args = append(args, "-c", configPath)
+	}
+	if pprofAddr != "" {
+		args = append(args, "--pprof", pprofAddr)
+	}
+	return args
 }

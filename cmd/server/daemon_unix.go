@@ -32,15 +32,12 @@ func processAlive(proc *os.Process) bool {
 	return proc.Signal(syscall.Signal(0)) == nil
 }
 
-func spawnRestartServer(configPath string) error {
+func spawnRestartServer(configPath, pprofAddr string) error {
 	execPath, err := os.Executable()
 	if err != nil {
 		return err
 	}
-	args := []string{"serve"}
-	if configPath != "" {
-		args = append(args, "-c", configPath)
-	}
+	args := serverArgs(configPath, pprofAddr)
 	cmd := exec.Command(execPath, args...)
 	cmd.Env = append(os.Environ(), "AI_SWITCH_RESTART=1")
 	cmd.Stdin = nil
