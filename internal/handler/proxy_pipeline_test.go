@@ -430,3 +430,28 @@ func TestProxyPipeline_EmptyFormatAllowedForChat(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, "/v1/chat/completions", gotPath)
 }
+
+func TestProxyPipeline_MultiValuedHeaderPreserved(t *testing.T) {
+	result := &router.RouteResult{
+		ProviderKey: "anth",
+		Path:        "/v1/messages",
+		APIKey:      "sk",
+		Format:      "anthropic",
+		Model:       "claude",
+	}
+	engine, _ := setupProxyRouter(t, result, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Add("X-Multi", "a")
+		w.Header().Add("X-Multi", "b")
+		w.Header().Add("Vary", "Accept")
+		w.Header().Add("Vary", "Authorization")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("ok"))
+	})
+
+	w := doRequest(engine, "POST", "/v1/messages", `{"model":"claude","stream":false,"messages":[]}`)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	// All values of a multi-valued header must be forwarded, not just the last.
+	assert.Equal(t, []string{"a", "b"}, w.Header()["X-Multi"])
+	assert.Equal(t, []string{"Accept", "Authorization"}, w.Header()["Vary"])
+}

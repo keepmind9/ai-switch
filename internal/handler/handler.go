@@ -487,10 +487,11 @@ func copyProxyResponseHeaders(c *gin.Context, resp *http.Response) {
 		h.Del(name)
 	}
 	h.Del("Content-Length")
+	// Assign the full value slice so multi-valued headers (e.g. multiple
+	// Set-Cookie, Vary, Link) are preserved. Gin's c.Header calls Set, which
+	// would keep only the last value.
 	for k, vv := range h {
-		for _, v := range vv {
-			c.Header(k, v)
-		}
+		c.Writer.Header()[k] = vv
 	}
 }
 
