@@ -307,3 +307,126 @@ func TestProxyPipeline_UpstreamUnreachable_NoDoubleCount(t *testing.T) {
 	assert.Equal(t, http.StatusBadGateway, w.Code)
 	assert.Contains(t, w.Body.String(), "failed to call upstream")
 }
+
+func TestProxyPipeline_ResponsesCompactionTriggerPassthrough(t *testing.T) {
+	result := &router.RouteResult{
+		ProviderKey: "resp",
+		Path:        "/v1/responses",
+		APIKey:      "sk",
+		Format:      "responses",
+		Model:       "gpt-5",
+	}
+	var gotPath string
+	var gotBody []byte
+	engine, _ := setupProxyRouter(t, result, func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotBody, _ = io.ReadAll(r.Body)
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"id":"r"}`))
+	})
+
+	// Codex v2 compaction: ordinary /v1/responses with a compaction_trigger item.
+	body := `{"model":"gpt-5","stream":false,"input":[{"role":"user","content":"hi"},{"type":"compaction_trigger"}]}`
+	w := doRequest(engine, "POST", "/v1/responses", body)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	// Must reach /v1/responses, NOT /v1/responses/compact (the v2 compaction
+	// path mis-routes here when the pre-proxy preprocessing runs).
+	assert.Equal(t, "/v1/responses", gotPath)
+	// Body forwarded verbatim including the compaction_trigger item.
+	assert.Contains(t, string(gotBody), "compaction_trigger")
+}
+
+func TestProxyPipeline_CompactPassthrough(t *testing.T) {
+	result := &router.RouteResult{
+		ProviderKey: "resp",
+		Path:        "/v1/responses",
+		APIKey:      "sk",
+		Format:      "responses",
+		Model:       "gpt-5",
+	}
+	var gotPath string
+	engine, _ := setupProxyRouter(t, result, func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"id":"r"}`))
+	})
+
+	w := doRequest(engine, "POST", "/v1/responses/compact", `{"model":"gpt-5","input":[]}`)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "/v1/responses/compact", gotPath)
+}
+
+func TestProxyPipeline_CompactFormatMismatchRejected(t *testing.T) {
+	result := &router.RouteResult{
+		ProviderKey: "chatprov",
+		Path:        "/v1/chat/completions",
+		APIKey:      "sk",
+		Format:      "chat",
+		Model:       "gpt-4",
+	}
+	upstreamCalled := false
+	engine, _ := setupProxyRouter(t, result, func(w http.ResponseWriter, r *http.Request) {
+		upstreamCalled = true
+		w.WriteHeader(http.StatusOK)
+	})
+
+	w := doRequest(engine, "POST", "/v1/responses/compact", `{"model":"gpt-5","input":[]}`)
+
+	assert.False(t, upstreamCalled, "upstream must not be called on format mismatch")
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	var errResp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &errResp))
+	errObj, _ := errResp["error"].(map[string]any)
+	assert.Equal(t, "proxy_mode_format_mismatch", errObj["code"])
+}
+
+func TestProxyPipeline_EmptyFormatRejectedForAnthropic(t *testing.T) {
+	// Provider with empty format: the router resolves its path to /v1/chat/completions
+	// (FormatToPath default). Proxy mode must treat empty format as chat and reject
+	// an anthropic client instead of silently forwarding to the chat endpoint.
+	result := &router.RouteResult{
+		ProviderKey: "default",
+		Path:        "/v1/chat/completions",
+		APIKey:      "sk",
+		Format:      "",
+		Model:       "gpt-4",
+	}
+	upstreamCalled := false
+	engine, _ := setupProxyRouter(t, result, func(w http.ResponseWriter, r *http.Request) {
+		upstreamCalled = true
+		w.WriteHeader(http.StatusOK)
+	})
+
+	w := doRequest(engine, "POST", "/v1/messages", `{"model":"claude","stream":false,"messages":[]}`)
+
+	assert.False(t, upstreamCalled, "upstream must not be called on format mismatch")
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	errObj, _ := resp["error"].(map[string]any)
+	assert.Equal(t, "proxy_mode_format_mismatch", errObj["code"])
+}
+
+func TestProxyPipeline_EmptyFormatAllowedForChat(t *testing.T) {
+	// Empty format treated as chat: a chat client is allowed through.
+	result := &router.RouteResult{
+		ProviderKey: "default",
+		Path:        "/v1/chat/completions",
+		APIKey:      "sk",
+		Format:      "",
+		Model:       "gpt-4",
+	}
+	var gotPath string
+	engine, _ := setupProxyRouter(t, result, func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"id":"r"}`))
+	})
+
+	w := doRequest(engine, "POST", "/v1/chat/completions", `{"model":"gpt-4","messages":[{"role":"user","content":"hi"}]}`)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "/v1/chat/completions", gotPath)
+}

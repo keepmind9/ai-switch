@@ -50,6 +50,13 @@ func (h *Handler) handleCompact(c *gin.Context) {
 		upstreamFormat = converter.FormatChat
 	}
 
+	// Proxy mode: same-format only. Codex compact must reach a responses
+	// upstream; refuse instead of converting via LLM summarization.
+	if h.proxyMode && upstreamFormat != converter.FormatResponses {
+		writeProxyFormatMismatch(c, converter.FormatResponses, result.ProviderKey, upstreamFormat)
+		return
+	}
+
 	// OpenAI transparent passthrough
 	if upstreamFormat == converter.FormatResponses {
 		h.forwardCompactPassthrough(c, body, result)

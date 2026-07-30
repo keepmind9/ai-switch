@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/keepmind9/ai-switch/internal/converter"
 	"github.com/keepmind9/ai-switch/internal/hook"
 	"github.com/keepmind9/ai-switch/internal/store"
 )
@@ -45,10 +46,14 @@ func (h *Handler) executeProxyPipeline(c *gin.Context, protocol string, body []b
 		return
 	}
 	ctx.RouteResult = result
-	ctx.UpstreamProtocol = result.Format
-	if ctx.UpstreamProtocol == "" {
-		ctx.UpstreamProtocol = protocol
+	// Resolve empty format to chat, matching router.FormatToPath("") and
+	// handleCompact. An empty-format provider is a chat upstream, so the
+	// same-format guard treats it as chat - not as "matches any protocol".
+	upstreamFormat := result.Format
+	if upstreamFormat == "" {
+		upstreamFormat = converter.FormatChat
 	}
+	ctx.UpstreamProtocol = upstreamFormat
 	c.Set(ctxProviderKey, result.ProviderKey)
 
 	resolvedModel := result.Model
@@ -58,10 +63,12 @@ func (h *Handler) executeProxyPipeline(c *gin.Context, protocol string, body []b
 	ctx.ClientModel = resolvedModel
 
 	// 3. Same-format guard: conversion is disabled in proxy mode. A provider
-	// declaring a format different from the client protocol is a config error
-	// - fail fast instead of silently forwarding a mismatched request.
-	if result.Format != "" && result.Format != protocol {
-		writeProxyFormatMismatch(c, protocol, result.ProviderKey, result.Format)
+	// whose resolved format differs from the client protocol is a config error
+	// - fail fast instead of silently forwarding a mismatched request (e.g. an
+	// anthropic client routed to an empty-format provider whose path resolves
+	// to /v1/chat/completions).
+	if upstreamFormat != protocol {
+		writeProxyFormatMismatch(c, protocol, result.ProviderKey, upstreamFormat)
 		return
 	}
 

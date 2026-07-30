@@ -1106,6 +1106,15 @@ func (h *Handler) handleResponses(c *gin.Context) {
 		c.JSON(status, gin.H{"error": gin.H{"code": "invalid_request", "message": err.Error()}})
 		return
 	}
+	// Proxy mode: pure byte passthrough. Skip compaction-trigger detection and
+	// fake-compaction decoding so the request reaches the responses upstream
+	// verbatim (the upstream handles compaction natively). The v2 compaction
+	// path would otherwise forward to /v1/responses/compact, a wrong endpoint.
+	if h.proxyMode {
+		h.executePipeline(c, converter.FormatResponses, body)
+		return
+	}
+
 	// Codex remote-compaction v2: an ordinary /v1/responses whose input contains
 	// a {"type":"compaction_trigger"} marker. Handle before the normal pipeline so
 	// it is summarized and returned as a compaction SSE stream.
