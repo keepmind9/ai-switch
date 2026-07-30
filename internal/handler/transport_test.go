@@ -14,7 +14,7 @@ import (
 // original ResponseHeaderTimeout preserved, and (critically) NO environment
 // proxy forwarding.
 func TestNewHandler_UpstreamTransportConfigured(t *testing.T) {
-	h := NewHandler(nil, nil, nil, nil)
+	h := NewHandler(nil, nil, nil, nil, false)
 	tr, ok := h.client.Transport.(*http.Transport)
 	require.True(t, ok, "upstream client must use *http.Transport")
 
@@ -38,7 +38,7 @@ func TestNewHandler_UpstreamTransportIgnoresProxyEnv(t *testing.T) {
 	t.Setenv("HTTP_PROXY", "http://127.0.0.1:9")
 	t.Setenv("http_proxy", "http://127.0.0.1:9")
 
-	h := NewHandler(nil, nil, nil, nil)
+	h := NewHandler(nil, nil, nil, nil, false)
 	req, err := http.NewRequest(http.MethodGet, ts.URL, nil)
 	require.NoError(t, err)
 

@@ -52,7 +52,7 @@ func buildBenchmarkSSE(numDeltas int) []byte {
 // streamBodyAsSSE itself.
 func BenchmarkStreamBodyAsSSE(b *testing.B) {
 	gin.SetMode(gin.TestMode)
-	h := NewHandler(nil, nil, nil, nil)
+	h := NewHandler(nil, nil, nil, nil, false)
 
 	for _, numDeltas := range []int{50, 500, 2000} {
 		body := buildBenchmarkSSE(numDeltas)
@@ -120,7 +120,7 @@ func buildChatSSE(numDeltas int) []byte {
 // zero-copy Bytes switch.
 func BenchmarkStreamChatToClient(b *testing.B) {
 	gin.SetMode(gin.TestMode)
-	h := NewHandler(nil, nil, nil, nil) // trace disabled
+	h := NewHandler(nil, nil, nil, nil, false) // trace disabled
 	body := buildChatSSE(500)
 
 	b.ReportAllocs()

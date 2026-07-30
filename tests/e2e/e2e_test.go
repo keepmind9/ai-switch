@@ -59,7 +59,7 @@ func setupProtocolTest(t *testing.T, upstreamFormat string) *protocolTestEnv {
 
 	provider := config.NewProvider(cfg, "")
 	r := router.NewConfigRouter(provider)
-	h := handler.NewHandler(provider, nil, r, nil)
+	h := handler.NewHandler(provider, nil, r, nil, false)
 	engine := gin.New()
 	h.RegisterRoutes(engine)
 

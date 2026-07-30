@@ -46,12 +46,17 @@ type Handler struct {
 	hooks      *hook.Manager
 	trace      *hook.TraceRecorder
 
+	// proxyMode forces same-format passthrough with no protocol conversion:
+	// requests are forwarded after rewriting only the top-level model field,
+	// and responses are streamed back byte-for-byte. See proxy_pipeline.go.
+	proxyMode bool
+
 	proxyMu     sync.RWMutex
 	proxyClient *http.Client
 	cachedProxy string
 }
 
-func NewHandler(provider *config.Provider, usageStore *store.UsageStore, r router.Router, trace *hook.TraceRecorder) *Handler {
+func NewHandler(provider *config.Provider, usageStore *store.UsageStore, r router.Router, trace *hook.TraceRecorder, proxyMode bool) *Handler {
 	return &Handler{
 		provider:   provider,
 		converter:  converter.NewConverter(),
@@ -61,6 +66,7 @@ func NewHandler(provider *config.Provider, usageStore *store.UsageStore, r route
 		keyMgr:     router.NewKeyManager(),
 		hooks:      hook.NewManager(),
 		trace:      trace,
+		proxyMode:  proxyMode,
 	}
 }
 
@@ -442,6 +448,46 @@ func copyUpstreamHeaders(c *gin.Context, resp *http.Response) {
 		if skip[k] {
 			continue
 		}
+		for _, v := range vv {
+			c.Header(k, v)
+		}
+	}
+}
+
+// hopByHopHeaders are per-connection headers that must not be forwarded by a
+// proxy (RFC 7230 §6.1). They describe the upstream<->proxy connection, not
+// the end-to-end message.
+var hopByHopHeaders = []string{
+	"Connection",
+	"Proxy-Connection",
+	"Keep-Alive",
+	"Proxy-Authenticate",
+	"Proxy-Authorization",
+	"Te",
+	"Trailer",
+	"Transfer-Encoding",
+	"Upgrade",
+}
+
+// copyProxyResponseHeaders forwards upstream response headers to the client for
+// proxy-mode pure passthrough. Unlike copyUpstreamHeaders (which drops
+// Content-Type/Content-Encoding/Cache-Control because the conversion path
+// re-sets them), this keeps every end-to-end header intact and only removes
+// hop-by-hop headers plus Content-Length (the Go server recomputes it or uses
+// chunked transfer, which is correct for both SSE and non-stream bodies).
+func copyProxyResponseHeaders(c *gin.Context, resp *http.Response) {
+	h := resp.Header.Clone()
+	// Headers named in Connection are also hop-by-hop and must be removed.
+	if conn := h.Get("Connection"); conn != "" {
+		for _, name := range strings.Split(conn, ",") {
+			h.Del(strings.TrimSpace(name))
+		}
+	}
+	for _, name := range hopByHopHeaders {
+		h.Del(name)
+	}
+	h.Del("Content-Length")
+	for k, vv := range h {
 		for _, v := range vv {
 			c.Header(k, v)
 		}

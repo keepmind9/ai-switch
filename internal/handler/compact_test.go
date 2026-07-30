@@ -237,7 +237,7 @@ func TestHandleCompact_Passthrough_CustomHeaders(t *testing.T) {
 	}
 	provider := config.NewProvider(cfg, "")
 	rtr := router.NewConfigRouter(provider)
-	h := NewHandler(provider, nil, rtr, nil)
+	h := NewHandler(provider, nil, rtr, nil, false)
 	engine := gin.New()
 	h.RegisterRoutes(engine)
 
@@ -355,7 +355,7 @@ func TestForwardCompactPassthrough_UpstreamError(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	h := NewHandler(nil, nil, nil, nil)
+	h := NewHandler(nil, nil, nil, nil, false)
 
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
@@ -388,7 +388,7 @@ func TestForwardCompactPassthrough_UpstreamSuccess(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	h := NewHandler(nil, nil, nil, nil)
+	h := NewHandler(nil, nil, nil, nil, false)
 
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
@@ -566,7 +566,7 @@ func setupRouterWithTrace(t *testing.T, upstreamFormat string, upstreamHandler h
 	r := router.NewConfigRouter(provider)
 	buf := &bytes.Buffer{}
 	trace := hook.NewTraceRecorder(buf, nil)
-	h := NewHandler(provider, nil, r, trace)
+	h := NewHandler(provider, nil, r, trace, false)
 	engine := gin.New()
 	h.RegisterRoutes(engine)
 	return engine, buf

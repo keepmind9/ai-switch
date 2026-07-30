@@ -55,7 +55,7 @@ func TestForwardRequest_DefaultPath(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	h := NewHandler(nil, nil, nil, nil)
+	h := NewHandler(nil, nil, nil, nil, false)
 	result := &router.RouteResult{
 		BaseURL: ts.URL,
 		APIKey:  "test-key",
@@ -80,7 +80,7 @@ func TestForwardRequest_PathOverride(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	h := NewHandler(nil, nil, nil, nil)
+	h := NewHandler(nil, nil, nil, nil, false)
 	result := &router.RouteResult{
 		BaseURL: ts.URL,
 		Path:    "/proxy/v1/chat/completions",
@@ -104,7 +104,7 @@ func TestForwardRequest_TrailingSlash(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	h := NewHandler(nil, nil, nil, nil)
+	h := NewHandler(nil, nil, nil, nil, false)
 	result := &router.RouteResult{
 		BaseURL: ts.URL + "/",
 		APIKey:  "test-key",
@@ -129,7 +129,7 @@ func TestForwardRequest_AnthropicHeaders(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	h := NewHandler(nil, nil, nil, nil)
+	h := NewHandler(nil, nil, nil, nil, false)
 	result := &router.RouteResult{
 		BaseURL: ts.URL,
 		APIKey:  "anth-key",
@@ -154,7 +154,7 @@ func TestForwardRequest_ChatBearerHeader(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	h := NewHandler(nil, nil, nil, nil)
+	h := NewHandler(nil, nil, nil, nil, false)
 	result := &router.RouteResult{
 		BaseURL: ts.URL,
 		APIKey:  "bearer-key",
@@ -176,7 +176,7 @@ func TestForwardRequest_UpstreamError(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	h := NewHandler(nil, nil, nil, nil)
+	h := NewHandler(nil, nil, nil, nil, false)
 	result := &router.RouteResult{
 		BaseURL: ts.URL,
 		APIKey:  "key",
@@ -202,7 +202,7 @@ func setupRouter(t *testing.T, upstreamFormat string, upstreamHandler http.Handl
 
 	provider := config.NewProvider(newTestConfig(ts.URL, upstreamFormat, "test-model"), "")
 	r := router.NewConfigRouter(provider)
-	h := NewHandler(provider, nil, r, nil)
+	h := NewHandler(provider, nil, r, nil, false)
 	engine := gin.New()
 	h.RegisterRoutes(engine)
 
@@ -309,7 +309,7 @@ func TestHandleChat_DefaultModel(t *testing.T) {
 
 	provider := config.NewProvider(newTestConfig(ts.URL, "chat", "default-model"), "")
 	rt := router.NewConfigRouter(provider)
-	h := NewHandler(provider, nil, rt, nil)
+	h := NewHandler(provider, nil, rt, nil, false)
 	engine := gin.New()
 	h.RegisterRoutes(engine)
 
@@ -620,7 +620,7 @@ func setupModelsRouter(t *testing.T, providerKey string, models []string) *gin.E
 	gin.SetMode(gin.TestMode)
 	provider := config.NewProvider(newModelsTestConfig(providerKey, models), "")
 	r := router.NewConfigRouter(provider)
-	h := NewHandler(provider, nil, r, nil)
+	h := NewHandler(provider, nil, r, nil, false)
 	engine := gin.New()
 	h.RegisterRoutes(engine)
 	return engine

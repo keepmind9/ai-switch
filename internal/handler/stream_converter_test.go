@@ -42,7 +42,7 @@ func newCountingSSEContext() (*gin.Context, *countingRecorder) {
 // allocation/GC on the hot path.
 
 func TestStreamChatToClient_NoAccumulationWhenTraceDisabled(t *testing.T) {
-	h := NewHandler(nil, nil, nil, nil) // trace disabled
+	h := NewHandler(nil, nil, nil, nil, false) // trace disabled
 	c, _ := newSSETestContext()
 
 	resp := newSSEResponse("data: hello\n\ndata: [DONE]\n\n")
@@ -53,7 +53,7 @@ func TestStreamChatToClient_NoAccumulationWhenTraceDisabled(t *testing.T) {
 }
 
 func TestStreamToChatSSE_NoAccumulationWhenTraceDisabled(t *testing.T) {
-	h := NewHandler(nil, nil, nil, nil) // trace disabled
+	h := NewHandler(nil, nil, nil, nil, false) // trace disabled
 	c, _ := newSSETestContext()
 
 	resp := newSSEResponse("data: hello\n\ndata: [DONE]\n\n")
@@ -75,7 +75,7 @@ func TestStreamToChatSSE_NoAccumulationWhenTraceDisabled(t *testing.T) {
 // per event (from WriteEvent) plus the single final flush after the loop.
 // Client output stays byte-identical.
 func TestStreamChatToClient_OmitsRedundantFlushes(t *testing.T) {
-	h := NewHandler(nil, nil, nil, nil)
+	h := NewHandler(nil, nil, nil, nil, false)
 	c, rec := newCountingSSEContext()
 
 	// 2 chunks each emit one event; [DONE] ends the stream without writing.
@@ -103,7 +103,7 @@ func TestStreamChatToClient_OmitsRedundantFlushes(t *testing.T) {
 // input lines that yield no event (blank lines, or a state-only "skip" line)
 // no longer trigger a no-op flush.
 func TestStreamToChatSSE_OmitsNoOpFlushesWhenNoOutput(t *testing.T) {
-	h := NewHandler(nil, nil, nil, nil)
+	h := NewHandler(nil, nil, nil, nil, false)
 	c, rec := newCountingSSEContext()
 
 	// c1 produces a chunk; "skip" yields nil (no output); [DONE] ends.

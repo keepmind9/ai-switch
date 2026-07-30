@@ -43,18 +43,20 @@ func newServeCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			configPath, _ := cmd.Flags().GetString("config")
 			pprofAddr, _ := cmd.Flags().GetString("pprof")
+			proxyMode, _ := cmd.Flags().GetBool("proxy")
 			if asDaemon {
-				return startDaemon(configPath, pprofAddr)
+				return startDaemon(configPath, pprofAddr, proxyMode)
 			}
-			return runServe(configPath, pprofAddr)
+			return runServe(configPath, pprofAddr, proxyMode)
 		},
 	}
 	cmd.Flags().BoolVarP(&asDaemon, "daemon", "d", false, "run as background daemon")
 	cmd.Flags().String("pprof", "", "enable pprof HTTP server on this addr (e.g. 127.0.0.1:6060) for live profiling; off by default")
+	cmd.Flags().Bool("proxy", false, "run in proxy mode: same-format passthrough (Claude Code->Anthropic, Codex->Responses) with no protocol conversion; responses are forwarded byte-for-byte")
 	return cmd
 }
 
-func runServe(configPath, pprofAddr string) error {
+func runServe(configPath, pprofAddr string, proxyMode bool) error {
 	isRestart := os.Getenv(restartEnvKey) == "1"
 	os.Unsetenv(restartEnvKey)
 
@@ -115,7 +117,7 @@ func runServe(configPath, pprofAddr string) error {
 
 	cfgRouter := router.NewConfigRouter(provider)
 	traceRecorder := hook.NewTraceRecorder(llmWriter, idxWriter)
-	h := handler.NewHandler(provider, usageStore, cfgRouter, traceRecorder)
+	h := handler.NewHandler(provider, usageStore, cfgRouter, traceRecorder, proxyMode)
 	h.SyncKeys()
 
 	if usageStore != nil {
@@ -152,7 +154,7 @@ func runServe(configPath, pprofAddr string) error {
 
 	errCh := make(chan error, 1)
 	go func() {
-		slog.Info("starting server", "addr", addr, "config", resolvedPath, "data_dir", dataDir)
+		slog.Info("starting server", "addr", addr, "config", resolvedPath, "data_dir", dataDir, "proxy_mode", proxyMode)
 		if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
 			errCh <- fmt.Errorf("server error: %w", err)
 			return
@@ -212,7 +214,7 @@ func runServe(configPath, pprofAddr string) error {
 				_ = pprofSrv.Close()
 			}
 			// Spawn new process with retry flag so it retries port binding.
-			if err := spawnRestartServer(configPath, pprofAddr); err != nil {
+			if err := spawnRestartServer(configPath, pprofAddr, proxyMode); err != nil {
 				slog.Error("failed to spawn new server", "error", err)
 				return err
 			}
@@ -265,7 +267,7 @@ func listenWithRetry(addr string, isRestart bool) (net.Listener, error) {
 	return nil, lastErr
 }
 
-func startDaemon(configPath, pprofAddr string) error {
+func startDaemon(configPath, pprofAddr string, proxyMode bool) error {
 	dataDir, err := config.EnsureDataDir()
 	if err != nil {
 		return fmt.Errorf("failed to create data directory: %w", err)
@@ -297,7 +299,7 @@ func startDaemon(configPath, pprofAddr string) error {
 		return fmt.Errorf("failed to get executable path: %w", err)
 	}
 
-	args := serverArgs(configPath, pprofAddr)
+	args := serverArgs(configPath, pprofAddr, proxyMode)
 	cmd := exec.Command(execPath, args...)
 	cmd.Stdout = nil
 	cmd.Stderr = nil
@@ -339,16 +341,19 @@ func isAddrInUse(err error) bool {
 }
 
 // serverArgs builds the argv for a spawned `ais serve` process (background
-// daemon start or config-driven restart), preserving the config and pprof
-// flags so the child carries the same diagnostic surface as the process that
-// launched it.
-func serverArgs(configPath, pprofAddr string) []string {
+// daemon start or config-driven restart), preserving the config, pprof and
+// proxy flags so the child carries the same diagnostic surface and run mode
+// as the process that launched it.
+func serverArgs(configPath, pprofAddr string, proxyMode bool) []string {
 	args := []string{"serve"}
 	if configPath != "" {
 		args = append(args, "-c", configPath)
 	}
 	if pprofAddr != "" {
 		args = append(args, "--pprof", pprofAddr)
+	}
+	if proxyMode {
+		args = append(args, "--proxy")
 	}
 	return args
 }
