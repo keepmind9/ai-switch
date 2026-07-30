@@ -133,11 +133,11 @@ func rewriteModel(body []byte, model string) ([]byte, error) {
 // proxyForward sends the rewritten request upstream, applying key fallback on
 // 429, then streams the response back byte-for-byte via proxyWriteResponse.
 func (h *Handler) proxyForward(ctx *hook.Context, upstreamURL string) error {
-	// Let Go's transport own compression: dropping the client's
-	// Accept-Encoding makes the transport add gzip automatically and decode
-	// the response, so resp.Body is always plain bytes. Forwarding the
-	// client's Accept-Encoding verbatim would risk returning a still-compressed
-	// body while we strip Content-Encoding (see copyProxyResponseHeaders).
+	// Let Go's transport own compression: dropping the client's Accept-Encoding
+	// makes the transport add gzip automatically, decompress the response, and
+	// strip Content-Encoding from resp.Header. resp.Body is therefore always
+	// plain bytes, and copyProxyResponseHeaders forwards the remaining
+	// end-to-end headers verbatim.
 	ctx.GinCtx.Request.Header.Del("Accept-Encoding")
 
 	providerKey := ctx.RouteResult.ProviderKey
