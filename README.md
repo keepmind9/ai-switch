@@ -362,6 +362,27 @@ providers:
 2. **SceneMap** — scene detection (Anthropic protocol only)
 3. **DefaultModel** — fallback
 
+<details>
+<summary><strong>Proxy Mode — same-format passthrough</strong></summary>
+
+Start with `ais serve --proxy` to disable protocol conversion entirely. Requests are
+forwarded byte-for-byte after rewriting only the top-level `model` field.
+
+Use it when your upstream already speaks the client's protocol and you want zero
+overhead, or need the upstream's native response preserved verbatim.
+
+Constraints:
+
+- **Same-format only.** A responses client (Codex) must route to a `responses`-format
+  provider; an anthropic client (Claude Code) to an `anthropic`-format provider. A
+  mismatch returns `proxy_mode_format_mismatch` (HTTP 500) instead of converting — so
+  set `default_responses_route` / `default_anthropic_route` to a same-format provider.
+- **No token stats.** The response body is not parsed, so token usage is not collected
+  (request count only).
+- Routing, `model_map`, key fallback, and hot reload still apply.
+
+</details>
+
 ---
 
 ## CLI
@@ -370,6 +391,7 @@ providers:
 ais serve                   # Start in foreground
 ais serve -d                # Start as background daemon
 ais serve -c config.yaml    # Start with custom config
+ais serve --proxy           # Proxy mode: same-format passthrough, no protocol conversion
 ais stop                    # Stop the background daemon
 ais status                  # Show whether the daemon is running
 ais check -c config.yaml    # Validate config without starting

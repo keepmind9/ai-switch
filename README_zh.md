@@ -359,6 +359,21 @@ providers:
 2. **SceneMap** — 场景检测（仅 Anthropic 协议）
 3. **DefaultModel** — 兜底
 
+<details>
+<summary><strong>代理模式 — 同格式透传</strong></summary>
+
+使用 `ais serve --proxy` 启动可完全关闭协议转换。请求仅重写顶层的 `model` 字段后按字节透传。
+
+适用于你的上游已使用与客户端相同的协议、希望零开销或需原样保留上游原生响应的场景。
+
+约束：
+
+- **仅限同格式。** Responses 客户端（Codex）必须路由到 `responses` 格式的 provider；Anthropic 客户端（Claude Code）必须路由到 `anthropic` 格式的 provider。格式不匹配时返回 `proxy_mode_format_mismatch`（HTTP 500）而非强行转换 —— 因此需将 `default_responses_route` / `default_anthropic_route` 指向同格式的 provider。
+- **不统计 token。** 响应体不解析，因此不采集 token 用量（仅记录请求数）。
+- 路由、`model_map`、Key 容灾、热更新等能力仍然生效。
+
+</details>
+
 ---
 
 ## CLI 命令
@@ -367,6 +382,7 @@ providers:
 ais serve                   # 前台启动
 ais serve -d                # 后台守护进程启动
 ais serve -c config.yaml    # 指定配置文件启动
+ais serve --proxy           # 代理模式：同格式透传，不进行协议转换
 ais stop                    # 停止后台守护进程
 ais status                  # 查看守护进程是否在运行
 ais check -c config.yaml    # 校验配置文件
