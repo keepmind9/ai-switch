@@ -32,12 +32,12 @@ func processAlive(proc *os.Process) bool {
 	return proc.Signal(syscall.Signal(0)) == nil
 }
 
-func spawnRestartServer(configPath, pprofAddr string, proxyMode bool) error {
+func spawnRestartServer(configPath, pprofAddr string, proxySpec string) error {
 	execPath, err := os.Executable()
 	if err != nil {
 		return err
 	}
-	args := serverArgs(configPath, pprofAddr, proxyMode)
+	args := serverArgs(configPath, pprofAddr, proxySpec)
 	cmd := exec.Command(execPath, args...)
 	cmd.Env = append(os.Environ(), "AI_SWITCH_RESTART=1")
 	cmd.Stdin = nil

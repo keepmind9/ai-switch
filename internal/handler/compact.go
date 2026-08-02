@@ -50,9 +50,10 @@ func (h *Handler) handleCompact(c *gin.Context) {
 		upstreamFormat = converter.FormatChat
 	}
 
-	// Proxy mode: same-format only. Codex compact must reach a responses
-	// upstream; refuse instead of converting via LLM summarization.
-	if h.proxyMode && upstreamFormat != converter.FormatResponses {
+	// Proxy mode (responses enabled): same-format only. Codex compact must
+	// reach a responses upstream; refuse instead of converting via LLM
+	// summarization.
+	if h.proxyModes.Enabled(converter.FormatResponses) && upstreamFormat != converter.FormatResponses {
 		writeProxyFormatMismatch(c, converter.FormatResponses, result.ProviderKey, upstreamFormat)
 		return
 	}

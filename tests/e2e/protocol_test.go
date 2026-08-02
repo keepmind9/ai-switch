@@ -176,7 +176,7 @@ func TestErrorPassthrough(t *testing.T) {
 			}
 			provider := config.NewProvider(cfg, "")
 			r := router.NewConfigRouter(provider)
-			h := handler.NewHandler(provider, nil, r, nil, false)
+			h := handler.NewHandler(provider, nil, r, nil, nil)
 			engine := gin.New()
 			h.RegisterRoutes(engine)
 

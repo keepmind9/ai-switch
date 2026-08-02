@@ -21,7 +21,7 @@ func TestHttpClientFor_NoProxyURL(t *testing.T) {
 		},
 	}
 	provider := config.NewProvider(cfg, "")
-	h := NewHandler(provider, nil, &staticRouter{}, nil, false)
+	h := NewHandler(provider, nil, &staticRouter{}, nil, nil)
 
 	client := h.httpClientFor("test")
 	assert.Equal(t, h.client, client, "should return default client when no proxy_url configured")
@@ -35,7 +35,7 @@ func TestHttpClientFor_ProviderNotEnabled(t *testing.T) {
 		},
 	}
 	provider := config.NewProvider(cfg, "")
-	h := NewHandler(provider, nil, &staticRouter{}, nil, false)
+	h := NewHandler(provider, nil, &staticRouter{}, nil, nil)
 
 	client := h.httpClientFor("test")
 	assert.Equal(t, h.client, client, "should return default client when provider has enable_proxy=false")
@@ -49,7 +49,7 @@ func TestHttpClientFor_ProviderEnabled(t *testing.T) {
 		},
 	}
 	provider := config.NewProvider(cfg, "")
-	h := NewHandler(provider, nil, &staticRouter{}, nil, false)
+	h := NewHandler(provider, nil, &staticRouter{}, nil, nil)
 
 	client := h.httpClientFor("test")
 	assert.NotNil(t, client)
@@ -62,7 +62,7 @@ func TestHttpClientFor_ProviderNotFound(t *testing.T) {
 		Providers: map[string]config.ProviderConfig{},
 	}
 	provider := config.NewProvider(cfg, "")
-	h := NewHandler(provider, nil, &staticRouter{}, nil, false)
+	h := NewHandler(provider, nil, &staticRouter{}, nil, nil)
 
 	client := h.httpClientFor("nonexistent")
 	assert.Equal(t, h.client, client, "should return default client for unknown provider")
@@ -76,7 +76,7 @@ func TestHttpClientFor_CachesProxyClient(t *testing.T) {
 		},
 	}
 	provider := config.NewProvider(cfg, "")
-	h := NewHandler(provider, nil, &staticRouter{}, nil, false)
+	h := NewHandler(provider, nil, &staticRouter{}, nil, nil)
 
 	client1 := h.httpClientFor("test")
 	client2 := h.httpClientFor("test")
@@ -91,7 +91,7 @@ func TestGetProxyClient_ProxyURLChangeRebuildsClient(t *testing.T) {
 		},
 	}
 	provider := config.NewProvider(cfg, "")
-	h := NewHandler(provider, nil, &staticRouter{}, nil, false)
+	h := NewHandler(provider, nil, &staticRouter{}, nil, nil)
 
 	client1 := h.httpClientFor("test")
 	require.NotNil(t, client1)
@@ -111,7 +111,7 @@ func TestGetProxyClient_InvalidURL(t *testing.T) {
 		Server: config.ServerConfig{ProxyURL: "://invalid"},
 	}
 	provider := config.NewProvider(cfg, "")
-	h := NewHandler(provider, nil, &staticRouter{}, nil, false)
+	h := NewHandler(provider, nil, &staticRouter{}, nil, nil)
 
 	client := h.getProxyClient("://invalid")
 	assert.Equal(t, h.client, client, "should fall back to default client on invalid proxy URL")
@@ -161,7 +161,7 @@ func TestForwardRequest_UsesProxy(t *testing.T) {
 			Format:      "chat",
 			Model:       "gpt-4",
 		},
-	}, nil, false)
+	}, nil, nil)
 
 	_, _, err := h.forwardRequest(context.Background(), &router.RouteResult{
 		ProviderKey: "test",
@@ -196,7 +196,7 @@ func TestForwardRequest_NoProxy(t *testing.T) {
 	}
 
 	provider := config.NewProvider(cfg, "")
-	h := NewHandler(provider, nil, &staticRouter{}, nil, false)
+	h := NewHandler(provider, nil, &staticRouter{}, nil, nil)
 
 	_, _, err := h.forwardRequest(context.Background(), &router.RouteResult{
 		ProviderKey: "test",
@@ -226,7 +226,7 @@ func TestForwardRequest_CustomHeaders(t *testing.T) {
 		},
 	}
 	provider := config.NewProvider(cfg, "")
-	h := NewHandler(provider, nil, &staticRouter{}, nil, false)
+	h := NewHandler(provider, nil, &staticRouter{}, nil, nil)
 
 	_, _, err := h.forwardRequest(context.Background(), &router.RouteResult{
 		ProviderKey:   "test",

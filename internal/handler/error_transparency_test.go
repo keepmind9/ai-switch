@@ -335,7 +335,7 @@ func TestErrorTransparency_UpstreamUnreachable(t *testing.T) {
 	provider := newTestConfig("http://127.0.0.1:1", "chat", "test-model")
 	p := config.NewProvider(provider, "")
 	rt := router.NewConfigRouter(p)
-	h := NewHandler(p, nil, rt, nil, false)
+	h := NewHandler(p, nil, rt, nil, nil)
 	engine := gin.New()
 	h.RegisterRoutes(engine)
 

@@ -46,17 +46,17 @@ type Handler struct {
 	hooks      *hook.Manager
 	trace      *hook.TraceRecorder
 
-	// proxyMode forces same-format passthrough with no protocol conversion:
-	// requests are forwarded after rewriting only the top-level model field,
-	// and responses are streamed back byte-for-byte. See proxy_pipeline.go.
-	proxyMode bool
+	// proxyModes selects which client protocols run in proxy mode (same-format
+	// passthrough with no protocol conversion). Protocols not in the map use
+	// the conversion pipeline. See proxy_modes.go and proxy_pipeline.go.
+	proxyModes ProxyModes
 
 	proxyMu     sync.RWMutex
 	proxyClient *http.Client
 	cachedProxy string
 }
 
-func NewHandler(provider *config.Provider, usageStore *store.UsageStore, r router.Router, trace *hook.TraceRecorder, proxyMode bool) *Handler {
+func NewHandler(provider *config.Provider, usageStore *store.UsageStore, r router.Router, trace *hook.TraceRecorder, proxyModes ProxyModes) *Handler {
 	return &Handler{
 		provider:   provider,
 		converter:  converter.NewConverter(),
@@ -66,7 +66,7 @@ func NewHandler(provider *config.Provider, usageStore *store.UsageStore, r route
 		keyMgr:     router.NewKeyManager(),
 		hooks:      hook.NewManager(),
 		trace:      trace,
-		proxyMode:  proxyMode,
+		proxyModes: proxyModes,
 	}
 }
 
@@ -1107,11 +1107,12 @@ func (h *Handler) handleResponses(c *gin.Context) {
 		c.JSON(status, gin.H{"error": gin.H{"code": "invalid_request", "message": err.Error()}})
 		return
 	}
-	// Proxy mode: pure byte passthrough. Skip compaction-trigger detection and
-	// fake-compaction decoding so the request reaches the responses upstream
-	// verbatim (the upstream handles compaction natively). The v2 compaction
-	// path would otherwise forward to /v1/responses/compact, a wrong endpoint.
-	if h.proxyMode {
+	// Proxy mode (responses enabled): pure byte passthrough. Skip
+	// compaction-trigger detection and fake-compaction decoding so the request
+	// reaches the responses upstream verbatim (the upstream handles compaction
+	// natively). The v2 compaction path would otherwise forward to
+	// /v1/responses/compact, a wrong endpoint.
+	if h.proxyModes.Enabled(converter.FormatResponses) {
 		h.executePipeline(c, converter.FormatResponses, body)
 		return
 	}

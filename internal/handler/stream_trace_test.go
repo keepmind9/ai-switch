@@ -37,7 +37,7 @@ func newSSETestContext() (*gin.Context, *httptest.ResponseRecorder) {
 // into memory — streamBodyAsSSE returns "" — while the client still receives a
 // byte-identical stream and usage is still sniffed.
 func TestStreamBodyAsSSE_NoAccumulationWhenTraceDisabled(t *testing.T) {
-	h := NewHandler(nil, nil, nil, nil, false) // trace == nil => noop recorder => disabled
+	h := NewHandler(nil, nil, nil, nil, nil) // trace == nil => noop recorder => disabled
 
 	c, w := newSSETestContext()
 	content, inTokens, outTokens, _, _ := h.streamBodyAsSSE(c, bytes.NewReader([]byte(anthropicSSEFixture)), converter.FormatAnthropic)
@@ -54,7 +54,7 @@ func TestStreamBodyAsSSE_NoAccumulationWhenTraceDisabled(t *testing.T) {
 func TestStreamBodyAsSSE_AccumulatesWhenTraceEnabled(t *testing.T) {
 	var traceBuf bytes.Buffer
 	trace := hook.NewTraceRecorder(&traceBuf, nil)
-	h := NewHandler(nil, nil, nil, trace, false)
+	h := NewHandler(nil, nil, nil, trace, nil)
 
 	c, w := newSSETestContext()
 	content, _, _, _, _ := h.streamBodyAsSSE(c, bytes.NewReader([]byte(anthropicSSEFixture)), converter.FormatAnthropic)

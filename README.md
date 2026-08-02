@@ -363,13 +363,22 @@ providers:
 3. **DefaultModel** — fallback
 
 <details>
-<summary><strong>Proxy Mode — same-format passthrough</strong></summary>
+<summary><strong>Proxy Mode — per-protocol same-format passthrough</strong></summary>
 
-Start with `ais serve --proxy` to disable protocol conversion entirely. Requests are
-forwarded byte-for-byte after rewriting only the top-level `model` field.
+`--proxy` selects which client protocols skip protocol conversion and are forwarded
+byte-for-byte (after rewriting only the top-level `model` field). Pass a comma-separated
+list of `claude`, `codex`, `chat`, or the shortcut `all`:
 
-Use it when your upstream already speaks the client's protocol and you want zero
-overhead, or need the upstream's native response preserved verbatim.
+```bash
+ais serve --proxy claude          # only Claude Code (anthropic) passthrough
+ais serve --proxy codex           # only Codex (responses) passthrough
+ais serve --proxy claude,codex    # both; chat clients still convert
+ais serve --proxy all             # all protocols
+```
+
+Protocols not listed route through the conversion pipeline as usual. Use it when your
+upstream already speaks the client's protocol and you want zero overhead, or need the
+upstream's native response preserved verbatim.
 
 Constraints:
 
@@ -391,7 +400,7 @@ Constraints:
 ais serve                   # Start in foreground
 ais serve -d                # Start as background daemon
 ais serve -c config.yaml    # Start with custom config
-ais serve --proxy           # Proxy mode: same-format passthrough, no protocol conversion
+ais serve --proxy claude,codex  # Proxy mode: per-protocol same-format passthrough (claude|codex|chat|all)
 ais stop                    # Stop the background daemon
 ais status                  # Show whether the daemon is running
 ais check -c config.yaml    # Validate config without starting

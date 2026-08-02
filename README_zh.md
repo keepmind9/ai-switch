@@ -360,11 +360,18 @@ providers:
 3. **DefaultModel** — 兜底
 
 <details>
-<summary><strong>代理模式 — 同格式透传</strong></summary>
+<summary><strong>代理模式 — 按协议开关的同格式透传</strong></summary>
 
-使用 `ais serve --proxy` 启动可完全关闭协议转换。请求仅重写顶层的 `model` 字段后按字节透传。
+`--proxy` 指定哪些客户端协议跳过协议转换、按字节透传（仅重写顶层 `model` 字段）。传入逗号分隔的 `claude`、`codex`、`chat`，或快捷值 `all`：
 
-适用于你的上游已使用与客户端相同的协议、希望零开销或需原样保留上游原生响应的场景。
+```bash
+ais serve --proxy claude          # 仅 Claude Code（anthropic）透传
+ais serve --proxy codex           # 仅 Codex（responses）透传
+ais serve --proxy claude,codex    # 两者都开；chat 客户端仍走转换
+ais serve --proxy all             # 全部协议
+```
+
+未列出的协议照常走协议转换管道。适用于你的上游已使用与客户端相同的协议、希望零开销或需原样保留上游原生响应的场景。
 
 约束：
 
@@ -382,7 +389,7 @@ providers:
 ais serve                   # 前台启动
 ais serve -d                # 后台守护进程启动
 ais serve -c config.yaml    # 指定配置文件启动
-ais serve --proxy           # 代理模式：同格式透传，不进行协议转换
+ais serve --proxy claude,codex  # 代理模式：按协议开关同格式透传（claude|codex|chat|all）
 ais stop                    # 停止后台守护进程
 ais status                  # 查看守护进程是否在运行
 ais check -c config.yaml    # 校验配置文件

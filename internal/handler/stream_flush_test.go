@@ -27,7 +27,7 @@ func (c *countingRecorder) Flush() { c.flushes++ }
 // OPT-1 requires flushing once per event (~4 flushes), not once per line (~12).
 // Output must remain byte-identical.
 func TestStreamBodyAsSSE_FlushesOncePerEvent(t *testing.T) {
-	h := NewHandler(nil, nil, nil, nil, false)
+	h := NewHandler(nil, nil, nil, nil, nil)
 
 	rec := &countingRecorder{ResponseRecorder: httptest.NewRecorder()}
 	c, _ := gin.CreateTestContext(rec)

@@ -27,7 +27,7 @@ func setupRouterWithHook(t *testing.T, upstreamFormat string, upstreamHandler ht
 
 	provider := config.NewProvider(newTestConfig(ts.URL, upstreamFormat, "test-model"), "")
 	r := router.NewConfigRouter(provider)
-	h := NewHandler(provider, nil, r, nil, false)
+	h := NewHandler(provider, nil, r, nil, nil)
 	engine := gin.New()
 	h.RegisterRoutes(engine)
 

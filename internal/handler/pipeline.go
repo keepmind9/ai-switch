@@ -28,10 +28,10 @@ func (h *Handler) tracer() *hook.TraceRecorder {
 
 // executePipeline runs the unified request pipeline with hook support.
 func (h *Handler) executePipeline(c *gin.Context, protocol string, body []byte) {
-	// Proxy mode: same-format pure passthrough, no protocol conversion.
-	// Kept as a fully separate path so the conversion pipeline below is
-	// untouched when the flag is off.
-	if h.proxyMode {
+	// Proxy mode: same-format pure passthrough, no protocol conversion, when
+	// this client protocol is enabled in --proxy. Kept as a fully separate
+	// path so the conversion pipeline below is untouched otherwise.
+	if h.proxyModes.Enabled(protocol) {
 		h.executeProxyPipeline(c, protocol, body)
 		return
 	}

@@ -23,7 +23,7 @@ func setupProxyRouter(t *testing.T, result *router.RouteResult, upstream http.Ha
 	ts := httptest.NewServer(upstream)
 	t.Cleanup(ts.Close)
 	result.BaseURL = ts.URL
-	h := NewHandler(nil, nil, &staticRouter{result: result}, nil, true)
+	h := NewHandler(nil, nil, &staticRouter{result: result}, nil, AllProxyModes())
 	engine := gin.New()
 	h.RegisterRoutes(engine)
 	return engine, ts
@@ -262,7 +262,7 @@ func TestProxyPipeline_KeyFallbackOn429(t *testing.T) {
 		Format:      "anthropic",
 		Model:       "claude",
 	}
-	h := NewHandler(provider, nil, &staticRouter{result: result}, nil, true)
+	h := NewHandler(provider, nil, &staticRouter{result: result}, nil, AllProxyModes())
 	h.SyncKeys()
 	engine := gin.New()
 	h.RegisterRoutes(engine)
@@ -296,7 +296,7 @@ func TestProxyPipeline_UpstreamUnreachable_NoDoubleCount(t *testing.T) {
 		Format:      "anthropic",
 		Model:       "claude",
 	}
-	h := NewHandler(nil, nil, &staticRouter{result: result}, nil, true)
+	h := NewHandler(nil, nil, &staticRouter{result: result}, nil, AllProxyModes())
 	engine := gin.New()
 	h.RegisterRoutes(engine)
 

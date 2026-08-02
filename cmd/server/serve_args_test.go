@@ -14,15 +14,16 @@ func TestServerArgs(t *testing.T) {
 	cases := []struct {
 		name              string
 		configPath, pprof string
-		proxy             bool
+		proxy             string
 		want              []string
 	}{
-		{"empty", "", "", false, []string{"serve"}},
-		{"config only", "/c.yaml", "", false, []string{"serve", "-c", "/c.yaml"}},
-		{"pprof only", "", "127.0.0.1:6060", false, []string{"serve", "--pprof", "127.0.0.1:6060"}},
-		{"both", "/c.yaml", "127.0.0.1:6060", false, []string{"serve", "-c", "/c.yaml", "--pprof", "127.0.0.1:6060"}},
-		{"proxy only", "", "", true, []string{"serve", "--proxy"}},
-		{"all", "/c.yaml", "127.0.0.1:6060", true, []string{"serve", "-c", "/c.yaml", "--pprof", "127.0.0.1:6060", "--proxy"}},
+		{"empty", "", "", "", []string{"serve"}},
+		{"config only", "/c.yaml", "", "", []string{"serve", "-c", "/c.yaml"}},
+		{"pprof only", "", "127.0.0.1:6060", "", []string{"serve", "--pprof", "127.0.0.1:6060"}},
+		{"both", "/c.yaml", "127.0.0.1:6060", "", []string{"serve", "-c", "/c.yaml", "--pprof", "127.0.0.1:6060"}},
+		{"proxy all", "", "", "all", []string{"serve", "--proxy", "all"}},
+		{"proxy claude", "", "", "claude", []string{"serve", "--proxy", "claude"}},
+		{"proxy combo", "/c.yaml", "127.0.0.1:6060", "claude,codex", []string{"serve", "-c", "/c.yaml", "--pprof", "127.0.0.1:6060", "--proxy", "claude,codex"}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
