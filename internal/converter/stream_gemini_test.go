@@ -93,6 +93,32 @@ func TestConvertGeminiLineToAnthropicSSE_Text(t *testing.T) {
 	assert.Equal(t, "message_stop", lastEvent.EventType)
 }
 
+// TestConvertGeminiLineToAnthropicSSE_MessageStartCarriesInputTokenEstimate
+// verifies that the pre-populated InputTokens estimate flows into the
+// message_start usage when the upstream chunk lacks usage metadata.
+func TestConvertGeminiLineToAnthropicSSE_MessageStartCarriesInputTokenEstimate(t *testing.T) {
+	w := &mockGeminiSSEWriter{}
+	state := &GeminiToAnthropicState{
+		Model:       "gemini-2.5-pro",
+		InputTokens: 600,
+	}
+
+	// Chunk without usageMetadata — InputTokens stays at the pre-populated estimate.
+	gemData := `{"candidates":[{"content":{"role":"model","parts":[{"text":"Hello"}]},"finishReason":"STOP"}]}`
+	ConvertGeminiLineToAnthropicSSE(w, state, []byte(gemData))
+
+	require.True(t, len(w.events) >= 1)
+	assert.Equal(t, "message_start", w.events[0].EventType)
+	data, ok := w.events[0].Data.(map[string]any)
+	require.True(t, ok)
+	msg, ok := data["message"].(map[string]any)
+	require.True(t, ok)
+	usage, ok := msg["usage"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, 600, usage["input_tokens"],
+		"message_start should carry the pre-populated token estimate")
+}
+
 func TestConvertGeminiLineToAnthropicSSE_FunctionCall(t *testing.T) {
 	w := &mockGeminiSSEWriter{}
 	state := &GeminiToAnthropicState{Model: "gemini-2.5-pro"}

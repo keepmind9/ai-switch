@@ -313,6 +313,38 @@ func TestConvertChatChunkToAnthropicSSE_MessageStartStructure(t *testing.T) {
 	assert.Equal(t, 0, usage["input_tokens"])
 }
 
+// TestConvertChatChunkToAnthropicSSE_MessageStartInputTokens verifies that the
+// pre-populated InputTokens estimate flows into the message_start usage.
+// Claude Code derives context-window utilization from this field; without it
+// the context bar reads 0% until upstream usage arrives at stream end.
+func TestConvertChatChunkToAnthropicSSE_MessageStartInputTokens(t *testing.T) {
+	tests := []struct {
+		name        string
+		inputTokens int
+		wantInput   int
+	}{
+		{"zero when unset", 0, 0},
+		{"carries pre-populated estimate", 1234, 1234},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			w := &mockSSEWriter{}
+			state := &AnthropicStreamState{InputTokens: tt.inputTokens}
+
+			ConvertChatChunkToAnthropicSSE(w, state, chatChunkJSON("msg-1", "assistant", "", ""))
+
+			require.Len(t, w.events, 1)
+			data, ok := w.events[0].data.(map[string]any)
+			require.True(t, ok)
+			msg, ok := data["message"].(map[string]any)
+			require.True(t, ok)
+			usage, ok := msg["usage"].(map[string]any)
+			require.True(t, ok)
+			assert.Equal(t, tt.wantInput, usage["input_tokens"])
+		})
+	}
+}
+
 func TestConvertChatChunkToAnthropicSSE_ContentBlockDeltaStructure(t *testing.T) {
 	w := &mockSSEWriter{}
 	state := &AnthropicStreamState{}

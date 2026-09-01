@@ -29,9 +29,11 @@ func sanitizeToolID(id string) string {
 // ConvertChatChunkToAnthropicSSE processes a single Chat SSE data line and emits
 // corresponding Anthropic Messages SSE events. Returns true when stream is done.
 //
-// message_start uses input_tokens: 0 as placeholder.
-// message_delta is deferred until upstream usage arrives (or [DONE] as fallback),
-// and includes both input_tokens and output_tokens from real upstream data.
+// message_start uses the pre-populated InputTokens (a local estimate from
+// the original request body) so Claude Code's context-window utilization is
+// non-zero from the first event. message_delta is deferred until upstream
+// usage arrives (or [DONE] as fallback), and includes both input_tokens and
+// output_tokens from real upstream data.
 //
 // Handles DeepSeek reasoning_content by emitting Anthropic thinking blocks.
 func ConvertChatChunkToAnthropicSSE(w SSEWriter, state *AnthropicStreamState, data []byte) bool {
@@ -65,7 +67,7 @@ func ConvertChatChunkToAnthropicSSE(w SSEWriter, state *AnthropicStreamState, da
 					"model":       chunk.Model,
 					"stop_reason": nil,
 					"usage": map[string]any{
-						"input_tokens":                0,
+						"input_tokens":                state.InputTokens,
 						"output_tokens":               0,
 						"cache_creation_input_tokens": 0,
 						"cache_read_input_tokens":     0,
@@ -189,7 +191,7 @@ func ensureMessageStarted(w SSEWriter, state *AnthropicStreamState, chunk types.
 			"model":       chunk.Model,
 			"stop_reason": nil,
 			"usage": map[string]any{
-				"input_tokens":                0,
+				"input_tokens":                state.InputTokens,
 				"output_tokens":               0,
 				"cache_creation_input_tokens": 0,
 				"cache_read_input_tokens":     0,
@@ -229,7 +231,7 @@ func processToolCalls(w SSEWriter, state *AnthropicStreamState, toolCalls []type
 				"model":       chunk.Model,
 				"stop_reason": nil,
 				"usage": map[string]any{
-					"input_tokens":                0,
+					"input_tokens":                state.InputTokens,
 					"output_tokens":               0,
 					"cache_creation_input_tokens": 0,
 					"cache_read_input_tokens":     0,

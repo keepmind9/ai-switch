@@ -343,3 +343,31 @@ func TestConvertResponsesEventToAnthropicSSE_InvalidJSON(t *testing.T) {
 	assert.False(t, done)
 	assert.Empty(t, w.events)
 }
+
+// TestConvertResponsesEventToAnthropicSSE_MessageStartCarriesInputTokenEstimate
+// verifies that the pre-populated InputTokens estimate flows into the
+// message_start usage, so Claude Code sees non-zero context utilization.
+func TestConvertResponsesEventToAnthropicSSE_MessageStartCarriesInputTokenEstimate(t *testing.T) {
+	w := &mockSSEWriter{}
+	state := &ResponsesToAnthropicState{
+		MessageID:   "resp_123",
+		Model:       "test-model",
+		InputTokens: 800,
+	}
+
+	ConvertResponsesEventToAnthropicSSE(w, state, buildResponsesJSON("response.output_text.delta", map[string]any{
+		"delta":   "Hi",
+		"item_id": "item_1",
+	}))
+
+	events := w.eventTypes()
+	require.Contains(t, events, "message_start")
+	data, ok := w.events[0].data.(map[string]any)
+	require.True(t, ok)
+	msg, ok := data["message"].(map[string]any)
+	require.True(t, ok)
+	usage, ok := msg["usage"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, 800, usage["input_tokens"],
+		"message_start should carry the pre-populated token estimate")
+}

@@ -180,6 +180,19 @@ func (h *Handler) stepConvertReq(ctx *hook.Context) error {
 			return fmt.Errorf("unknown client protocol: %s", ctx.ClientProtocol)
 		}
 	}
+
+	// Pre-compute the input-token estimate for Anthropic clients before the
+	// upstream request is sent. The result is consumed later by the stream
+	// converters (streamFromChat/streamFromResponses/streamFromGemini) to
+	// pre-populate message_start.usage. Guarded to streaming cross-protocol
+	// requests only: non-streaming responses and same-protocol passthrough
+	// never read EstimatedInputTokens, so computing it there wastes CPU.
+	// Computed in stepConvertReq so its cost falls before the upstream network
+	// round-trip rather than blocking the streaming TTFB.
+	if ctx.IsStream && ctx.ClientProtocol != ctx.UpstreamProtocol {
+		ctx.EstimatedInputTokens = estimateInputTokens(ctx)
+	}
+
 	return nil
 }
 
@@ -671,10 +684,29 @@ func (h *Handler) writeStreamResponse(ctx *hook.Context) error {
 	return err
 }
 
+// estimateInputTokens returns a local tiktoken-based token count of the
+// client's Anthropic request body. Stream converters pre-populate the
+// message_start usage with this value so Claude Code sees a non-zero
+// context-window utilization before the upstream's real usage arrives at
+// stream end. Returns 0 for non-Anthropic clients (CountTokens parses the
+// Anthropic Messages schema). Called once in stepConvertReq for streaming
+// cross-protocol requests, so its cost falls before the upstream network
+// round-trip rather than blocking the streaming TTFB.
+func estimateInputTokens(ctx *hook.Context) int {
+	if ctx.ClientProtocol != converter.FormatAnthropic {
+		return 0
+	}
+	return router.CountTokens(ctx.ClientReqBody)
+}
+
 func (h *Handler) streamFromChat(ctx *hook.Context, model, thinkTag string) error {
 	switch ctx.ClientProtocol {
 	case converter.FormatAnthropic:
-		state := &converter.AnthropicStreamState{Model: model, ThinkTag: thinkTag}
+		state := &converter.AnthropicStreamState{
+			Model:       model,
+			ThinkTag:    thinkTag,
+			InputTokens: ctx.EstimatedInputTokens,
+		}
 		content := h.streamChatToClient(ctx.GinCtx, ctx.UpstreamResp, func(w converter.SSEWriter, data []byte) bool {
 			return converter.ConvertChatChunkToAnthropicSSE(w, state, data)
 		}, converter.FormatAnthropic)
@@ -741,7 +773,9 @@ func (h *Handler) streamFromResponses(ctx *hook.Context, model, thinkTag string)
 		ctx.CacheReadTokens = int64(state.CacheReadTokens)
 
 	case converter.FormatAnthropic:
-		state := &converter.ResponsesToAnthropicState{}
+		state := &converter.ResponsesToAnthropicState{
+			InputTokens: ctx.EstimatedInputTokens,
+		}
 		content := h.streamChatToClient(ctx.GinCtx, ctx.UpstreamResp, func(w converter.SSEWriter, data []byte) bool {
 			return converter.ConvertResponsesEventToAnthropicSSE(w, state, data)
 		}, converter.FormatAnthropic)
@@ -787,7 +821,11 @@ func (h *Handler) streamFromGemini(ctx *hook.Context, model, thinkTag string) er
 		ctx.OutputTokens = int64(outTokens)
 
 	case converter.FormatAnthropic:
-		state := &converter.GeminiToAnthropicState{Model: model, ThinkTag: thinkTag}
+		state := &converter.GeminiToAnthropicState{
+			Model:       model,
+			ThinkTag:    thinkTag,
+			InputTokens: ctx.EstimatedInputTokens,
+		}
 		content := h.streamGeminiToClient(ctx.GinCtx, ctx.UpstreamResp, func(w converter.SSEWriter, data []byte) bool {
 			return converter.ConvertGeminiLineToAnthropicSSE(w, state, data)
 		}, converter.FormatAnthropic)

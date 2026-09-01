@@ -47,6 +47,12 @@ type Context struct {
 	IsStream    bool
 	StreamState any // protocol-specific stream conversion state
 
+	// EstimatedInputTokens is a local tiktoken estimate of the request's input
+	// token count, computed once during the pipeline (for Anthropic clients)
+	// so stream converters can pre-populate message_start.usage without
+	// re-tokenizing on the streaming critical path. 0 for non-Anthropic clients.
+	EstimatedInputTokens int
+
 	// Hook mutable store
 	Extra map[string]any
 
