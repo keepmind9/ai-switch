@@ -10,16 +10,36 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"time"
 )
 
-// DefaultClient is a plain client for direct usage queries. Callers that need
-// provider-specific transport (e.g. proxy routing) must pass their own client
-// to Query.
-var DefaultClient = &http.Client{Timeout: 10 * time.Second}
+// DefaultClient is a plain client for direct usage queries. Its transport
+// deliberately has no Proxy hook, so it does NOT inherit HTTP(S)_PROXY from
+// the environment — ai-switch manages proxy selection itself. Callers that
+// need provider-specific transport (e.g. proxy routing) must pass their own
+// client to Query.
+var DefaultClient = &http.Client{
+	Timeout:   10 * time.Second,
+	Transport: directTransport(),
+}
+
+// directTransport builds a transport that connects directly (no environment
+// proxy inheritance) with sane timeouts for a single usage query.
+func directTransport() *http.Transport {
+	return &http.Transport{
+		Proxy: nil,
+		DialContext: (&net.Dialer{
+			Timeout:   10 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		TLSHandshakeTimeout: 10 * time.Second,
+		IdleConnTimeout:     90 * time.Second,
+	}
+}
 
 // glmHosts are the base_url hosts that expose the GLM coding-plan quota API.
 var glmHosts = map[string]bool{

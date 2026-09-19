@@ -221,8 +221,13 @@ const usageStatus = (w: UsageWindow) => {
   return "success"
 }
 
-const windowLabel = (w: UsageWindow) =>
-  w.type === "CREDIT_LIMIT" ? t("providers.usage.creditWindow") : t("providers.usage.tokensWindow")
+// Label distinguishes windows when the API returns several of the same type:
+// the raw `number` (window duration value, e.g. 5 for the 5h window) and the
+// reset time identify each window unambiguously.
+const windowLabel = (w: UsageWindow) => {
+  const base = w.type === "CREDIT_LIMIT" ? t("providers.usage.creditWindow") : t("providers.usage.tokensWindow")
+  return w.number > 0 ? `${base} · ${w.number}` : base
+}
 
 function formatResetTime(ms: number) {
   return new Date(ms).toLocaleString(undefined, { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })
@@ -234,12 +239,12 @@ function formatResetTime(ms: number) {
 let usageReqId = 0
 
 async function openUsage(row: Provider) {
+  closeUsage() // clear any timer + invalidate previous requests first
   const reqId = ++usageReqId
   usageDialog.value = true
   usageLoading.value = true
   usageInfo.value = null
   usageProviderName.value = row.name
-  closeUsage()
   try {
     const res = await getUsage(row.key)
     if (reqId !== usageReqId || !usageDialog.value) return
@@ -257,7 +262,11 @@ async function openUsage(row: Provider) {
   }
 }
 
+// Bumping the generation invalidates any in-flight request (success or
+// error), so a late response after close/unmount can neither show a toast
+// nor start an interval nobody will clear.
 function closeUsage() {
+  usageReqId++
   if (usageTimer) { clearInterval(usageTimer); usageTimer = undefined }
 }
 

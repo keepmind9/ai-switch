@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -58,25 +59,62 @@ func (a *AdminHandler) getUsage(c *gin.Context) {
 	})
 }
 
+// Usage-query clients are cached so repeated lookups reuse the transport's
+// connection pool instead of accumulating idle TLS sockets (an idle transport
+// lingers ~90s). The direct client never changes; the proxy client is rebuilt
+// only when server.proxy_url changes.
+var (
+	usageClientsMu   sync.Mutex
+	usageDirectOnce  sync.Once
+	usageDirect      *http.Client
+	usageProxyURL    string
+	usageProxyClient *http.Client
+)
+
 // usageHTTPClient returns an HTTP client for usage queries. It mirrors the
 // proxy handler's transport policy: providers with enable_proxy route through
 // the global server.proxy_url, everything else connects directly via
 // newUpstreamTransport(nil) — deliberately NOT inheriting HTTP(S)_PROXY env
 // vars, because ai-switch manages proxy selection itself.
 func usageHTTPClient(cfg *config.Config, p config.ProviderConfig) *http.Client {
-	if p.EnableProxy && cfg.Server.ProxyURL != "" {
-		proxyURL, err := url.Parse(cfg.Server.ProxyURL)
-		if err != nil {
-			slog.Error("invalid proxy URL, usage query falls back to direct", "proxy_url", cfg.Server.ProxyURL, "error", err)
-		} else {
-			return &http.Client{
+	if !p.EnableProxy || cfg.Server.ProxyURL == "" {
+		usageDirectOnce.Do(func() {
+			usageDirect = &http.Client{
 				Timeout:   usageQueryTimeout,
-				Transport: newUpstreamTransport(http.ProxyURL(proxyURL)),
+				Transport: newUpstreamTransport(nil),
 			}
+		})
+		return usageDirect
+	}
+
+	usageClientsMu.Lock()
+	defer usageClientsMu.Unlock()
+	if usageProxyClient != nil && usageProxyURL == cfg.Server.ProxyURL {
+		return usageProxyClient
+	}
+
+	proxyURL, err := url.Parse(cfg.Server.ProxyURL)
+	if err != nil {
+		slog.Error("invalid proxy URL, usage query falls back to direct", "proxy_url", cfg.Server.ProxyURL, "error", err)
+		usageDirectOnce.Do(func() {
+			usageDirect = &http.Client{
+				Timeout:   usageQueryTimeout,
+				Transport: newUpstreamTransport(nil),
+			}
+		})
+		return usageDirect
+	}
+
+	// Drop the old proxy transport's idle connections before replacing it.
+	if usageProxyClient != nil {
+		if t, ok := usageProxyClient.Transport.(*http.Transport); ok {
+			t.CloseIdleConnections()
 		}
 	}
-	return &http.Client{
+	usageProxyClient = &http.Client{
 		Timeout:   usageQueryTimeout,
-		Transport: newUpstreamTransport(nil),
+		Transport: newUpstreamTransport(http.ProxyURL(proxyURL)),
 	}
+	usageProxyURL = cfg.Server.ProxyURL
+	return usageProxyClient
 }
