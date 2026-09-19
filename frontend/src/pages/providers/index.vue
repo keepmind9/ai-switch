@@ -205,15 +205,19 @@ const usageProviderName = ref("")
 const now = ref(Date.now())
 let usageTimer: ReturnType<typeof setInterval> | undefined
 
-const usageCountdown = (w: UsageWindow) => {
-  if (!w.resets_at_ms) return ""
-  const diff = w.resets_at_ms - now.value
+const countdownFrom = (ms: number) => {
+  if (!ms) return ""
+  const diff = ms - now.value
   if (diff <= 0) return "0s"
-  const h = Math.floor(diff / 3600000)
+  const d = Math.floor(diff / 86400000)
+  const h = Math.floor((diff % 86400000) / 3600000)
   const m = Math.floor((diff % 3600000) / 60000)
   const s = Math.floor((diff % 60000) / 1000)
+  if (d > 0) return `${d}d ${h}h`
   return h > 0 ? `${h}h ${m}m` : m > 0 ? `${m}m ${s}s` : `${s}s`
 }
+
+const usageCountdown = (w: UsageWindow) => countdownFrom(w.resets_at_ms)
 
 const usageStatus = (w: UsageWindow) => {
   if (w.utilization >= 90) return "exception"
@@ -249,7 +253,7 @@ async function openUsage(row: Provider) {
     const res = await getUsage(row.key)
     if (reqId !== usageReqId || !usageDialog.value) return
     usageInfo.value = res.data
-    if (res.data.windows?.some(w => w.window_active)) {
+    if (res.data.plan_resets_at_ms || res.data.windows?.some(w => w.window_active)) {
       now.value = Date.now()
       usageTimer = setInterval(() => { now.value = Date.now() }, 1000)
     }
@@ -394,8 +398,13 @@ onUnmounted(closeUsage)
     >
       <div v-loading="usageLoading" class="min-h-120px">
         <template v-if="usageInfo">
-          <div v-if="usageInfo.level" class="flex justify-center mb-2">
-            <el-tag size="small" type="info" effect="plain" class="uppercase!">{{ usageInfo.level }}</el-tag>
+          <div class="flex items-center justify-center gap-2 mb-2">
+            <el-tag v-if="usageInfo.level" size="small" type="info" effect="plain" class="uppercase!">{{ usageInfo.level }}</el-tag>
+            <span v-if="usageInfo.plan_resets_at_ms" class="text-xs text-slate-400">
+              {{ $t('providers.usage.planResets') }}
+              {{ formatResetTime(usageInfo.plan_resets_at_ms) }}
+              ({{ countdownFrom(usageInfo.plan_resets_at_ms) }})
+            </span>
           </div>
           <div
             v-for="(w, idx) in usageInfo.windows"

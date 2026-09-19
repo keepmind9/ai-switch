@@ -55,6 +55,7 @@
     },
     "usage": {
       "title": "{name} 套餐用量",
+      "planResets": "套餐重置：",
       "tokensWindow": "Token 窗口",
       "creditWindow": "点数窗口",
       "used": "编码套餐额度已使用",

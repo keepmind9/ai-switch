@@ -80,9 +80,13 @@ type Window struct {
 type Info struct {
 	// Level is the plan tier reported by the API (e.g. "lite", "pro").
 	Level string `json:"level"`
+	// PlanResetsAtMs is the unix timestamp (milliseconds) when the coding
+	// plan itself resets (e.g. the monthly reset), taken from the TIME_LIMIT
+	// entry. 0 when the API does not report one.
+	PlanResetsAtMs int64 `json:"plan_resets_at_ms"`
 	// Windows holds every TOKENS_LIMIT / CREDIT_LIMIT entry, in API order.
-	// TIME_LIMIT entries (tool-usage caps) are not plan windows and are
-	// skipped.
+	// TIME_LIMIT entries (tool-usage caps) are not plan windows; only their
+	// reset time is captured as PlanResetsAtMs.
 	Windows []Window `json:"windows"`
 }
 
@@ -154,6 +158,14 @@ func Query(ctx context.Context, client *http.Client, baseURL, apiKey string) (*I
 
 	info := &Info{Level: quota.Data.Level}
 	for _, limit := range quota.Data.Limits {
+		// TIME_LIMIT is the plan-level (e.g. monthly) reset — capture its
+		// reset time but don't render it as a quota window.
+		if limit.Type == "TIME_LIMIT" {
+			if limit.NextResetTime != nil {
+				info.PlanResetsAtMs = *limit.NextResetTime
+			}
+			continue
+		}
 		if !windowTypes[limit.Type] {
 			continue
 		}

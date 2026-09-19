@@ -53,9 +53,10 @@ func (a *AdminHandler) getUsage(c *gin.Context) {
 	}
 
 	sendOK(c, gin.H{
-		"provider": key,
-		"level":    info.Level,
-		"windows":  info.Windows,
+		"provider":          key,
+		"level":             info.Level,
+		"plan_resets_at_ms": info.PlanResetsAtMs,
+		"windows":           info.Windows,
 	})
 }
 

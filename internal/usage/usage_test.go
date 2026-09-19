@@ -52,19 +52,21 @@ func newQuotaServer(t *testing.T, status int, body string) (*httptest.Server, *s
 
 func TestQuery(t *testing.T) {
 	tests := []struct {
-		name        string
-		body        string
-		status      int
-		wantErr     string
-		wantLevel   string
-		wantWindows []Window
+		name             string
+		body             string
+		status           int
+		wantErr          string
+		wantLevel        string
+		wantPlanResetsAt int64
+		wantWindows      []Window
 	}{
 		{
 			// Captured from the real GLM quota API (lite plan): a TIME_LIMIT
 			// (tool-usage cap) entry plus the 5-hour TOKENS_LIMIT window.
-			name:      "real lite-plan response",
-			body:      `{"code":200,"msg":"ok","data":{"limits":[{"type":"TIME_LIMIT","unit":5,"number":1,"usage":100,"currentValue":13,"remaining":87,"percentage":13,"nextResetTime":1790737832981,"usageDetails":[{"modelCode":"search-prime","usage":10}]},{"type":"TOKENS_LIMIT","unit":3,"number":5,"percentage":64,"nextResetTime":1789816181131}],"level":"lite"},"success":true}`,
-			wantLevel: "lite",
+			name:             "real lite-plan response",
+			body:             `{"code":200,"msg":"ok","data":{"limits":[{"type":"TIME_LIMIT","unit":5,"number":1,"usage":100,"currentValue":13,"remaining":87,"percentage":13,"nextResetTime":1790737832981,"usageDetails":[{"modelCode":"search-prime","usage":10}]},{"type":"TOKENS_LIMIT","unit":3,"number":5,"percentage":64,"nextResetTime":1789816181131}],"level":"lite"},"success":true}`,
+			wantLevel:        "lite",
+			wantPlanResetsAt: 1790737832981,
 			wantWindows: []Window{
 				{Type: "TOKENS_LIMIT", Unit: 3, Number: 5, Utilization: 64, ResetsAtMs: 1789816181131, WindowActive: true},
 			},
@@ -130,6 +132,7 @@ func TestQuery(t *testing.T) {
 			}
 			require.NoError(t, err)
 			assert.Equal(t, tt.wantLevel, info.Level)
+			assert.Equal(t, tt.wantPlanResetsAt, info.PlanResetsAtMs)
 			assert.Equal(t, tt.wantWindows, info.Windows)
 			// GLM expects the raw API key, no Bearer prefix.
 			assert.Equal(t, "test-key", *authHeader)
@@ -170,7 +173,8 @@ func TestQueryTimeout(t *testing.T) {
 
 func TestInfoMarshal(t *testing.T) {
 	info := Info{
-		Level: "lite",
+		Level:          "lite",
+		PlanResetsAtMs: 1790737832981,
 		Windows: []Window{
 			{Type: "TOKENS_LIMIT", Unit: 3, Number: 5, Utilization: 64, ResetsAtMs: 1758291600000, WindowActive: true},
 		},
@@ -178,6 +182,6 @@ func TestInfoMarshal(t *testing.T) {
 	b, err := json.Marshal(info)
 	require.NoError(t, err)
 	assert.JSONEq(t,
-		`{"level":"lite","windows":[{"type":"TOKENS_LIMIT","unit":3,"number":5,"utilization":64,"resets_at_ms":1758291600000,"window_active":true}]}`,
+		`{"level":"lite","plan_resets_at_ms":1790737832981,"windows":[{"type":"TOKENS_LIMIT","unit":3,"number":5,"utilization":64,"resets_at_ms":1758291600000,"window_active":true}]}`,
 		string(b))
 }

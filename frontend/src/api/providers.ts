@@ -53,6 +53,7 @@ export interface UsageWindow {
 export interface UsageInfo {
   provider: string
   level: string
+  plan_resets_at_ms: number
   windows: UsageWindow[]
 }
 
