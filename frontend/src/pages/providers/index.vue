@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from "vue"
+import { ref, onMounted, onUnmounted, computed } from "vue"
 import { ElMessage } from "element-plus"
-import { Plus, View, Edit, Hide, CopyDocument, Search, Refresh, Link, Delete, QuestionFilled, Check, Promotion, DocumentCopy } from "@element-plus/icons-vue"
-import { listProviders, createProvider, updateProvider, deleteProvider, revealAPIKey, fetchModels, type Provider, type ModelInfo } from "@/api/providers"
+import { Plus, View, Edit, Hide, CopyDocument, Search, Refresh, Link, Delete, QuestionFilled, Check, Promotion, DocumentCopy, Odometer } from "@element-plus/icons-vue"
+import { listProviders, createProvider, updateProvider, deleteProvider, revealAPIKey, fetchModels, getUsage, type Provider, type ModelInfo, type UsageInfo } from "@/api/providers"
 import { listPresets, type Preset } from "@/api/stats"
 import { useConfirm } from "@@/composables/useConfirm"
 import { useI18n } from "vue-i18n"
@@ -184,15 +184,83 @@ async function revealKey(row: Provider) {
 
 async function handleCopyKey(row: Provider) {
   const key = revealedKeys.value[row.key] || row.api_key
-  try { 
+  try {
     await navigator.clipboard.writeText(key)
-    ElMessage.success(t("providers.actions.copySuccess")) 
-  } catch { 
-    ElMessage.info(key) 
+    ElMessage.success(t("providers.actions.copySuccess"))
+  } catch {
+    ElMessage.info(key)
   }
 }
 
+// ---- Coding-plan usage query (GLM only for now) ----
+const USAGE_HOSTS = ["open.bigmodel.cn", "api.z.ai"]
+function usageSupported(baseUrl: string) {
+  try { return USAGE_HOSTS.includes(new URL(baseUrl).host) } catch { return false }
+}
+
+const usageDialog = ref(false)
+const usageLoading = ref(false)
+const usageInfo = ref<UsageInfo | null>(null)
+const usageProviderName = ref("")
+const now = ref(Date.now())
+let usageTimer: ReturnType<typeof setInterval> | undefined
+
+const usageCountdown = computed(() => {
+  if (!usageInfo.value?.resets_at_ms) return ""
+  const diff = usageInfo.value.resets_at_ms - now.value
+  if (diff <= 0) return "0s"
+  const h = Math.floor(diff / 3600000)
+  const m = Math.floor((diff % 3600000) / 60000)
+  const s = Math.floor((diff % 60000) / 1000)
+  return h > 0 ? `${h}h ${m}m` : m > 0 ? `${m}m ${s}s` : `${s}s`
+})
+
+const usageStatus = computed(() => {
+  const u = usageInfo.value?.utilization ?? 0
+  if (u >= 90) return "exception"
+  if (u >= 70) return "warning"
+  return "success"
+})
+
+function formatResetTime(ms: number) {
+  return new Date(ms).toLocaleString(undefined, { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })
+}
+
+// Request generation guard: stale responses (dialog closed, or another
+// provider opened meanwhile) are dropped so they can neither leak a countdown
+// timer nor overwrite the newer provider's data.
+let usageReqId = 0
+
+async function openUsage(row: Provider) {
+  const reqId = ++usageReqId
+  usageDialog.value = true
+  usageLoading.value = true
+  usageInfo.value = null
+  usageProviderName.value = row.name
+  closeUsage()
+  try {
+    const res = await getUsage(row.key)
+    if (reqId !== usageReqId || !usageDialog.value) return
+    usageInfo.value = res.data
+    if (res.data.window_active) {
+      now.value = Date.now()
+      usageTimer = setInterval(() => { now.value = Date.now() }, 1000)
+    }
+  } catch (e: any) {
+    if (reqId !== usageReqId) return
+    ElMessage.error(e.response?.data?.msg || t("providers.usage.failLoad"))
+    usageDialog.value = false
+  } finally {
+    if (reqId === usageReqId) usageLoading.value = false
+  }
+}
+
+function closeUsage() {
+  if (usageTimer) { clearInterval(usageTimer); usageTimer = undefined }
+}
+
 onMounted(load)
+onUnmounted(closeUsage)
 </script>
 
 <template>
@@ -282,9 +350,12 @@ onMounted(load)
           </template>
         </el-table-column>
 
-        <el-table-column :label="$t('providers.table.actions')" width="170" fixed="right" align="right">
+        <el-table-column :label="$t('providers.table.actions')" width="200" fixed="right" align="right">
           <template #default="{ row }">
             <div class="flex justify-end gap-1">
+              <el-tooltip v-if="usageSupported(row.base_url)" :content="$t('providers.actions.usage')" placement="top">
+                <el-button link type="primary" :icon="Odometer" @click="openUsage(row)" />
+              </el-tooltip>
               <el-tooltip :content="$t('providers.actions.edit')" placement="top">
                 <el-button link type="primary" :icon="Edit" @click="openEdit(row)" />
               </el-tooltip>
@@ -303,6 +374,40 @@ onMounted(load)
         </el-table-column>
       </el-table>
     </el-card>
+
+    <el-dialog
+      v-model="usageDialog"
+      :title="$t('providers.usage.title', { name: usageProviderName })"
+      width="420px"
+      @closed="closeUsage"
+    >
+      <div v-loading="usageLoading" class="min-h-120px">
+        <template v-if="usageInfo">
+          <div class="text-center py-2">
+            <div class="text-3xl font-bold text-slate-700">{{ usageInfo.utilization.toFixed(1) }}%</div>
+            <div class="text-xs text-slate-400 mt-1">{{ $t('providers.usage.used') }}</div>
+            <el-progress
+              :percentage="Math.min(100, usageInfo.utilization)"
+              :status="usageStatus"
+              :stroke-width="14"
+              class="mt-4"
+            />
+          </div>
+          <el-divider />
+          <template v-if="usageInfo.window_active">
+            <div class="flex justify-between text-sm">
+              <span class="text-slate-500">{{ $t('providers.usage.resetsAt') }}</span>
+              <span class="font-medium">{{ formatResetTime(usageInfo.resets_at_ms) }}</span>
+            </div>
+            <div class="flex justify-between text-sm mt-2">
+              <span class="text-slate-500">{{ $t('providers.usage.countdown') }}</span>
+              <span class="font-medium">{{ usageCountdown }}</span>
+            </div>
+          </template>
+          <div v-else class="text-sm text-slate-400 text-center py-2">{{ $t('providers.usage.waiting') }}</div>
+        </template>
+      </div>
+    </el-dialog>
 
     <el-drawer
       v-model="showDrawer"

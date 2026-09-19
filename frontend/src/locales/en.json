@@ -50,7 +50,16 @@
       "failSave": "Failed to save provider",
       "copySuccess": "Copied to clipboard",
       "autoRouteCreated": "Auto-created route '{key}'",
-      "routeWarnings": "Route created with warnings: {warnings}"
+      "routeWarnings": "Route created with warnings: {warnings}",
+      "usage": "Plan Usage"
+    },
+    "usage": {
+      "title": "{name} — Plan Usage",
+      "used": "of coding plan quota used",
+      "resetsAt": "Window resets at",
+      "countdown": "Resets in",
+      "waiting": "No active window — the plan starts counting after the next request",
+      "failLoad": "Failed to load usage"
     },
     "drawer": {
       "add": "Add New Provider",

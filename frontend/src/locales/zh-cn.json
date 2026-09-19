@@ -50,7 +50,16 @@
       "failSave": "保存服务商失败",
       "copySuccess": "已复制到剪贴板",
       "autoRouteCreated": "已自动创建同名 Route '{key}'",
-      "routeWarnings": "Route 已创建，但有警告: {warnings}"
+      "routeWarnings": "Route 已创建，但有警告: {warnings}",
+      "usage": "套餐用量"
+    },
+    "usage": {
+      "title": "{name} 套餐用量",
+      "used": "编码套餐额度已使用",
+      "resetsAt": "窗口重置时间",
+      "countdown": "距重置",
+      "waiting": "暂无活跃窗口 — 套餐将在下次请求后开始计时",
+      "failLoad": "用量查询失败"
     },
     "drawer": {
       "add": "添加新服务商",

@@ -45,6 +45,7 @@ func (a *AdminHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.GET("/admin/presets", a.listPresets)
 	r.GET("/admin/status", a.adminStatus)
 	r.GET("/admin/apikeys/:type/:key", a.revealAPIKey)
+	r.GET("/admin/usage/:key", a.getUsage)
 
 	r.GET("/admin/settings", a.getSettings)
 	r.PUT("/admin/settings", a.updateSettings)

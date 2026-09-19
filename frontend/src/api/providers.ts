@@ -39,6 +39,16 @@ export interface ModelInfo {
 }
 
 export const listProviders = () => client.get<Provider[]>('/admin/providers')
+
+// Coding-plan usage window info (currently GLM only).
+export interface UsageInfo {
+  provider: string
+  utilization: number
+  resets_at_ms: number
+  window_active: boolean
+}
+
+export const getUsage = (key: string) => client.get<UsageInfo>(`/admin/usage/${key}`)
 export const createProvider = (data: CreateProviderRequest) => client.post<{ key: string; name: string; auto_route_created: boolean; warnings?: string[] }>('/admin/providers', data)
 export const updateProvider = (key: string, data: Partial<Provider>) => client.put(`/admin/providers/${key}`, data)
 export const deleteProvider = (key: string) => client.delete(`/admin/providers/${key}`)
