@@ -38,6 +38,15 @@ docs/superpowers
 docs/trace-viewer-frontend.md
 docs/codex_compact.md
 
+# Local docs not for open-source repo: article drafts, AI conversation notes,
+# and completed PRDs/proposals (features already shipped)
+docs/article-*.md
+docs/article-*.md.html
+docs/notes-local-api-reverse-proxy.md
+docs/prd-admin-cli.md
+docs/prd-codex-responses-api-improvements.md
+docs/performance-optimization-streaming.md
+
 # Frontend
 frontend/node_modules
 frontend/dist/
