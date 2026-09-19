@@ -30,6 +30,13 @@ func seedPIDFile(t *testing.T, dataDir, content string) {
 	require.NoError(t, os.WriteFile(filepath.Join(dataDir, config.PidFileName), []byte(content), 0o644))
 }
 
+// seedProxyModeFile writes the proxy-mode record inside dataDir. (Named to
+// avoid colliding with the production writeProxyModeFile in serve.go.)
+func seedProxyModeFile(t *testing.T, dataDir, content string) {
+	t.Helper()
+	require.NoError(t, os.WriteFile(filepath.Join(dataDir, config.ProxyModeFileName), []byte(content), 0o644))
+}
+
 func TestRenderStatus_NoPIDFile(t *testing.T) {
 	dataDir := withDataDir(t)
 
@@ -76,6 +83,53 @@ func TestRenderStatus_RunningCurrentProcess(t *testing.T) {
 	assert.Contains(t, out, strconv.Itoa(os.Getpid()))
 }
 
+func TestRenderStatus_RunningProxyMode(t *testing.T) {
+	cases := []struct {
+		name string
+		spec string // proxy.mode file content
+		want string // expected Proxy line value
+	}{
+		{"explicit spec", "claude,codex", "claude,codex"},
+		{"all", "all", "all"},
+		{"off (empty file)", "", "off (conversion mode)"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			dataDir := withDataDir(t)
+			seedPIDFile(t, dataDir, strconv.Itoa(os.Getpid()))
+			seedProxyModeFile(t, dataDir, c.spec)
+
+			out, running := renderStatus(dataDir, "")
+			require.True(t, running)
+			assert.Contains(t, out, statusField("Proxy", c.want))
+		})
+	}
+}
+
+func TestRenderStatus_RunningNoProxyModeFile(t *testing.T) {
+	dataDir := withDataDir(t)
+	// No proxy.mode record (daemon started by an older version): the Proxy
+	// field is omitted rather than guessed.
+	seedPIDFile(t, dataDir, strconv.Itoa(os.Getpid()))
+
+	out, running := renderStatus(dataDir, "")
+	require.True(t, running)
+	assert.NotContains(t, out, "Proxy:")
+}
+
+func TestWriteAndRemoveProxyModeFile(t *testing.T) {
+	dataDir := withDataDir(t)
+
+	writeProxyModeFile(dataDir, "claude,codex")
+	got, ok := readProxyMode(dataDir)
+	require.True(t, ok)
+	assert.Equal(t, "claude,codex", got)
+
+	removeProxyModeFile(dataDir)
+	_, ok = readProxyMode(dataDir)
+	assert.False(t, ok)
+}
+
 func TestStatusField_AlignsValues(t *testing.T) {
 	// Every key, short or long, must place its value at the same column.
 	rows := []string{
@@ -83,7 +137,8 @@ func TestStatusField_AlignsValues(t *testing.T) {
 		statusField("Addr", "2"),
 		statusField("Config", "3"),
 		statusField("Reason", "4"),
-		statusField("Logs", "5"),
+		statusField("Proxy", "5"),
+		statusField("Logs", "6"),
 	}
 	want := valueColumn(rows[0])
 	require.NotEqual(t, -1, want, "no value column found in %q", rows[0])

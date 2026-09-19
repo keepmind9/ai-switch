@@ -18,6 +18,7 @@ const (
 	UsageDBName             = "usage.db"
 	ConfigFile              = "config.yaml"
 	PidFileName             = "ai-switch.pid"
+	ProxyModeFileName       = "proxy.mode"
 	DefaultLogRetentionDays = 30
 	DefaultLLMLogEnabled    = true
 )

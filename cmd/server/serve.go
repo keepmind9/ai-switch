@@ -152,7 +152,9 @@ func runServe(configPath, pprofAddr string, proxySpec string) error {
 	}
 
 	writePIDFile(dataDir)
+	writeProxyModeFile(dataDir, proxySpec)
 	defer removePIDFile(dataDir)
+	defer removeProxyModeFile(dataDir)
 
 	ln, err := listenWithRetry(addr, isRestart)
 	if err != nil {
@@ -344,6 +346,20 @@ func writePIDFile(dataDir string) {
 func removePIDFile(dataDir string) {
 	pidPath := filepath.Join(dataDir, config.PidFileName)
 	_ = os.Remove(pidPath)
+}
+
+// writeProxyModeFile persists the --proxy spec of the running daemon so
+// `status` can report the run mode of a live process. It is written even
+// when proxy mode is off (empty spec), so status can tell "off" apart from
+// "daemon started by an older version that wrote no file".
+func writeProxyModeFile(dataDir, proxySpec string) {
+	modePath := filepath.Join(dataDir, config.ProxyModeFileName)
+	_ = os.WriteFile(modePath, []byte(proxySpec), 0644)
+}
+
+func removeProxyModeFile(dataDir string) {
+	modePath := filepath.Join(dataDir, config.ProxyModeFileName)
+	_ = os.Remove(modePath)
 }
 
 func isAddrInUse(err error) bool {

@@ -89,8 +89,25 @@ func renderStatus(dataDir, configPath string) (string, bool) {
 	if resolved != "" {
 		fmt.Fprintf(&b, "%s\n", statusField("Config", resolved))
 	}
+	if spec, ok := readProxyMode(dataDir); ok {
+		if spec == "" {
+			spec = "off (conversion mode)"
+		}
+		fmt.Fprintf(&b, "%s\n", statusField("Proxy", spec))
+	}
 	fmt.Fprintf(&b, "%s\n", statusField("Logs", logDir))
 	return b.String(), true
+}
+
+// readProxyMode returns the --proxy spec recorded by the running daemon.
+// The second return value is false when no record exists (daemon started by
+// an older version), in which case status omits the field.
+func readProxyMode(dataDir string) (string, bool) {
+	data, err := os.ReadFile(filepath.Join(dataDir, config.ProxyModeFileName))
+	if err != nil {
+		return "", false
+	}
+	return strings.TrimSpace(string(data)), true
 }
 
 // resolveListenAddr loads the config at resolvedPath and returns "host:port".
