@@ -52,34 +52,38 @@ func newQuotaServer(t *testing.T, status int, body string) (*httptest.Server, *s
 
 func TestQuery(t *testing.T) {
 	tests := []struct {
-		name         string
-		body         string
-		status       int
-		wantErr      string
-		wantUtil     float64
-		wantActive   bool
-		wantResetsAt int64
+		name        string
+		body        string
+		status      int
+		wantErr     string
+		wantLevel   string
+		wantWindows []Window
 	}{
 		{
-			name:         "active window",
-			body:         `{"success":true,"data":{"limits":[{"type":"TOKENS_LIMIT","percentage":78.5,"nextResetTime":1758291600000}]}}`,
-			wantUtil:     78.5,
-			wantActive:   true,
-			wantResetsAt: 1758291600000,
+			// Captured from the real GLM quota API (lite plan): a TIME_LIMIT
+			// (tool-usage cap) entry plus the 5-hour TOKENS_LIMIT window.
+			name:      "real lite-plan response",
+			body:      `{"code":200,"msg":"ok","data":{"limits":[{"type":"TIME_LIMIT","unit":5,"number":1,"usage":100,"currentValue":13,"remaining":87,"percentage":13,"nextResetTime":1790737832981,"usageDetails":[{"modelCode":"search-prime","usage":10}]},{"type":"TOKENS_LIMIT","unit":3,"number":5,"percentage":64,"nextResetTime":1789816181131}],"level":"lite"},"success":true}`,
+			wantLevel: "lite",
+			wantWindows: []Window{
+				{Type: "TOKENS_LIMIT", Unit: 3, Number: 5, Utilization: 64, ResetsAtMs: 1789816181131, WindowActive: true},
+			},
 		},
 		{
-			name:         "window waiting to trigger",
-			body:         `{"success":true,"data":{"limits":[{"type":"TOKENS_LIMIT","percentage":0,"nextResetTime":null}]}}`,
-			wantUtil:     0,
-			wantActive:   false,
-			wantResetsAt: 0,
+			name:      "credit plan",
+			body:      `{"success":true,"data":{"limits":[{"type":"CREDIT_LIMIT","unit":1,"number":1,"percentage":30,"nextResetTime":null}],"level":"credit"}}`,
+			wantLevel: "credit",
+			wantWindows: []Window{
+				{Type: "CREDIT_LIMIT", Unit: 1, Number: 1, Utilization: 30, ResetsAtMs: 0, WindowActive: false},
+			},
 		},
 		{
-			name:         "skips other limit types",
-			body:         `{"success":true,"data":{"limits":[{"type":"REQUESTS_LIMIT","percentage":10,"nextResetTime":123},{"type":"TOKENS_LIMIT","percentage":42,"nextResetTime":1758291600000}]}}`,
-			wantUtil:     42,
-			wantActive:   true,
-			wantResetsAt: 1758291600000,
+			name: "multiple token windows keep api order",
+			body: `{"success":true,"data":{"limits":[{"type":"TOKENS_LIMIT","unit":3,"number":1,"percentage":10,"nextResetTime":123},{"type":"TOKENS_LIMIT","unit":3,"number":5,"percentage":42,"nextResetTime":1758291600000}]}}`,
+			wantWindows: []Window{
+				{Type: "TOKENS_LIMIT", Unit: 3, Number: 1, Utilization: 10, ResetsAtMs: 123, WindowActive: true},
+				{Type: "TOKENS_LIMIT", Unit: 3, Number: 5, Utilization: 42, ResetsAtMs: 1758291600000, WindowActive: true},
+			},
 		},
 		{
 			name:    "api error",
@@ -87,14 +91,14 @@ func TestQuery(t *testing.T) {
 			wantErr: "quota exceeded",
 		},
 		{
-			name:    "no tokens limit",
-			body:    `{"success":true,"data":{"limits":[{"type":"REQUESTS_LIMIT","percentage":10}]}}`,
-			wantErr: "no TOKENS_LIMIT",
+			name:    "only non-window limit types",
+			body:    `{"success":true,"data":{"limits":[{"type":"REQUESTS_LIMIT","percentage":10},{"type":"TIME_LIMIT","percentage":5}]}}`,
+			wantErr: "no TOKENS_LIMIT or CREDIT_LIMIT",
 		},
 		{
 			name:    "empty limits",
 			body:    `{"success":true,"data":{"limits":[]}}`,
-			wantErr: "no TOKENS_LIMIT",
+			wantErr: "no TOKENS_LIMIT or CREDIT_LIMIT",
 		},
 		{
 			name:    "http error",
@@ -125,9 +129,8 @@ func TestQuery(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
-			assert.Equal(t, tt.wantUtil, info.Utilization)
-			assert.Equal(t, tt.wantActive, info.WindowActive)
-			assert.Equal(t, tt.wantResetsAt, info.ResetsAtMs)
+			assert.Equal(t, tt.wantLevel, info.Level)
+			assert.Equal(t, tt.wantWindows, info.Windows)
 			// GLM expects the raw API key, no Bearer prefix.
 			assert.Equal(t, "test-key", *authHeader)
 		})
@@ -166,8 +169,15 @@ func TestQueryTimeout(t *testing.T) {
 }
 
 func TestInfoMarshal(t *testing.T) {
-	info := Info{Utilization: 50, ResetsAtMs: 1758291600000, WindowActive: true}
+	info := Info{
+		Level: "lite",
+		Windows: []Window{
+			{Type: "TOKENS_LIMIT", Unit: 3, Number: 5, Utilization: 64, ResetsAtMs: 1758291600000, WindowActive: true},
+		},
+	}
 	b, err := json.Marshal(info)
 	require.NoError(t, err)
-	assert.JSONEq(t, `{"utilization":50,"resets_at_ms":1758291600000,"window_active":true}`, string(b))
+	assert.JSONEq(t,
+		`{"level":"lite","windows":[{"type":"TOKENS_LIMIT","unit":3,"number":5,"utilization":64,"resets_at_ms":1758291600000,"window_active":true}]}`,
+		string(b))
 }

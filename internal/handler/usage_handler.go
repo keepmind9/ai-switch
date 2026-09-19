@@ -52,28 +52,31 @@ func (a *AdminHandler) getUsage(c *gin.Context) {
 	}
 
 	sendOK(c, gin.H{
-		"provider":      key,
-		"utilization":   info.Utilization,
-		"resets_at_ms":  info.ResetsAtMs,
-		"window_active": info.WindowActive,
+		"provider": key,
+		"level":    info.Level,
+		"windows":  info.Windows,
 	})
 }
 
 // usageHTTPClient returns an HTTP client for usage queries. It mirrors the
 // proxy handler's transport policy: providers with enable_proxy route through
-// the global server.proxy_url, everything else connects directly.
+// the global server.proxy_url, everything else connects directly via
+// newUpstreamTransport(nil) — deliberately NOT inheriting HTTP(S)_PROXY env
+// vars, because ai-switch manages proxy selection itself.
 func usageHTTPClient(cfg *config.Config, p config.ProviderConfig) *http.Client {
-	if !p.EnableProxy || cfg.Server.ProxyURL == "" {
-		return &http.Client{Timeout: usageQueryTimeout}
-	}
-
-	proxyURL, err := url.Parse(cfg.Server.ProxyURL)
-	if err != nil {
-		slog.Error("invalid proxy URL, usage query falls back to direct", "proxy_url", cfg.Server.ProxyURL, "error", err)
-		return &http.Client{Timeout: usageQueryTimeout}
+	if p.EnableProxy && cfg.Server.ProxyURL != "" {
+		proxyURL, err := url.Parse(cfg.Server.ProxyURL)
+		if err != nil {
+			slog.Error("invalid proxy URL, usage query falls back to direct", "proxy_url", cfg.Server.ProxyURL, "error", err)
+		} else {
+			return &http.Client{
+				Timeout:   usageQueryTimeout,
+				Transport: newUpstreamTransport(http.ProxyURL(proxyURL)),
+			}
+		}
 	}
 	return &http.Client{
 		Timeout:   usageQueryTimeout,
-		Transport: newUpstreamTransport(http.ProxyURL(proxyURL)),
+		Transport: newUpstreamTransport(nil),
 	}
 }

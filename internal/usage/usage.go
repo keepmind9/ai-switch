@@ -37,15 +37,39 @@ func Supported(baseURL string) bool {
 	return glmHosts[host]
 }
 
-// Info describes a coding-plan usage window.
-type Info struct {
-	// Utilization is the percentage of the plan quota already used (0-100).
+// Window describes one quota window of a coding plan.
+type Window struct {
+	// Type is the raw GLM limit type: TOKENS_LIMIT (token quota) or
+	// CREDIT_LIMIT (credit-based plans).
+	Type string `json:"type"`
+	// Unit and Number identify the window size (e.g. unit=3, number=5 is the
+	// 5-hour window). They are passed through verbatim since the unit
+	// enumeration is not publicly documented.
+	Unit   int `json:"unit"`
+	Number int `json:"number"`
+	// Utilization is the percentage of the window quota already used (0-100).
 	Utilization float64 `json:"utilization"`
 	// ResetsAtMs is the unix timestamp (milliseconds) when the window resets.
 	// 0 when no window is active (the plan is waiting to be triggered).
 	ResetsAtMs int64 `json:"resets_at_ms"`
-	// WindowActive reports whether a usage window is currently running.
+	// WindowActive reports whether the window is currently running.
 	WindowActive bool `json:"window_active"`
+}
+
+// Info describes a coding plan's usage: its level plus all quota windows.
+type Info struct {
+	// Level is the plan tier reported by the API (e.g. "lite", "pro").
+	Level string `json:"level"`
+	// Windows holds every TOKENS_LIMIT / CREDIT_LIMIT entry, in API order.
+	// TIME_LIMIT entries (tool-usage caps) are not plan windows and are
+	// skipped.
+	Windows []Window `json:"windows"`
+}
+
+// windowTypes are the GLM limit types that represent plan quota windows.
+var windowTypes = map[string]bool{
+	"TOKENS_LIMIT": true,
+	"CREDIT_LIMIT": true,
 }
 
 // glmQuotaResponse mirrors the GLM quota API response. Only the fields we
@@ -56,9 +80,12 @@ type glmQuotaResponse struct {
 	Data    struct {
 		Limits []struct {
 			Type          string  `json:"type"`
+			Unit          int     `json:"unit"`
+			Number        int     `json:"number"`
 			Percentage    float64 `json:"percentage"`
 			NextResetTime *int64  `json:"nextResetTime"`
 		} `json:"limits"`
+		Level string `json:"level"`
 	} `json:"data"`
 }
 
@@ -105,18 +132,27 @@ func Query(ctx context.Context, client *http.Client, baseURL, apiKey string) (*I
 		return nil, fmt.Errorf("usage API error: %s", orDefault(quota.Msg, "unknown error"))
 	}
 
+	info := &Info{Level: quota.Data.Level}
 	for _, limit := range quota.Data.Limits {
-		if limit.Type != "TOKENS_LIMIT" {
+		if !windowTypes[limit.Type] {
 			continue
 		}
-		info := &Info{Utilization: limit.Percentage}
-		if limit.NextResetTime != nil {
-			info.ResetsAtMs = *limit.NextResetTime
-			info.WindowActive = true
+		w := Window{
+			Type:        limit.Type,
+			Unit:        limit.Unit,
+			Number:      limit.Number,
+			Utilization: limit.Percentage,
 		}
-		return info, nil
+		if limit.NextResetTime != nil {
+			w.ResetsAtMs = *limit.NextResetTime
+			w.WindowActive = true
+		}
+		info.Windows = append(info.Windows, w)
 	}
-	return nil, fmt.Errorf("no TOKENS_LIMIT found in usage response: %s", truncate(body, 200))
+	if len(info.Windows) == 0 {
+		return nil, fmt.Errorf("no TOKENS_LIMIT or CREDIT_LIMIT found in usage response: %s", truncate(body, 200))
+	}
+	return info, nil
 }
 
 // parseBaseURL validates a base_url and returns its scheme and host.

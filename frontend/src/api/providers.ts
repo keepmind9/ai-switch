@@ -40,12 +40,20 @@ export interface ModelInfo {
 
 export const listProviders = () => client.get<Provider[]>('/admin/providers')
 
-// Coding-plan usage window info (currently GLM only).
-export interface UsageInfo {
-  provider: string
+// Coding-plan usage info (currently GLM only).
+export interface UsageWindow {
+  type: string // TOKENS_LIMIT | CREDIT_LIMIT
+  unit: number
+  number: number
   utilization: number
   resets_at_ms: number
   window_active: boolean
+}
+
+export interface UsageInfo {
+  provider: string
+  level: string
+  windows: UsageWindow[]
 }
 
 export const getUsage = (key: string) => client.get<UsageInfo>(`/admin/usage/${key}`)

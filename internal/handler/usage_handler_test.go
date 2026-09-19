@@ -107,7 +107,7 @@ func TestGetUsage(t *testing.T) {
 			mockQuery: func(ctx context.Context, client *http.Client, baseURL, apiKey string) (*usage.Info, error) {
 				assert.Equal(t, "https://open.bigmodel.cn/api/anthropic", baseURL)
 				assert.Equal(t, "primary-key", apiKey)
-				return &usage.Info{Utilization: 78.5, ResetsAtMs: 1758291600000, WindowActive: true}, nil
+				return &usage.Info{Level: "lite", Windows: []usage.Window{{Type: "TOKENS_LIMIT", Unit: 3, Number: 5, Utilization: 78.5, ResetsAtMs: 1758291600000, WindowActive: true}}}, nil
 			},
 			wantStatus: http.StatusOK,
 			wantCode:   CodeSuccess,
@@ -115,9 +115,15 @@ func TestGetUsage(t *testing.T) {
 				var d map[string]any
 				require.NoError(t, json.Unmarshal(data, &d))
 				assert.Equal(t, "glm", d["provider"])
-				assert.Equal(t, 78.5, d["utilization"])
-				assert.Equal(t, float64(1758291600000), d["resets_at_ms"])
-				assert.Equal(t, true, d["window_active"])
+				assert.Equal(t, "lite", d["level"])
+				windows, ok := d["windows"].([]any)
+				require.True(t, ok)
+				require.Len(t, windows, 1)
+				w := windows[0].(map[string]any)
+				assert.Equal(t, "TOKENS_LIMIT", w["type"])
+				assert.Equal(t, 78.5, w["utilization"])
+				assert.Equal(t, float64(1758291600000), w["resets_at_ms"])
+				assert.Equal(t, true, w["window_active"])
 			},
 		},
 		{
@@ -125,7 +131,7 @@ func TestGetUsage(t *testing.T) {
 			provider: "glm-fallback",
 			mockQuery: func(ctx context.Context, client *http.Client, baseURL, apiKey string) (*usage.Info, error) {
 				assert.Equal(t, "fallback-key", apiKey)
-				return &usage.Info{Utilization: 0, ResetsAtMs: 0, WindowActive: false}, nil
+				return &usage.Info{Level: "credit", Windows: []usage.Window{{Type: "CREDIT_LIMIT", Unit: 1, Number: 1, Utilization: 0, ResetsAtMs: 0, WindowActive: false}}}, nil
 			},
 			wantStatus: http.StatusOK,
 			wantCode:   CodeSuccess,
@@ -209,10 +215,12 @@ func TestUsageHTTPClient(t *testing.T) {
 
 			require.NotNil(t, client)
 			assert.Equal(t, usageQueryTimeout, client.Timeout)
+			transport, ok := client.Transport.(*http.Transport)
+			require.True(t, ok, "expected *http.Transport")
 			if tt.wantTransport {
-				assert.NotNil(t, client.Transport, "expected proxy transport")
+				assert.NotNil(t, transport.Proxy, "expected proxy-routed transport")
 			} else {
-				assert.Nil(t, client.Transport, "expected default transport")
+				assert.Nil(t, transport.Proxy, "expected direct transport without env proxy")
 			}
 		})
 	}

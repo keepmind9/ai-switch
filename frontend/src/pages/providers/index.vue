@@ -2,7 +2,7 @@
 import { ref, onMounted, onUnmounted, computed } from "vue"
 import { ElMessage } from "element-plus"
 import { Plus, View, Edit, Hide, CopyDocument, Search, Refresh, Link, Delete, QuestionFilled, Check, Promotion, DocumentCopy, Odometer } from "@element-plus/icons-vue"
-import { listProviders, createProvider, updateProvider, deleteProvider, revealAPIKey, fetchModels, getUsage, type Provider, type ModelInfo, type UsageInfo } from "@/api/providers"
+import { listProviders, createProvider, updateProvider, deleteProvider, revealAPIKey, fetchModels, getUsage, type Provider, type ModelInfo, type UsageInfo, type UsageWindow } from "@/api/providers"
 import { listPresets, type Preset } from "@/api/stats"
 import { useConfirm } from "@@/composables/useConfirm"
 import { useI18n } from "vue-i18n"
@@ -205,22 +205,24 @@ const usageProviderName = ref("")
 const now = ref(Date.now())
 let usageTimer: ReturnType<typeof setInterval> | undefined
 
-const usageCountdown = computed(() => {
-  if (!usageInfo.value?.resets_at_ms) return ""
-  const diff = usageInfo.value.resets_at_ms - now.value
+const usageCountdown = (w: UsageWindow) => {
+  if (!w.resets_at_ms) return ""
+  const diff = w.resets_at_ms - now.value
   if (diff <= 0) return "0s"
   const h = Math.floor(diff / 3600000)
   const m = Math.floor((diff % 3600000) / 60000)
   const s = Math.floor((diff % 60000) / 1000)
   return h > 0 ? `${h}h ${m}m` : m > 0 ? `${m}m ${s}s` : `${s}s`
-})
+}
 
-const usageStatus = computed(() => {
-  const u = usageInfo.value?.utilization ?? 0
-  if (u >= 90) return "exception"
-  if (u >= 70) return "warning"
+const usageStatus = (w: UsageWindow) => {
+  if (w.utilization >= 90) return "exception"
+  if (w.utilization >= 70) return "warning"
   return "success"
-})
+}
+
+const windowLabel = (w: UsageWindow) =>
+  w.type === "CREDIT_LIMIT" ? t("providers.usage.creditWindow") : t("providers.usage.tokensWindow")
 
 function formatResetTime(ms: number) {
   return new Date(ms).toLocaleString(undefined, { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })
@@ -242,7 +244,7 @@ async function openUsage(row: Provider) {
     const res = await getUsage(row.key)
     if (reqId !== usageReqId || !usageDialog.value) return
     usageInfo.value = res.data
-    if (res.data.window_active) {
+    if (res.data.windows?.some(w => w.window_active)) {
       now.value = Date.now()
       usageTimer = setInterval(() => { now.value = Date.now() }, 1000)
     }
@@ -383,28 +385,37 @@ onUnmounted(closeUsage)
     >
       <div v-loading="usageLoading" class="min-h-120px">
         <template v-if="usageInfo">
-          <div class="text-center py-2">
-            <div class="text-3xl font-bold text-slate-700">{{ usageInfo.utilization.toFixed(1) }}%</div>
-            <div class="text-xs text-slate-400 mt-1">{{ $t('providers.usage.used') }}</div>
-            <el-progress
-              :percentage="Math.min(100, usageInfo.utilization)"
-              :status="usageStatus"
-              :stroke-width="14"
-              class="mt-4"
-            />
+          <div v-if="usageInfo.level" class="flex justify-center mb-2">
+            <el-tag size="small" type="info" effect="plain" class="uppercase!">{{ usageInfo.level }}</el-tag>
           </div>
-          <el-divider />
-          <template v-if="usageInfo.window_active">
-            <div class="flex justify-between text-sm">
-              <span class="text-slate-500">{{ $t('providers.usage.resetsAt') }}</span>
-              <span class="font-medium">{{ formatResetTime(usageInfo.resets_at_ms) }}</span>
+          <div
+            v-for="(w, idx) in usageInfo.windows"
+            :key="w.type + w.unit + w.number"
+            :class="idx > 0 ? 'mt-6' : ''"
+          >
+            <div class="text-center py-2">
+              <div class="text-xs text-slate-400 mb-1">{{ windowLabel(w) }}</div>
+              <div class="text-3xl font-bold text-slate-700">{{ w.utilization.toFixed(1) }}%</div>
+              <div class="text-xs text-slate-400 mt-1">{{ $t('providers.usage.used') }}</div>
+              <el-progress
+                :percentage="Math.min(100, w.utilization)"
+                :status="usageStatus(w)"
+                :stroke-width="14"
+                class="mt-4"
+              />
             </div>
-            <div class="flex justify-between text-sm mt-2">
-              <span class="text-slate-500">{{ $t('providers.usage.countdown') }}</span>
-              <span class="font-medium">{{ usageCountdown }}</span>
-            </div>
-          </template>
-          <div v-else class="text-sm text-slate-400 text-center py-2">{{ $t('providers.usage.waiting') }}</div>
+            <template v-if="w.window_active">
+              <div class="flex justify-between text-sm mt-2">
+                <span class="text-slate-500">{{ $t('providers.usage.resetsAt') }}</span>
+                <span class="font-medium">{{ formatResetTime(w.resets_at_ms) }}</span>
+              </div>
+              <div class="flex justify-between text-sm mt-2">
+                <span class="text-slate-500">{{ $t('providers.usage.countdown') }}</span>
+                <span class="font-medium">{{ usageCountdown(w) }}</span>
+              </div>
+            </template>
+            <div v-else class="text-sm text-slate-400 text-center py-2">{{ $t('providers.usage.waiting') }}</div>
+          </div>
         </template>
       </div>
     </el-dialog>

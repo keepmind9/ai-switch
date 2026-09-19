@@ -55,6 +55,8 @@
     },
     "usage": {
       "title": "{name} — Plan Usage",
+      "tokensWindow": "Tokens window",
+      "creditWindow": "Credit window",
       "used": "of coding plan quota used",
       "resetsAt": "Window resets at",
       "countdown": "Resets in",
